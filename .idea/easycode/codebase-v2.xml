@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.obiscr.chatgpt.settings.EasyCodeState">
+    <option name="projectFiles" value="$PROJECT_DIR$/apps/clients/migrations/0001_initial.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/migrations/__init__.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/__init__.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/admin.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/apps.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/models.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/tests.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/clients/views.py;C:/Users/Damir/PycharmProjects/WERP_system/apps/__init__.py;C:/Users/Damir/PycharmProjects/WERP_system/WERP_system/__init__.py;C:/Users/Damir/PycharmProjects/WERP_system/WERP_system/asgi.py;C:/Users/Damir/PycharmProjects/WERP_system/WERP_system/settings.py;C:/Users/Damir/PycharmProjects/WERP_system/WERP_system/urls.py;C:/Users/Damir/PycharmProjects/WERP_system/WERP_system/wsgi.py;C:/Users/Damir/PycharmProjects/WERP_system/manage.py" />
+  </component>
+</project>
