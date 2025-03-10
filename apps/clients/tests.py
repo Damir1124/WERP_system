@@ -1,7 +1,3 @@
-from cgi import maxlen
-from sys import maxsize
-
-from django.template.defaultfilters import length
 from django.test import TestCase
 from .models import Client
 from faker import Faker
