@@ -1,5 +1,6 @@
 from django.db import models
 from datetime import date
+from apps.warehouse.models import Garage
 
 class WorkerType(models.TextChoices):
     PACKER = "packer", "Упаковщик"
@@ -14,16 +15,6 @@ class Worker(models.Model):
         verbose_name="Тип сотрудника"
     )
     date_for_payed = models.DateField(blank=True, null=False, verbose_name='Начисление зарплаты', default=date.today)
-    # После добавления гаража разблокать
-    # start_date = models.DateField(verbose_name="Дата начала работы")
-    # vehicle = models.ForeignKey(
-    #     Garage,
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     verbose_name="Транспорт",
-    #     help_text="Для курьеров, если применимо"
-    # )
     note = models.TextField(blank=True, verbose_name="Примечание")
 
     created_at = models.DateField(auto_now_add=True, verbose_name='Созданно')
@@ -35,3 +26,4 @@ class Worker(models.Model):
 
     def __str__(self):
         return self.full_name
+
