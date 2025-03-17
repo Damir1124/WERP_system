@@ -22,35 +22,6 @@ class DeliveryLog(models.Model):
         return f'{self.action} - {self.quantity}шт'
 
 
-# class DeliveryJournal(models.Model):
-#     class PaymentsType(models.TextChoices):
-#         CARD = 'CD', 'Карта'
-#         CASH = 'CH', 'Наличные'
-#         BONUS = 'BS', 'Бонус'
-#     courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
-#     date = models.DateField(auto_now_add=True, verbose_name='Дата')
-#     note = models.TextField(verbose_name='Описание')
-#     price = models.IntegerField(verbose_name='Сумма')
-#     payments_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
-#
-#     class Meta:
-#         pass
-#
-#     def __str__(self):
-#         return self.note
-#
-# class DeliveryJournalProducts(models.Model):
-#     product_type = models.ForeignKey(Product.TypeProduct.choices, verbose_name='Тип продукта')
-#     product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
-#     quantity = models.IntegerField(default=1, verbose_name='Количство')
-#
-#     class Meta:
-#         pass
-#
-#     def __str__(self):
-#         return self.product
-
-
 class DeliveryJournal(models.Model):
     class PaymentsType(models.TextChoices):
         CARD = 'CD', 'Карта'
