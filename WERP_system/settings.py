@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     'apps.products',
     'apps.workers',
     'apps.warehouse',
-    'apps.logistics'
+    'apps.logistics',
+    'apps.accounting'
 ]
 
 MIDDLEWARE = [
@@ -134,3 +135,8 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Under user settings
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+

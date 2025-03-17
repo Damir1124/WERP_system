@@ -6,7 +6,6 @@ class Client(models.Model):
     address = models.CharField(max_length=120, null=False, verbose_name='Адрес')
     balans = models.IntegerField(null=True, verbose_name='Предоплата')
     note = models.TextField(max_length=255, null=True, verbose_name="Примечание")
-
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Время регистрации')
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Время последнего редактирования")
 
