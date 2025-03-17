@@ -1,9 +1,8 @@
 from django.db import models
-from django.utils import timezone
-
 from apps.workers.models import Worker
 from apps.products.models import Product
 
+from django.utils import timezone
 
 class DeliveryLog(models.Model):
     class ActionType(models.TextChoices):
@@ -23,62 +22,80 @@ class DeliveryLog(models.Model):
         return f'{self.action} - {self.quantity}шт'
 
 
-class DeliveryReport(models.Model):
-    note = models.TextField(verbose_name="Описание")
+# class DeliveryJournal(models.Model):
+#     class PaymentsType(models.TextChoices):
+#         CARD = 'CD', 'Карта'
+#         CASH = 'CH', 'Наличные'
+#         BONUS = 'BS', 'Бонус'
+#     courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
+#     date = models.DateField(auto_now_add=True, verbose_name='Дата')
+#     note = models.TextField(verbose_name='Описание')
+#     price = models.IntegerField(verbose_name='Сумма')
+#     payments_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
+#
+#     class Meta:
+#         pass
+#
+#     def __str__(self):
+#         return self.note
+#
+# class DeliveryJournalProducts(models.Model):
+#     product_type = models.ForeignKey(Product.TypeProduct.choices, verbose_name='Тип продукта')
+#     product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
+#     quantity = models.IntegerField(default=1, verbose_name='Количство')
+#
+#     class Meta:
+#         pass
+#
+#     def __str__(self):
+#         return self.product
 
-    cooler = models.ForeignKey(
-        Product, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="coolers",
-        limit_choices_to={'type_product': Product.TypeProduct.COOLERS}
-    )
-    cooler_quantity = models.PositiveIntegerField(default=0, verbose_name="Количество кулеров")
 
-    accessory = models.ForeignKey(
-        Product, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="accessories",
-        limit_choices_to={'type_product': Product.TypeProduct.ACCESSORY}
-    )
-    accessory_quantity = models.PositiveIntegerField(default=0, verbose_name="Количество аксессуаров")
+class DeliveryJournal(models.Model):
+    class PaymentsType(models.TextChoices):
+        CARD = 'CD', 'Карта'
+        CASH = 'CH', 'Наличные'
+        BONUS = 'BS', 'Бонус'
 
-    bottle = models.ForeignKey(
-        Product, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="bottles",
-        limit_choices_to={'type_product': Product.TypeProduct.BOTTLE_20L}
-    )
-    bottle_quantity = models.PositiveIntegerField(default=0, verbose_name="Количество бутылей")
+    courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
+    date = models.DateField(auto_now_add=True, verbose_name='Дата')
+    total_price = models.IntegerField(default=0, verbose_name='Сумма')
+    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
 
-    water = models.ForeignKey(
-        Product, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waters",
-        limit_choices_to={'type_product': Product.TypeProduct.WATER}
-    )
-    water_quantity = models.PositiveIntegerField(default=0, verbose_name="Количество воды")
-
-    summary = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма стоимости", default=0.00)
-    payment = models.CharField(
-        max_length=20,
-        choices=[('card', 'Карта'), ('cash', 'Наличные'), ('bonus', 'Бонус')],
-        verbose_name="Тип оплаты"
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
-
-    def calculate_summary(self):
-        """Вычисляет сумму стоимости всех товаров с учетом количества"""
-        total = 0
-        for product, quantity in [
-            (self.cooler, self.cooler_quantity),
-            (self.accessory, self.accessory_quantity),
-            (self.bottle, self.bottle_quantity),
-            (self.water, self.water_quantity),
-        ]:
-            if product:
-                total += product.price * quantity
-        return total
-
-    def save(self, *args, **kwargs):
-        self.summary = self.calculate_summary()
-        super().save(*args, **kwargs)
+    class Meta:
+        verbose_name = "Журнал доставок"
+        verbose_name_plural = "Журналы доставок"
+        ordering = ['-date']  # Сортировка по дате
 
     def __str__(self):
-        return f"Отчет {self.id} - {self.summary} сум"
+        return f'Отчет курьера {self.courier} за {self.date}: {self.total_price} {self.payment_type}'
 
+    def calculate_total_price(self):
+        """Вычисляет общую сумму на основе связанных продуктов."""
+        self.total_price = sum(product.product.price * product.quantity for product in self.products.all())
+        self.save()
+
+    @classmethod
+    def reset_daily_journal(cls):
+        """Обнуляет данные в журнале при смене дня."""
+        today = timezone.now().date()
+        cls.objects.filter(date=today).delete()
+
+
+class DeliveryJournalProducts(models.Model):
+    note = models.CharField(verbose_name='Описание', null=True)
+    delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
+                                         verbose_name='Журнал доставки')
+    product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
+    quantity = models.IntegerField(default=1, verbose_name='Количество')
+
+    class Meta:
+        verbose_name = "Продукт в журнале доставок"
+        verbose_name_plural = "Продукты в журналах доставок"
+
+    def __str__(self):
+        return f'{self.product} ({self.quantity} шт.)'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)  # Сначала сохраняем продукт
+        self.delivery_journal.calculate_total_price()  # Затем обновляем общую сумму в журнале
