@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Contract
+from .models import Contract, Installment, PaymentsInstallment
+
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
@@ -15,3 +16,26 @@ class ContractAdmin(admin.ModelAdmin):
     list_per_page = 20
     # Сортировка по умолчанию
     ordering = ['date']
+
+
+class PaymentsInstallmentInline(admin.TabularInline):
+    """Позвалаяем отображатся инлайном в других тб"""
+    model = PaymentsInstallment
+    extra = 1
+
+@admin.register(Installment)
+class InstallmentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'client', 'product', 'total_amount', 'paid_amount', 'due_date', 'status', 'created_at')
+    list_filter = ('client', 'product', 'status', 'due_date')
+    search_fields = ('client__name', 'product__name')
+    ordering = ('-due_date',)
+    date_hierarchy = 'due_date'
+    inlines = [PaymentsInstallmentInline]  #Кладем инлайн для платежей
+
+@admin.register(PaymentsInstallment)
+class PaymentsInstallmentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'installment', 'amount', 'payment_date', 'created_at')
+    list_filter = ('installment', 'payment_date')
+    search_fields = ('installment__client__name',)
+    ordering = ('-payment_date',)
+    date_hierarchy = 'payment_date'
