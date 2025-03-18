@@ -1,11 +1,12 @@
-from random import choices
-
 from django.db import models
 from django.core.exceptions import ValidationError
 from apps.clients.models import Client
 from apps.products.models import Product
 from django.utils.timezone import now
 from dateutil.relativedelta import relativedelta
+
+from apps.workers.models import Worker
+
 
 def contract_upload_path(instance, filename):
     """Генерация пути для загрузки файлов контрактов"""
@@ -20,12 +21,13 @@ def validate_contract_file(value):
         'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'image/jpeg', 'image/png'
     ]
-    if hasattr(value, 'content_type') and value.content_type not in  allowed_types:
+    if hasattr(value, 'content_type') and value.content_type not in allowed_types:
         raise ValidationError('Рарешены только PDF, Word, Exel, JPEG, PNG')
 
 
 class Contract(models.Model):
     """Таблица контрактов, сделок"""
+
     class ContractType(models.TextChoices):
         BUY = 'BY', 'В минус'
         SELL = 'SL', 'В плюс'
@@ -42,6 +44,7 @@ class Contract(models.Model):
 
 class Installment(models.Model):
     """Таблица учета Рассрочки по клиентам"""
+
     class InstallmentStatus(models.TextChoices):
         ACTIVE = 'AC', 'Активный'
         OVERDUE = 'OV', 'Просроченый'
@@ -53,8 +56,8 @@ class Installment(models.Model):
     paid_amount = models.IntegerField(verbose_name='Оплаченно')
     due_date = models.DateField(verbose_name='Дата след платежа')
     status = models.CharField(choices=InstallmentStatus.choices, verbose_name="Статус рассрочки")
-    created_at = models.DateField(auto_now_add=True ,verbose_name='Дата создания')
-    updated_at = models.DateField(auto_now=True ,verbose_name='Дата обновления')
+    created_at = models.DateField(auto_now_add=True, verbose_name='Дата создания')
+    updated_at = models.DateField(auto_now=True, verbose_name='Дата обновления')
 
     def __str__(self):
         return self.client.name
@@ -74,12 +77,13 @@ class Installment(models.Model):
     def check_status(self):
         """Проверка статуса рассрочки"""
         if self.paid_amount < self.total_amount and self.due_date < now().date():
-            self.status = 'OV' # Если платеж просрочен
+            self.status = 'OV'  # Если платеж просрочен
         elif self.paid_amount >= self.total_amount:
-            self.status = 'CL' # Если все погашено
+            self.status = 'CL'  # Если все погашено
         else:
             self.status = 'AC'
         self.save()
+
 
 class PaymentsInstallment(models.Model):
     """Таблица платежей по рассрочкам"""
@@ -91,8 +95,51 @@ class PaymentsInstallment(models.Model):
     def save(self, *args, **kwargs):
         """При сейве платежа обнавляем данные по рассроку"""
         super().save(*args, **kwargs)
-        self.installment.make_payment(self.amount) # Автообнова суммы
+        self.installment.make_payment(self.amount)  # Автообнова суммы
 
 
+class Salary(models.Model):
+    """Учет выплат сотрудникам"""
 
+    class PaymentType(models.TextChoices):
+        SALARY = 'SA', 'Зарплата'
+        FINE = "FI", "Штраф"
+        BONUS = "BO", "Бонус"
 
+    worker = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, related_name='workewrs', verbose_name='Работник')
+    last_payment = models.DateField(verbose_name='Дата последней выплаты', null=True, blank=True)
+    balance = models.IntegerField(verbose_name='Баланс', null=True, blank=True)
+
+    def __str__(self):
+        return self.worker.full_name
+
+class SalaryPayment(models.Model):
+    """Лог платежей"""
+
+    class PaymentType(models.TextChoices):
+        SALARY = 'SA', 'Зарплата'
+        FINE = "FI", "Штраф"
+        BONUS = "BO", "Бонус"
+
+    salary = models.ForeignKey(Salary, on_delete=models.CASCADE, related_name='payments'
+                                         , verbose_name="Зарплата рабоника")
+    note = models.CharField(max_length=120, verbose_name='Примечание', null=True, blank=True)
+    amount = models.IntegerField(verbose_name='Сумма')
+    payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')
+    date = models.DateField(verbose_name='Дата')
+
+    def save(self, *args, **kwargs):
+        """Обнова баланса и даты последней зарплаты при сейве платежа"""
+        super().save(*args, **kwargs)
+
+        # Обнова баланса по типу платежа
+        if self.payment_type in [self.PaymentType.SALARY, self.PaymentType.BONUS]:
+            self.salary.balance += self.amount  # Плюс к балансу
+        elif self.payment_type == self.PaymentType.FINE:
+            self.salary.balance -= self.amount  # Минус
+
+        # Обновление last_payment только елси SALARY
+        if self.payment_type == self.PaymentType.SALARY:
+            self.salary.last_payment = self.date
+
+        self.salary.save()

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Contract, Installment, PaymentsInstallment
+from .models import Contract, Installment, PaymentsInstallment, Salary, SalaryPayment
 
 
 @admin.register(Contract)
@@ -39,3 +39,33 @@ class PaymentsInstallmentAdmin(admin.ModelAdmin):
     search_fields = ('installment__client__name',)
     ordering = ('-payment_date',)
     date_hierarchy = 'payment_date'
+
+
+class SalaryPaymentInline(admin.TabularInline):
+    """
+    Инлайн-отображение платежей внутри карточки учета зарплаты.
+    Позволяет видеть историю платежей непосредственно при просмотре Salary.
+    """
+    model = SalaryPayment
+    extra = 0
+    fields = ('salary', 'payment_type', 'amount', 'date', 'note')
+    # Если необходимо, можно добавить readonly_fields для отображения полей без возможности редактирования.
+    readonly_fields = ()
+
+@admin.register(Salary)
+class SalaryAdmin(admin.ModelAdmin):
+    """
+    Админка для модели учета выплат (Salary).
+    """
+    list_display = ('worker', 'balance', 'last_payment')
+    search_fields = ('worker__name',)
+    inlines = [SalaryPaymentInline]
+
+@admin.register(SalaryPayment)
+class SalaryPaymentAdmin(admin.ModelAdmin):
+    """
+    Админка для модели логирования платежей.
+    """
+    list_display = ('salary', 'payment_type', 'amount', 'date', 'note')
+    list_filter = ('payment_type', 'date')
+    search_fields = ('salary' ,'note',)
