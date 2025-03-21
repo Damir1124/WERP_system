@@ -4,7 +4,6 @@ from apps.clients.models import Client
 from apps.products.models import Product
 from django.utils.timezone import now
 from dateutil.relativedelta import relativedelta
-
 from apps.workers.models import Worker
 
 
@@ -113,6 +112,7 @@ class Salary(models.Model):
     def __str__(self):
         return self.worker.full_name
 
+
 class SalaryPayment(models.Model):
     """Лог платежей"""
 
@@ -122,7 +122,7 @@ class SalaryPayment(models.Model):
         BONUS = "BO", "Бонус"
 
     salary = models.ForeignKey(Salary, on_delete=models.CASCADE, related_name='payments'
-                                         , verbose_name="Зарплата рабоника")
+                               , verbose_name="Зарплата рабоника")
     note = models.CharField(max_length=120, verbose_name='Примечание', null=True, blank=True)
     amount = models.IntegerField(verbose_name='Сумма')
     payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')
@@ -143,3 +143,29 @@ class SalaryPayment(models.Model):
             self.salary.last_payment = self.date
 
         self.salary.save()
+
+
+class FinancialTransactions(models.Model):
+    """Лог движения денежных средств"""
+
+    class TransactionsType(models.TextChoices):
+        PLUS = 'PL', 'Доход'
+        MINUS = 'MI', 'Расход'
+
+    date = models.DateField(verbose_name="Дата операции")
+    transaction_type = models.CharField(choices=TransactionsType.choices, verbose_name='Тип трансакции')
+    amount = models.CharField(verbose_name='Сумма')
+    description = models.CharField(max_length=255, null=True, blank=True, verbose_name='Примечание')
+    related_object = models.CharField(max_length=255, verbose_name="Источник операции")
+
+    pass
+
+class Finance(models.Model):
+    income = models.IntegerField(verbose_name='Доход')
+    consumption = models.IntegerField(verbose_name="Расход")
+    profit = models.IntegerField(verbose_name="Расход")
+    date = models.DateField(verbose_name='Дата сводки')
+
+    pass
+
+
