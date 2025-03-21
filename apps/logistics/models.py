@@ -4,25 +4,41 @@ from apps.products.models import Product
 
 from django.utils import timezone
 
-class DeliveryLog(models.Model):
-    class ActionType(models.TextChoices):
-        TAKEN = 'TK', 'Взято'
-        BROUGHT = 'BG', 'Принесено'
-        RETURNED = 'RT', 'Возврат'
 
-    courier_name = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
-    action = models.CharField(choices=ActionType.choices, max_length=2, verbose_name="Тип действия")
-    quantity = models.IntegerField(verbose_name='Количевство')
+class DeliveryLog(models.Model):
+    """Учет доставки по рейсам курьеров"""
+    courier = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
+    total_quantity = models.IntegerField(verbose_name='Количевство', help_text='Кол-во проданой воды с тарой или несоо'
+                                                                           'тветсвие, пропажа', null=True, blank=True)
     date = models.DateField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Журнал учета тар"
 
     def __str__(self):
-        return f'{self.action} - {self.quantity}шт'
+        return f'{self.courier} - {self.date}'
+
+
+class DeliveryLogMove(models.Model):
+    """Инфа о рейсах"""
+
+    class ActionType(models.TextChoices):
+        TAKEN = 'TK', 'Взято'
+        BROUGHT = 'BG', 'Принесено'
+        RETURNED = 'RT', 'Возврат'
+
+    delivery_log = models.ForeignKey(DeliveryLog, on_delete=models.CASCADE, verbose_name='Журнал')
+    action = models.CharField(choices=ActionType.choices, verbose_name='Тип действия')
+    quantity = models.IntegerField(verbose_name='Количество')
+    date = models.DateField(verbose_name='Дата дейсвия')
+
+    def __str__(self):
+        return f'{self.delivery_log.courier.full_name} - {self.action} - {self.quantity}'
 
 
 class DeliveryJournal(models.Model):
+    """Отчеты курьеров"""
+
     class PaymentsType(models.TextChoices):
         CARD = 'CD', 'Карта'
         CASH = 'CH', 'Наличные'
@@ -54,6 +70,7 @@ class DeliveryJournal(models.Model):
 
 
 class DeliveryJournalProducts(models.Model):
+    """Инфа о продуктах в отчете"""
     note = models.CharField(verbose_name='Описание', null=True)
     delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
                                          verbose_name='Журнал доставки')
