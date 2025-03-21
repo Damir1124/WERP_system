@@ -18,6 +18,17 @@ class DeliveryLog(models.Model):
     def __str__(self):
         return f'{self.courier} - {self.date}'
 
+    def calculate_total_quantity(self):
+        """Вычисляет общее количество на основе связанных движений."""
+        total_quantity = 0
+        for move in self.deliverylogmove_set.all():
+            if move.action == DeliveryLogMove.ActionType.TAKEN:
+                total_quantity += move.quantity
+            elif move.action == DeliveryLogMove.ActionType.BROUGHT:
+                total_quantity -= move.quantity
+        self.total_quantity = total_quantity
+        self.save()
+
 
 class DeliveryLogMove(models.Model):
     """Инфа о рейсах"""
@@ -33,7 +44,12 @@ class DeliveryLogMove(models.Model):
     date = models.DateField(verbose_name='Дата дейсвия')
 
     def __str__(self):
-        return f'{self.delivery_log.courier.full_name} - {self.action} - {self.quantity}'
+        sign = '-' if self.action == self.ActionType.TAKEN else '+'
+        return f'{self.delivery_log.courier.full_name} - {sign}{self.quantity} - {self.action}'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)  # Сначала сохраняем движение
+        self.delivery_log.calculate_total_quantity()  # Затем обновляем общее количество в журнале
 
 
 class DeliveryJournal(models.Model):

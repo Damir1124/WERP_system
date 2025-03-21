@@ -4,26 +4,26 @@ from .models import DeliveryJournal, DeliveryJournalProducts, DeliveryLogMove, D
 
 class DeliveryLogMoveInline(admin.TabularInline):
     model = DeliveryLogMove
-    extra = 1  # Количество пустых форм для добавления новых записей
+    extra = 1  # Количество пустых форм для добавления новых движений
     verbose_name = "Движение доставки"  # Отображаемое имя для инлайна
     verbose_name_plural = "Движения доставки"  # Множественное имя для инлайна
 
 
 class DeliveryLogAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'total_quantity', 'date')
-    list_filter = ('courier', 'date')
-    search_fields = ('courier__full_name',)
-    ordering = ('-date',)
-    date_hierarchy = 'date'
-    inlines = [DeliveryLogMoveInline]  # Добавляем инлайн для DeliveryLogMove
+    list_display = ('courier', 'total_quantity', 'date')  # Поля, которые будут отображаться в списке
+    list_filter = ('courier', 'date')  # Фильтры по полям
+    search_fields = ('courier__full_name',)  # Поиск по полному имени курьера
+    ordering = ('-date',)  # Сортировка по дате
+    date_hierarchy = 'date'  # Дата для навигации
+    inlines = [DeliveryLogMoveInline]  # Встраиваемые движения в журнале
 
 
 class DeliveryLogMoveAdmin(admin.ModelAdmin):
-    list_display = ('delivery_log', 'action', 'quantity', 'date')
-    list_filter = ('action', 'delivery_log__courier', 'date')
-    search_fields = ('delivery_log__courier__full_name',)
-    ordering = ('-date',)
-    date_hierarchy = 'date'
+    list_display = ('delivery_log', 'action', 'quantity', 'date')  # Поля, которые будут отображаться в списке
+    list_filter = ('action', 'delivery_log__courier', 'date')  # Фильтры по полям
+    search_fields = ('delivery_log__courier__full_name',)  # Поиск по полному имени курьера
+    ordering = ('-date',)  # Сортировка по дате
+    date_hierarchy = 'date'  # Дата для навигации
 
 
 class DeliveryJournalProductsInline(admin.TabularInline):
