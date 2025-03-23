@@ -28,17 +28,20 @@ class DeliveryLogMoveAdmin(admin.ModelAdmin):
 
 class DeliveryJournalProductsInline(admin.TabularInline):
     model = DeliveryJournalProducts
-    extra = 1  # Количество пустых форм для добавления новых продуктов
+    extra = 0  # Количество пустых форм для добавления новых продуктов
 
 
 class DeliveryJournalAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'date', 'total_price', 'payment_type')  # Поля, которые будут отображаться в списке
-    list_filter = ('courier', 'date', 'payment_type')  # Фильтры по полям
+    list_display = ('courier', 'date', 'total_price',)  # Поля, которые будут отображаться в списке
+    list_filter = ('courier', 'date',)  # Фильтры по полям
     inlines = [DeliveryJournalProductsInline]  # Встраиваемые продукты в журнале
+    readonly_fields = ('total_price',)
+
+
 
 
 class DeliveryJournalProductsAdmin(admin.ModelAdmin):
-    list_display = ('delivery_journal', 'product', 'quantity', 'note')  # Добавлено поле note
+    list_display = ('note', 'product', 'quantity', 'price', 'payment_type')  # Добавлено поле note
     list_filter = ('product',)  # Фильтры по полям
     search_fields = ('product__name', 'note')  # Поиск по имени продукта и заметке
 

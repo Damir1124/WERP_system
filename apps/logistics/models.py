@@ -9,7 +9,8 @@ class DeliveryLog(models.Model):
     """Учет доставки по рейсам курьеров"""
     courier = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
     total_quantity = models.IntegerField(verbose_name='Количевство', help_text='Кол-во проданой воды с тарой или несоо'
-                                                                           'тветсвие, пропажа', null=True, blank=True)
+                                                                               'тветсвие, пропажа', null=True,
+                                         blank=True)
     date = models.DateField(auto_now_add=True)
 
     class Meta:
@@ -28,6 +29,8 @@ class DeliveryLog(models.Model):
                 total_quantity -= move.quantity
         self.total_quantity = total_quantity
         self.save()
+
+    # тут со сменой дат нужно еще порещать а так все готово
 
 
 class DeliveryLogMove(models.Model):
@@ -55,15 +58,9 @@ class DeliveryLogMove(models.Model):
 class DeliveryJournal(models.Model):
     """Отчеты курьеров"""
 
-    class PaymentsType(models.TextChoices):
-        CARD = 'CD', 'Карта'
-        CASH = 'CH', 'Наличные'
-        BONUS = 'BS', 'Бонус'
-
     courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
-    date = models.DateField(auto_now_add=True, verbose_name='Дата')
+    date = models.DateField(verbose_name='Дата')
     total_price = models.IntegerField(default=0, verbose_name='Сумма')
-    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
 
     class Meta:
         verbose_name = "Журнал доставок"
@@ -71,11 +68,17 @@ class DeliveryJournal(models.Model):
         ordering = ['-date']  # Сортировка по дате
 
     def __str__(self):
-        return f'Отчет курьера {self.courier} за {self.date}: {self.total_price} {self.payment_type}'
+        return f'Отчет курьера {self.courier} за {self.date}: {self.total_price}'
 
-    def calculate_total_price(self):
-        """Вычисляет общую сумму на основе связанных продуктов."""
-        self.total_price = sum(product.product.price * product.quantity for product in self.products.all())
+    def update_total_price(self):
+        """Пересчитывает общую сумму отчета"""
+        total_price = 0
+        for product in self.products.all():
+            if product.payment_type == DeliveryJournalProducts.PaymentsType.BONUS:
+                total_price -= abs(product.price) or 0  # Вычитаем при бонусной оплате
+            else:
+                total_price += product.price or 0  # Прибавляем в остальных случаях
+        self.total_price = total_price
         self.save()
 
     @classmethod
@@ -87,11 +90,19 @@ class DeliveryJournal(models.Model):
 
 class DeliveryJournalProducts(models.Model):
     """Инфа о продуктах в отчете"""
-    note = models.CharField(verbose_name='Описание', null=True)
+
+    class PaymentsType(models.TextChoices):
+        CARD = 'CD', 'Карта'
+        CASH = 'CH', 'Наличные'
+        BONUS = 'BS', 'Бонус'
+
+    note = models.CharField(verbose_name='Описание', null=True, blank=True)
     delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
                                          verbose_name='Журнал доставки')
-    product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
+    product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт', default=2)
     quantity = models.IntegerField(default=1, verbose_name='Количество')
+    price = models.IntegerField(blank=True, null=True, verbose_name='Цена')
+    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
 
     class Meta:
         verbose_name = "Продукт в журнале доставок"
@@ -101,5 +112,9 @@ class DeliveryJournalProducts(models.Model):
         return f'{self.product} ({self.quantity} шт.)'
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)  # Сначала сохраняем продукт
-        self.delivery_journal.calculate_total_price()  # Затем обновляем общую сумму в журнале
+        """Пересчет цены и обновление total_price в журнале"""
+        if self.price is None:  # Если цена не указана, считаем по формуле
+            self.price = self.product.price * self.quantity
+
+        super().save(*args, **kwargs)  # Сохраняем запись
+        self.delivery_journal.update_total_price()  # Пересчитываем общую сумму
