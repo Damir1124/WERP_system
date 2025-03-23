@@ -32,10 +32,10 @@ class DeliveryJournalProductsInline(admin.TabularInline):
 
 
 class DeliveryJournalAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'date', 'total_price',)  # Поля, которые будут отображаться в списке
+    list_display = ('courier', 'date', 'card_price', 'total_price',)  # Поля, которые будут отображаться в списке
     list_filter = ('courier', 'date',)  # Фильтры по полям
     inlines = [DeliveryJournalProductsInline]  # Встраиваемые продукты в журнале
-    readonly_fields = ('total_price',)
+    readonly_fields = ('card_price', 'total_price')
 
 
 

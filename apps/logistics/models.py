@@ -8,8 +8,9 @@ from django.utils import timezone
 class DeliveryLog(models.Model):
     """Учет доставки по рейсам курьеров"""
     courier = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
-    total_quantity = models.IntegerField(verbose_name='Количевство', help_text='Кол-во проданой воды с тарой или несоо'
-                                                                               'тветсвие, пропажа', null=True,
+    total_quantity = models.IntegerField(verbose_name='Количевство',
+                                         help_text='Кол-во проданой воды с тарой или несоо'
+                                         'тветсвие, пропажа', null=True,
                                          blank=True)
     date = models.DateField(auto_now_add=True)
 
@@ -25,12 +26,10 @@ class DeliveryLog(models.Model):
         for move in self.deliverylogmove_set.all():
             if move.action == DeliveryLogMove.ActionType.TAKEN:
                 total_quantity += move.quantity
-            elif move.action == DeliveryLogMove.ActionType.BROUGHT:
+            else:
                 total_quantity -= move.quantity
         self.total_quantity = total_quantity
         self.save()
-
-    # тут со сменой дат нужно еще порещать а так все готово
 
 
 class DeliveryLogMove(models.Model):
@@ -60,7 +59,8 @@ class DeliveryJournal(models.Model):
 
     courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
     date = models.DateField(verbose_name='Дата')
-    total_price = models.IntegerField(default=0, verbose_name='Сумма')
+    card_price = models.IntegerField(default=0, verbose_name='Сумма картой')
+    total_price = models.IntegerField(default=0, verbose_name='Общая сумма')
 
     class Meta:
         verbose_name = "Журнал доставок"
@@ -73,12 +73,16 @@ class DeliveryJournal(models.Model):
     def update_total_price(self):
         """Пересчитывает общую сумму отчета"""
         total_price = 0
+        card_price = 0
         for product in self.products.all():
             if product.payment_type == DeliveryJournalProducts.PaymentsType.BONUS:
                 total_price -= abs(product.price) or 0  # Вычитаем при бонусной оплате
             else:
-                total_price += product.price or 0  # Прибавляем в остальных случаях
+                if product.payment_type == DeliveryJournalProducts.PaymentsType.CARD:
+                    card_price += product.price or 0 # Прибаляем при оплате картой
+                total_price += product.price or 0  # Прибавляем в любом случае случаях
         self.total_price = total_price
+        self.card_price = card_price
         self.save()
 
     @classmethod
