@@ -17,6 +17,11 @@ class DeliveryLogAdmin(admin.ModelAdmin):
     date_hierarchy = 'date'  # Дата для навигации
     inlines = [DeliveryLogMoveInline]  # Встраиваемые движения в журнале
 
+    def save_model(self, request, obj, form, change):
+        """Отвечает за исполнение функции"""
+        super().save_model(request, obj, form, change)  # Сначала сохраняем объект
+        obj.check_total_quantity()  # Вызываем метод проверки
+
 
 class DeliveryLogMoveAdmin(admin.ModelAdmin):
     list_display = ('delivery_log', 'action', 'quantity', 'date')  # Поля, которые будут отображаться в списке

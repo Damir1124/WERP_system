@@ -1,8 +1,12 @@
 from django.db import models
+from django.db.models import Sum
+from django.template.context_processors import request
+
 from apps.workers.models import Worker
 from apps.products.models import Product
-
+from django.contrib import messages
 from django.utils import timezone
+from django.utils.translation import gettext_lazy
 
 
 class DeliveryLog(models.Model):
@@ -30,6 +34,25 @@ class DeliveryLog(models.Model):
                 total_quantity -= move.quantity
         self.total_quantity = total_quantity
         self.save()
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)  # Сначала сохраняем запись
+        self.check_total_quantity()
+
+    def check_total_quantity(self):
+        """Проверяет соответствие total_quantity после сохранения DeliveryLog
+        и работает в связке с функцией models_save в админке"""
+        total_sales_bottle_20l = DeliveryJournalProducts.objects.filter(
+            delivery_journal__date=self.date,
+            product__type_product=Product.TypeProduct.BOTTLE_20L
+        ).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
+
+        if self.total_quantity != total_sales_bottle_20l:
+            print(f"Несоответствие для курьера {self.courier}: total_quantity = {self.total_quantity}, "
+                  f"продажи BOTTLE_20L = {total_sales_bottle_20l}")
+        else:
+            print(f"Совпадение для курьера {self.courier}: total_quantity = {self.total_quantity}, "
+                  f"продажи BOTTLE_20L = {total_sales_bottle_20l}")
 
 
 class DeliveryLogMove(models.Model):
