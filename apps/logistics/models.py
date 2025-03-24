@@ -1,12 +1,8 @@
 from django.db import models
 from django.db.models import Sum
-from django.template.context_processors import request
-
 from apps.workers.models import Worker
 from apps.products.models import Product
-from django.contrib import messages
 from django.utils import timezone
-from django.utils.translation import gettext_lazy
 
 
 class DeliveryLog(models.Model):
@@ -16,6 +12,7 @@ class DeliveryLog(models.Model):
                                          help_text='Кол-во проданой воды с тарой или несоо'
                                          'тветсвие, пропажа', null=True,
                                          blank=True)
+    total_sold = models.IntegerField(verbose_name='Всего проданно:', null=True, blank=True)
     date = models.DateField(auto_now_add=True)
 
     class Meta:
@@ -35,15 +32,26 @@ class DeliveryLog(models.Model):
         self.total_quantity = total_quantity
         self.save()
 
+    def calculate_total_sold(self):
+        """Вычисляет общее число проданной воды"""
+        total_sold = 0
+        for move in self.deliverylogmove_set.all():
+            if move.action == DeliveryLogMove.ActionType.TAKEN: # Может еще условия добавлю потомучто из-за смены даты
+                                                                # не корректно отображается
+                total_sold += move.quantity
+        self.total_sold = total_sold
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)  # Сначала сохраняем запись
         self.check_total_quantity()
+        self.calculate_total_sold()
 
     def check_total_quantity(self):
         """Проверяет соответствие total_quantity после сохранения DeliveryLog
         и работает в связке с функцией models_save в админке"""
         total_sales_bottle_20l = DeliveryJournalProducts.objects.filter(
             delivery_journal__date=self.date,
+            delivery_journal__courier=self.courier,
             product__type_product=Product.TypeProduct.BOTTLE_20L
         ).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
 
@@ -100,9 +108,9 @@ class DeliveryJournal(models.Model):
         for product in self.products.all():
             if product.payment_type == DeliveryJournalProducts.PaymentsType.BONUS:
                 total_price -= abs(product.price) or 0  # Вычитаем при бонусной оплате
+            elif product.payment_type == DeliveryJournalProducts.PaymentsType.CARD:
+                card_price += product.price or 0 # Прибаляем при оплате картой
             else:
-                if product.payment_type == DeliveryJournalProducts.PaymentsType.CARD:
-                    card_price += product.price or 0 # Прибаляем при оплате картой
                 total_price += product.price or 0  # Прибавляем в любом случае случаях
         self.total_price = total_price
         self.card_price = card_price

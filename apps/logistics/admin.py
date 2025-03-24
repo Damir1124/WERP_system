@@ -10,12 +10,13 @@ class DeliveryLogMoveInline(admin.TabularInline):
 
 
 class DeliveryLogAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'total_quantity', 'date')  # Поля, которые будут отображаться в списке
+    list_display = ('courier', 'total_quantity', "total_sold", 'date')  # Поля, которые будут отображаться в списке
     list_filter = ('courier', 'date')  # Фильтры по полям
     search_fields = ('courier__full_name',)  # Поиск по полному имени курьера
     ordering = ('-date',)  # Сортировка по дате
     date_hierarchy = 'date'  # Дата для навигации
     inlines = [DeliveryLogMoveInline]  # Встраиваемые движения в журнале
+    readonly_fields = ('total_quantity', 'total_sold')
 
     def save_model(self, request, obj, form, change):
         """Отвечает за исполнение функции"""
