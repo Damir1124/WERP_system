@@ -2,12 +2,12 @@ from django.db import models
 from datetime import date
 from apps.warehouse.models import Garage
 
-class WorkerType(models.TextChoices):
-    PACKER = "packer", "Упаковщик"
-    COURIER = "courier", "Курьер"
-    OTHER = "other", "Прочие"
 
 class Worker(models.Model):
+    class WorkerType(models.TextChoices):
+        PACKER = "packer", "Упаковщик"
+        COURIER = "courier", "Курьер"
+        OTHER = "other", "Прочие"
     full_name = models.CharField(max_length=255, verbose_name="ФИО")
     worker_type = models.CharField(
         max_length=10,
