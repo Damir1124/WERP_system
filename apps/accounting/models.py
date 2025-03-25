@@ -4,7 +4,7 @@ from apps.clients.models import Client
 from apps.products.models import Product
 from django.utils.timezone import now
 from dateutil.relativedelta import relativedelta
-from apps.workers.models import Worker
+
 
 
 def contract_upload_path(instance, filename):
@@ -39,6 +39,14 @@ class Contract(models.Model):
     contract_type = models.CharField(choices=ContractType.choices, verbose_name='Тип контрака')
     amount = models.IntegerField(verbose_name='Сумма')
     note = models.CharField(verbose_name='Примечание', max_length=255)
+
+
+
+class SubjectContract(models.Model):
+    contract = models.ForeignKey(Contract, on_delete=models.CASCADE)
+    note = models.CharField(max_length=255, verbose_name='Описание предмета')
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, verbose_name="Товар", blank=True, null=True)
+    quantitly = models.IntegerField(verbose_name="Количество")
 
 
 class Installment(models.Model):
@@ -105,7 +113,7 @@ class Salary(models.Model):
         FINE = "FI", "Штраф"
         BONUS = "BO", "Бонус"
 
-    worker = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, related_name='workewrs', verbose_name='Работник')
+    worker = models.ForeignKey('workers.Worker', on_delete=models.DO_NOTHING, related_name='workewrs', verbose_name='Работник')
     last_payment = models.DateField(verbose_name='Дата последней выплаты', null=True, blank=True)
     balance = models.IntegerField(verbose_name='Баланс', null=True, blank=True)
 

@@ -1,7 +1,7 @@
 from django.db import models
 from apps.products.models import Product
 from django.core.validators import MinValueValidator
-
+from apps.accounting.models import Contract
 
 class StockBalance(models.Model):
     product = models.ForeignKey(Product,
@@ -37,13 +37,13 @@ class StockMovement(models.Model):
                                 related_name='sold_product',
                                 verbose_name='Продукт'
     )
-    # contract = models.ForeignKey(Contract,
-    #                              on_delete=models.SET_NULL,
-    #                              null=True,
-    #                              blank=True,
-    #                              related_name="contrats",
-    #                              verbose_name='Контракт'
-    # )
+    contract = models.ForeignKey(Contract,
+                                 on_delete=models.SET_NULL,
+                                 null=True,
+                                 blank=True,
+                                 related_name="contrats",
+                                 verbose_name='Контракт'
+    )
     operation_type = models.CharField(max_length=10, choices=OperationTypeChoices.choices)
     quantity = models.IntegerField(default=1, validators=[MinValueValidator(1)], verbose_name='Количество')
     data = models.DateField(auto_now_add=True)
@@ -58,7 +58,7 @@ class StockMovement(models.Model):
 
 class Garage(models.Model):
     vehicle_name = models.CharField(max_length=255, verbose_name='Название автомобиля')
-    plate_number = models.CharField(max_length=6, verbose_name='Номерной знак')
+    plate_number = models.CharField(max_length=6, verbose_name='Номерной знак', null=True)
     milage = models.PositiveIntegerField(verbose_name='Пробег', validators=[MinValueValidator(0)])
     year = models.PositiveIntegerField(
         verbose_name='Год',

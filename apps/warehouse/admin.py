@@ -1,6 +1,6 @@
 from django.contrib import admin
 from apps.warehouse.models import StockBalance, StockMovement, Garage
-from apps.workers.models import Worker, WorkerType
+from apps.workers.models import Worker
 
 @admin.register(StockBalance)
 class StockBalanceAdmin(admin.ModelAdmin):
@@ -24,5 +24,5 @@ class GarageAdmin(admin.ModelAdmin):
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "courier":
-            kwargs["queryset"] = Worker.objects.filter(worker_type=WorkerType.COURIER)  # Фильтруем по типу курьер
+            kwargs["queryset"] = Worker.objects.filter(worker_type=Worker.WorkerType.COURIER)  # Фильтруем по типу курьер
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
