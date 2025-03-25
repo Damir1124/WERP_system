@@ -13,7 +13,7 @@ class DeliveryLog(models.Model):
                                          'тветсвие, пропажа', null=True,
                                          blank=True)
     total_sold = models.IntegerField(verbose_name='Всего проданно:', null=True, blank=True)
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField(verbose_name='Дата')
 
     class Meta:
         verbose_name = "Журнал учета тар"
