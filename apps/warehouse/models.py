@@ -27,7 +27,7 @@ class StockBalance(models.Model):
 
 class StockMovement(models.Model):
     class OperationTypeChoices(models.TextChoices):
-        BY = 'By', 'В плюс'
+        BUY = 'Buy', 'В плюс'
         SELL = 'Sell', 'В минус'
 
     sold_product = models.ForeignKey(Product,

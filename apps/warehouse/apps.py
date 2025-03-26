@@ -5,3 +5,6 @@ class WarehouseConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.warehouse'
     verbouse_name = 'Склад'
+
+    def ready(self):
+        import apps.warehouse.signals

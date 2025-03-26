@@ -1,6 +1,16 @@
 from django.contrib import admin
-from .models import Contract, Installment, PaymentsInstallment, Salary, SalaryPayment
+from .models import Contract, Installment, PaymentsInstallment, Salary, SalaryPayment, SubjectContract
 
+
+class SubjectContractInline(admin.TabularInline):
+    """Инлайн для отображения SubjectContract в Contract."""
+    model = SubjectContract
+    extra = 1  # Количество пустых форм для добавления новых записей
+    fields = ('product', 'quantitly', 'note')  # Поля, которые будут отображаться в инлай
+
+@admin.register(SubjectContract)
+class SubjectContractAdmin(admin.ModelAdmin):
+    list_display = ["contract", 'product', 'quantitly', 'quantitly']
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
@@ -16,6 +26,7 @@ class ContractAdmin(admin.ModelAdmin):
     list_per_page = 20
     # Сортировка по умолчанию
     ordering = ['date']
+    inlines = [SubjectContractInline]
 
 
 class PaymentsInstallmentInline(admin.TabularInline):

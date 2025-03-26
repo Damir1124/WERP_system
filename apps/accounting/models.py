@@ -48,6 +48,9 @@ class SubjectContract(models.Model):
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, verbose_name="Товар", blank=True, null=True)
     quantitly = models.IntegerField(verbose_name="Количество")
 
+    def __str__(self):
+        return f'C Контракта: {self.contract.note}'
+
 
 class Installment(models.Model):
     """Таблица учета Рассрочки по клиентам"""
