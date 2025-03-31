@@ -2,6 +2,8 @@ from django.db import models
 from apps.products.models import Product
 from django.core.validators import MinValueValidator
 from apps.accounting.models import Contract
+from django.utils import timezone
+
 
 class StockBalance(models.Model):
     product = models.ForeignKey(Product,
@@ -10,19 +12,19 @@ class StockBalance(models.Model):
                                 blank=True,
                                 related_name='products',
                                 verbose_name="Продукт")
-    quantitly = models.IntegerField(null=False,
-                                    default=1,
-                                    verbose_name="Количство на складе",
-                                    validators=[MinValueValidator(1)])
-    last_received_date = models.DateField(verbose_name='Дата последнего прибавления', null=True)
-    last_departure_date = models.DateField(verbose_name='Дата последнего убавления', null=True)
+    quantity = models.IntegerField(null=False,
+                                   default=1,
+                                   verbose_name="Количство на складе",
+                                   validators=[MinValueValidator(1)])
+    last_received_date = models.DateTimeField(verbose_name='Дата последнего прибавления', null=True, blank=True)
+    last_departure_date = models.DateTimeField(verbose_name='Дата последнего убавления', null=True, blank=True)
 
     class Meta:
         verbose_name = 'Склад'
 
 
     def __str__(self):
-        return f"{self.product.name} на складе {self.quantitly} шт"
+        return f"{self.product.name} на складе {self.quantity} шт"
 
 
 class StockMovement(models.Model):

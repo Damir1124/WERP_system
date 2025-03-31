@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('note', models.CharField(max_length=255, verbose_name='Описание предмета')),
-                ('quantitly', models.IntegerField(verbose_name='Количество')),
+                ('quantity', models.IntegerField(verbose_name='Количество')),
                 ('contract', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='accounting.contract')),
                 ('product', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='products.product', verbose_name='Товар')),
             ],

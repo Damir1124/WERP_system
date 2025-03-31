@@ -1,15 +1,15 @@
-from itertools import product
-
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from apps.logistics.models import DeliveryJournalProducts
 from apps.products.models import Product
 from .models import StockBalance, StockMovement
 from django.db import models
+from django.utils import timezone
 from apps.accounting.models import Contract, SubjectContract
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 @receiver(post_save, sender=Product)
 def create_stock_balance_product(sender, instance, created, **kwargs):
@@ -18,63 +18,263 @@ def create_stock_balance_product(sender, instance, created, **kwargs):
         StockBalance.objects.create(product=instance, quantitly=0)
 
 
+@receiver(pre_save, sender=DeliveryJournalProducts)
+def track_delivery_journal_changes(sender, instance, **kwargs):
+    """Отслеживаем изменения до сохранения"""
+    if instance.pk:  # Если объект уже существует (обновление)
+        try:
+            old_instance = sender.objects.get(pk=instance.pk)
+            instance._old_quantity = old_instance.quantity
+            logger.debug("Сохранено старое значение quantity: %s для DeliveryJournalProducts ID=%s",
+                        instance._old_quantity, instance.pk)
+        except sender.DoesNotExist:
+            logger.warning("Не найден существующий DeliveryJournalProducts с ID=%s", instance.pk)
+
+
 @receiver(post_save, sender=DeliveryJournalProducts)
-def update_stock_balance_on_delivery(sender, isntance, created, **kwargs):
+def update_stock_balance_on_delivery(sender, instance, created, **kwargs):
     """Обновления остатков по данным с отчетов курьеров(с продаж)"""
+    logger.info("СИГНАЛ DeliveryJournalProducts ВЫЗВАН: ID=%s, created=%s", instance.pk, created)
+
+    product = instance.product
+
     if created:
         # Получение кол-во продукта
-        quantitly_sold = isntance.quantitly
-        product = isntance.product
+        quantity_sold = instance.quantity
 
-        # Обновление баланса
-        StockBalance.objects.filter(product=product).update(
-            quantity=models.F('quantitly') - quantitly_sold
-        )
-
-
-@receiver(post_save, sender=Contract)
-def update_stock_balance_on_contract(sender, instance, created, **kwargs):
-    """Обновления остатков по данным с контрактов"""
-    logger.info('Сигнал сработал')
-    print('signal open')
-    if created:
-        # Получаем все связанные SubjectContract
-        subject_contracts = SubjectContract.objects.filter(contract=instance)
-
-        for subject in subject_contracts:
-            product = subject.product
-            quantitly = subject.quantitly
-            note = str(subject)
-            print('check product')
-
-            # Добавляет продукты в StockMovement при контракте на продажу
-            if instance.contract_type == Contract.ContractType.SELL:
-                stock_movement_sell = StockMovement.objects.create(
+        # Проверка наличия достаточного количества
+        try:
+            current_balance = StockBalance.objects.get(product=product)
+            if current_balance.quantity >= quantity_sold:
+                # Создание записи движения товара
+                StockMovement.objects.create(
                     sold_product=product,
-                    contract=instance,
                     operation_type=StockMovement.OperationTypeChoices.SELL,
-                    quantitly=quantitly,
-                    note=note
-                )
-                stock_movement_sell.save()
-
-                StockBalance.objects.filter(product=stock_movement_sell.sold_product).update_or_create(
-                    quantitly=models.F('quantitly') - stock_movement_sell.quantity
+                    quantity=quantity_sold,
+                    note=f"Продажа через доставку #{instance.pk}"
                 )
 
-            # Добавляет продукты в StockMovement при контракте на продажу
-            elif instance.contract_type == Contract.ContractType.BUY:
-                stock_movement_buy = StockMovement.objects.create(
-                    sold_product=product,
-                    contract=instance,
-                    operation_type=StockMovement.OperationTypeChoices.BUY,
-                    quantity=quantitly,
-                    note=note
+                # Обновление баланса
+                StockBalance.objects.filter(product=product).update(
+                    quantity=models.F('quantity') - quantity_sold,
+                    last_departure_date=timezone.now()
                 )
+                logger.debug("Уменьшен StockBalance для продукта %s на %s", product, quantity_sold)
+            else:
+                logger.warning("Недостаточно товара %s на складе. Запрошено: %s, доступно: %s",
+                               product, quantity_sold, current_balance.quantity)
+        except StockBalance.DoesNotExist:
+            logger.error("Не найден StockBalance для продукта %s", product)
+    else:
+        # Обработка обновления существующей записи
+        try:
+            # Получаем предыдущее значение
+            old_quantity = getattr(instance, '_old_quantity', 0)
+            new_quantity = instance.quantity
 
-                StockBalance.objects.filter(product=stock_movement_buy.sold_product).update_or_create(
-                    quantitly=models.F('quantitly') + stock_movement_buy.quantity
-                )
+            # Рассчитываем разницу
+            difference = new_quantity - old_quantity
+
+            if difference != 0:
+                # Обновление баланса с учетом разницы
+                current_balance = StockBalance.objects.get(product=product)
+
+                if difference > 0:  # Увеличение количества проданных товаров
+                    # Проверяем наличие достаточного количества
+                    if current_balance.quantity >= difference:
+                        # Создаем запись о дополнительной продаже
+                        StockMovement.objects.create(
+                            sold_product=product,
+                            operation_type=StockMovement.OperationTypeChoices.SELL,
+                            quantity=difference,
+                            note=f"Обновленно: Дополнительная продажа через доставку #{instance.pk}"
+                        )
+
+                        # Обновляем баланс
+                        StockBalance.objects.filter(product=product).update(
+                            quantity=models.F('quantity') - difference,
+                            last_departure_date=timezone.now()
+                        )
+                        logger.debug('Уменьшен баланс при увеличении доставки для продукта %s на %s',
+                                     product, difference)
+                    else:
+                        logger.warning("Недостаточно товара %s на складе. Запрошено дополнительно: %s, доступно: %s",
+                                       product, difference, current_balance.quantity)
+
+                else:  # difference < 0, уменьшение количества проданных товаров
+                    abs_difference = abs(difference)
+
+                    # Создаем запись о возврате товара как о покупке (поступлении)
+                    StockMovement.objects.create(
+                        sold_product=product,
+                        operation_type=StockMovement.OperationTypeChoices.BUY,
+                        quantity=abs_difference,
+                        note=f"Возврат товара от доставки #{instance.pk}"
+                    )
+
+                    # Обновляем баланс - увеличиваем количество на складе
+                    StockBalance.objects.filter(product=product).update(
+                        quantity=models.F('quantity') + abs_difference,
+                        last_received_date=timezone.now()
+                    )
+                    logger.debug('Увеличен баланс при уменьшении доставки для продукта %s на %s',
+                                 product, abs_difference)
+
+        except Exception as e:
+            logger.error("Ошибка при обновлении баланса: %s", e)
+
+    logger.info("СИГНАЛ DeliveryJournalProducts ЗАВЕРШЕН: ID=%s", instance.pk)
+
+
+@receiver(pre_save, sender=SubjectContract)
+def track_subject_contract_changes(sender, instance, **kwargs):
+    """Отслеживаем изменения до сохранения"""
+    if instance.pk:  # Если объект уже существует (обновление)
+        try:
+            # Получаем старый объект
+            old_instance = sender.objects.get(pk=instance.pk)
+            # Сохраняем старое значение как атрибут
+            instance._old_quantity = old_instance.quantity
+            logger.debug("Сохранено старое значение quantity: %s", instance._old_quantity)
+        except sender.DoesNotExist:
+            pass
+
+
+@receiver(post_save, sender=SubjectContract)
+def update_stock_balance_on_subject_contract(sender, instance, created, **kwargs):
+    """Обновление остатков по данным с предметов контрактов"""
+    # Обновляем экземпляр из базы данных, чтобы получить актуальные данные
+    instance.refresh_from_db()
+
+    # Получаем необходимые данные
+    product = instance.product
+    quantity = instance.quantity
+    note = str(instance)
+    contract = instance.contract
+
+    # Получаем или создаем запись в StockBalance
+    stock_balance, _ = StockBalance.objects.get_or_create(product=product)
+
+    # Обработка создания записи
+    if created:
+        if contract.contract_type == Contract.ContractType.SELL:
+            StockMovement.objects.create(
+                sold_product=product,
+                contract=contract,
+                operation_type=StockMovement.OperationTypeChoices.SELL,
+                quantity=quantity,
+                note=note
+            )
+            stock_balance.quantity -= quantity  # Уменьшаем количество на складе
+            stock_balance.last_departure_date = timezone.now()
+
+        elif contract.contract_type == Contract.ContractType.BUY:
+            StockMovement.objects.create(
+                sold_product=product,
+                contract=contract,
+                operation_type=StockMovement.OperationTypeChoices.BUY,
+                quantity=quantity,
+                note=note
+            )
+            stock_balance.quantity += quantity  # Увеличиваем количество на складе
+            stock_balance.last_received_date = timezone.now()
+
+    else:  # обработка обновления существующей записи
+        # Получаем старое значение - используем сохраненное значение или получаем из БД
+        old_quantity = getattr(instance, '_old_quantity',
+                               instance.__class__.objects.get(pk=instance.pk).quantity)
+        new_quantity = instance.quantity
+
+        logger.debug("Старое количество: %s, Новое количество: %s для SubjectContract ID=%s",
+                     old_quantity, new_quantity, instance.pk)
+
+        # Вычисляем разницу
+        difference = new_quantity - old_quantity
+
+        # Обновление баланса только если есть изменения
+        if difference != 0:
+            if contract.contract_type == Contract.ContractType.SELL:
+                if difference > 0:  # Увеличение продаж
+                    # Проверяем достаточно ли остатков
+                    if stock_balance.quantity >= difference:
+                        # Создаем запись о дополнительной продаже
+                        StockMovement.objects.create(
+                            sold_product=product,
+                            contract=contract,
+                            operation_type=StockMovement.OperationTypeChoices.SELL,
+                            quantity=difference,
+                            note=f"{note} (дополнительная продажа)"
+                        )
+
+                        stock_balance.quantity -= difference
+                        stock_balance.last_departure_date = timezone.now()
+                        logger.debug('Уменьшаем количество на %s для продукта: %s (обновление SELL)',
+                                     difference, stock_balance.product)
+                    else:
+                        logger.warning("Недостаточно товара %s на складе. Нужно: %s, доступно: %s",
+                                       product, difference, stock_balance.quantity)
+
+                else:  # difference < 0, уменьшение продажи
+                    abs_difference = abs(difference)
+
+                    # Для уменьшения продажи учитываем как покупку (возврат на склад)
+                    StockMovement.objects.create(
+                        sold_product=product,
+                        contract=contract,
+                        operation_type=StockMovement.OperationTypeChoices.BUY,  # используем BUY для возврата
+                        quantity=abs_difference,
+                        note=f"{note} (возврат товара)"
+                    )
+
+                    stock_balance.quantity += abs_difference
+                    stock_balance.last_received_date = timezone.now()
+                    logger.debug('Возврат на склад %s единиц продукта: %s (уменьшение продажи)',
+                                 abs_difference, stock_balance.product)
+
+            elif contract.contract_type == Contract.ContractType.BUY:
+                if difference > 0:  # Увеличение закупки
+                    # Создаем запись о дополнительной закупке
+                    StockMovement.objects.create(
+                        sold_product=product,
+                        contract=contract,
+                        operation_type=StockMovement.OperationTypeChoices.BUY,
+                        quantity=difference,
+                        note=f"{note} (дополнительная закупка)"
+                    )
+
+                    stock_balance.quantity += difference
+                    stock_balance.last_received_date = timezone.now()
+                    logger.debug('Увеличиваем количество на %s для продукта: %s (увеличение закупки)',
+                                 difference, stock_balance.product)
+
+                else:  # difference < 0, уменьшение закупки
+                    abs_difference = abs(difference)
+
+                    # Проверка наличия достаточного количества на складе
+                    if stock_balance.quantity >= abs_difference:
+                        # Для уменьшения закупки учитываем как продажу (изъятие со склада)
+                        StockMovement.objects.create(
+                            sold_product=product,
+                            contract=contract,
+                            operation_type=StockMovement.OperationTypeChoices.SELL,  # используем SELL для изъятия
+                            quantity=abs_difference,
+                            note=f"{note} (уменьшение закупки)"
+                        )
+
+                        stock_balance.quantity -= abs_difference
+                        stock_balance.last_departure_date = timezone.now()
+                        logger.debug('Уменьшаем количество на %s для продукта: %s (уменьшение закупки)',
+                                     abs_difference, stock_balance.product)
+                    else:
+                        logger.warning(
+                            "Недостаточно товара %s на складе для уменьшения закупки. Нужно: %s, доступно: %s",
+                            product, abs_difference, stock_balance.quantity)
+
+        # Сохраняем изменения в StockBalance
+    stock_balance.save()
+    logger.info("СИГНАЛ SubjectContract ЗАВЕРШЕН: ID=%s, stock_balance=%s",
+                instance.pk, stock_balance.quantity)
+
 
 
 

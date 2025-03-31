@@ -46,7 +46,7 @@ class SubjectContract(models.Model):
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE)
     note = models.CharField(max_length=255, verbose_name='Описание предмета')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, verbose_name="Товар", blank=True, null=True)
-    quantitly = models.IntegerField(verbose_name="Количество")
+    quantity = models.IntegerField(verbose_name="Количество")
 
     def __str__(self):
         return f'C Контракта: {self.contract.note}'
@@ -116,7 +116,10 @@ class Salary(models.Model):
         FINE = "FI", "Штраф"
         BONUS = "BO", "Бонус"
 
-    worker = models.ForeignKey('workers.Worker', on_delete=models.DO_NOTHING, related_name='workewrs', verbose_name='Работник')
+    worker = models.ForeignKey('workers.Worker',
+                               on_delete=models.DO_NOTHING,
+                               related_name='workewrs',
+                               verbose_name='Работник')
     last_payment = models.DateField(verbose_name='Дата последней выплаты', null=True, blank=True)
     balance = models.IntegerField(verbose_name='Баланс', null=True, blank=True)
 
@@ -132,8 +135,10 @@ class SalaryPayment(models.Model):
         FINE = "FI", "Штраф"
         BONUS = "BO", "Бонус"
 
-    salary = models.ForeignKey(Salary, on_delete=models.CASCADE, related_name='payments'
-                               , verbose_name="Зарплата рабоника")
+    salary = models.ForeignKey(Salary,
+                               on_delete=models.CASCADE,
+                               related_name='payments'
+                              ,verbose_name="Зарплата рабоника")
     note = models.CharField(max_length=120, verbose_name='Примечание', null=True, blank=True)
     amount = models.IntegerField(verbose_name='Сумма')
     payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')

@@ -25,7 +25,7 @@ class DeliveryLogAdmin(admin.ModelAdmin):
 
 
 class DeliveryLogMoveAdmin(admin.ModelAdmin):
-    list_display = ('delivery_log', 'action', 'quantity', 'date')  # Поля, которые будут отображаться в списке
+    list_display = ('delivery_log', 'action', 'quantitly', 'date')  # Поля, которые будут отображаться в списке
     list_filter = ('action', 'delivery_log__courier', 'date')  # Фильтры по полям
     search_fields = ('delivery_log__courier__full_name',)  # Поиск по полному имени курьера
     ordering = ('-date',)  # Сортировка по дате

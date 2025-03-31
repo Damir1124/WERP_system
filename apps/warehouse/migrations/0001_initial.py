@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             name='StockBalance',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('quantitly', models.IntegerField(default=1, verbose_name='Количство на складе')),
+                ('quantity', models.IntegerField(default=1, verbose_name='Количство на складе')),
                 ('last_received_date', models.DateField(null=True, verbose_name='Дата последнего прибавления')),
                 ('last_departure_date', models.DateField(null=True, verbose_name='Дата последнего убавления')),
                 ('product', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='products', to='products.product')),

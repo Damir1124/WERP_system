@@ -6,11 +6,11 @@ class SubjectContractInline(admin.TabularInline):
     """Инлайн для отображения SubjectContract в Contract."""
     model = SubjectContract
     extra = 1  # Количество пустых форм для добавления новых записей
-    fields = ('product', 'quantitly', 'note')  # Поля, которые будут отображаться в инлай
+    fields = ('product', 'quantity', 'note')  # Поля, которые будут отображаться в инлай
 
 @admin.register(SubjectContract)
 class SubjectContractAdmin(admin.ModelAdmin):
-    list_display = ["contract", 'product', 'quantitly', 'quantitly']
+    list_display = ["contract", 'product', 'quantity', 'quantity']
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):

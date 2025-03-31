@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterField(
             model_name='stockbalance',
-            name='quantitly',
+            name='quantity',
             field=models.IntegerField(default=1, validators=[django.core.validators.MinValueValidator(1)], verbose_name='Количство на складе'),
         ),
     ]

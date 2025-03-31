@@ -4,9 +4,10 @@ from apps.workers.models import Worker
 
 @admin.register(StockBalance)
 class StockBalanceAdmin(admin.ModelAdmin):
-    list_display = ('product', 'quantitly', 'last_received_date', 'last_departure_date')
+    list_display = ('product', 'quantity', 'last_received_date', 'last_departure_date')
     search_fields = ('product__name',)
     list_filter = ('last_received_date', 'last_departure_date')
+    readonly_fields = ['last_departure_date', 'last_received_date']
 
 
 @admin.register(StockMovement)
