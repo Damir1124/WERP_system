@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
 from apps.logistics.models import DeliveryJournalProducts
 from apps.products.models import Product
@@ -37,6 +37,20 @@ def update_stock_balance_on_delivery(sender, instance, created, **kwargs):
     logger.info("СИГНАЛ DeliveryJournalProducts ВЫЗВАН: ID=%s, created=%s", instance.pk, created)
 
     product = instance.product
+
+    PRODUCT_MAP = {
+        Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
+        # "вода с тарой" → "просто тара"
+    }
+
+    mapped_product_type = PRODUCT_MAP.get(product.type_product)
+    if mapped_product_type:
+        try:
+            product = Product.objects.get(type_product=mapped_product_type)
+            logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
+        except Product.DoesNotExist:
+            logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
+            return
 
     if created:
         # Получение кол-во продукта
@@ -276,6 +290,55 @@ def update_stock_balance_on_subject_contract(sender, instance, created, **kwargs
                 instance.pk, stock_balance.quantity)
 
 
+@receiver(pre_delete, sender=SubjectContract)
+def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
+    """Обновление остатков перед удалением предмета контракта"""
+    logger.info("СИГНАЛ pre_delete SubjectContract ВЫЗВАН: ID=%s", instance.pk)
+
+    product = instance.product
+    quantity = instance.quantity
+    contract_type = instance.contract.contract_type  # Получаем тип контракта
+    note = f"Удаление {str(instance)}"
+
+    try:
+        stock_balance = StockBalance.objects.get(product=product)
+
+        if contract_type == Contract.ContractType.SELL:
+            # Если удаляется предмет контракта продажи, возвращаем товар на склад
+            StockMovement.objects.create(
+                sold_product=product,
+                contract=instance.contract,
+                operation_type=StockMovement.OperationTypeChoices.BUY,  # Возврат = BUY
+                quantity=quantity,
+                note=note
+            )
+            stock_balance.quantity += quantity
+            stock_balance.last_received_date = timezone.now()
+            logger.debug('Возврат %s единиц продукта %s на склад при удалении продажи', quantity, product)
+
+        elif contract_type == Contract.ContractType.BUY:
+            # Если удаляется предмет контракта закупки, изымаем товар со склада
+            if stock_balance.quantity >= quantity:
+                StockMovement.objects.create(
+                    sold_product=product,
+                    contract=instance.contract,
+                    operation_type=StockMovement.OperationTypeChoices.SELL,  # Изъятие = SELL
+                    quantity=quantity,
+                    note=note
+                )
+                stock_balance.quantity -= quantity
+                stock_balance.last_departure_date = timezone.now()
+                logger.debug('Удалено %s единиц продукта %s со склада при удалении закупки', quantity, product)
+            else:
+                logger.warning("Недостаточно товара на складе %s для удаления закупки. Нужно: %s, доступно: %s",
+                               product, quantity, stock_balance.quantity)
+
+        stock_balance.save()
+
+    except StockBalance.DoesNotExist:
+        logger.error("Не найден StockBalance для продукта %s при удалении SubjectContract ID=%s", product, instance.pk)
+
+    logger.info("СИГНАЛ pre_delete SubjectContract ЗАВЕРШЕН: ID=%s", instance.pk)
 
 
 

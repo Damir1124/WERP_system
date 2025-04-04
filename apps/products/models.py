@@ -7,6 +7,7 @@ class Product(models.Model):
         ACCESSORY = 'AR', "Аксессуары"
         WATER = 'WE', "Вода"
         BOTTLE_20L = 'B20L', "Вода c тарой 20L"
+        BOTTLE = 'BT', 'Тара'
 
 
     name = models.CharField(max_length=120, null=False, unique=True, verbose_name="Имя продукта")
