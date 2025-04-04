@@ -73,12 +73,12 @@ class DeliveryLogMove(models.Model):
 
     delivery_log = models.ForeignKey(DeliveryLog, on_delete=models.CASCADE, verbose_name='Журнал')
     action = models.CharField(choices=ActionType.choices, verbose_name='Тип действия')
-    quantitly = models.IntegerField(verbose_name='Количество')
+    quantity = models.IntegerField(verbose_name='Количество')
     date = models.DateField(verbose_name='Дата дейсвия')
 
     def __str__(self):
         sign = '-' if self.action == self.ActionType.TAKEN else '+'
-        return f'{self.delivery_log.courier.full_name} - {sign}{self.quantitly} - {self.action}'
+        return f'{self.delivery_log.courier.full_name} - {sign}{self.quantity} - {self.action}'
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)  # Сначала сохраняем движение
