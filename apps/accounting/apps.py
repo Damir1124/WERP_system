@@ -6,4 +6,6 @@ class AccountingConfig(AppConfig):
     name = 'apps.accounting'
     verbose_name = 'Финансы'
 
+    def ready(self):
+        from . import signals
 
