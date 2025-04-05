@@ -63,8 +63,8 @@ class Installment(models.Model):
     client = models.ForeignKey(Client, on_delete=models.DO_NOTHING, verbose_name="Клиент")
     product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
     total_amount = models.IntegerField(verbose_name='Сумма рассрочки')
-    paid_amount = models.IntegerField(verbose_name='Оплаченно')
-    due_date = models.DateField(verbose_name='Дата след платежа')
+    paid_amount = models.IntegerField(verbose_name='Оплаченно', null=True, blank=True)
+    due_date = models.DateField(verbose_name='Дата след платежа',  null=True, blank=True)
     status = models.CharField(choices=InstallmentStatus.choices, verbose_name="Статус рассрочки")
     created_at = models.DateField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateField(auto_now=True, verbose_name='Дата обновления')
@@ -73,39 +73,36 @@ class Installment(models.Model):
         return self.client.name
 
     def make_payment(self, amount):
-        """Внесение платежа и обновление даты слудующего платежа"""
-        self.paid_amount += amount
+        """Обновляет общую сумму оплаченных средств и статус рассрочки."""
+        # Обновляем общую сумму оплаченных средств
+        self.paid_amount = (self.paid_amount or 0) + amount
 
-        # Если вся сумма выплачена кроем рассрочку
+        # Обновляем статус рассрочки
         if self.paid_amount >= self.total_amount:
-            self.status = 'CL'
+            self.status = Installment.InstallmentStatus.CLOSED
+        elif self.due_date and self.due_date < now().date():
+            self.status = Installment.InstallmentStatus.OVERDUE
         else:
-            # Сдвигаем due_date на след месяц
-            self.due_date = self.due_date + relativedelta(months=1)
+            self.status = Installment.InstallmentStatus.ACTIVE
+
         self.save()
 
     def check_status(self):
-        """Проверка статуса рассрочки"""
-        if self.paid_amount < self.total_amount and self.due_date < now().date():
-            self.status = 'OV'  # Если платеж просрочен
-        elif self.paid_amount >= self.total_amount:
-            self.status = 'CL'  # Если все погашено
+        """Обновляет статус рассрочки в зависимости от оплаченной суммы."""
+        if self.paid_amount >= self.total_amount:
+            self.status = Installment.InstallmentStatus.CLOSED
+        elif self.due_date and self.due_date < now().date():
+            self.status = Installment.InstallmentStatus.OVERDUE
         else:
-            self.status = 'AC'
-        self.save()
+            self.status = Installment.InstallmentStatus.ACTIVE
 
 
 class PaymentsInstallment(models.Model):
     """Таблица платежей по рассрочкам"""
-    installment = models.ForeignKey(Installment, on_delete=models.DO_NOTHING, related_name='Платежи')
+    installment = models.ForeignKey(Installment, on_delete=models.CASCADE)
     amount = models.IntegerField(verbose_name='Сумма взноса')
     payment_date = models.DateField(verbose_name='Дата взноса')
     created_at = models.DateField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        """При сейве платежа обнавляем данные по рассроку"""
-        super().save(*args, **kwargs)
-        self.installment.make_payment(self.amount)  # Автообнова суммы
 
 
 class Salary(models.Model):
@@ -121,7 +118,7 @@ class Salary(models.Model):
                                related_name='workewrs',
                                verbose_name='Работник')
     last_payment = models.DateField(verbose_name='Дата последней выплаты', null=True, blank=True)
-    balance = models.IntegerField(verbose_name='Баланс', null=True, blank=True)
+    balance = models.IntegerField(verbose_name='Баланс', null=False, blank=True, default=0)
 
     def __str__(self):
         return self.worker.full_name
@@ -143,22 +140,6 @@ class SalaryPayment(models.Model):
     amount = models.IntegerField(verbose_name='Сумма')
     payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')
     date = models.DateField(verbose_name='Дата')
-
-    def save(self, *args, **kwargs):
-        """Обнова баланса и даты последней зарплаты при сейве платежа"""
-        super().save(*args, **kwargs)
-
-        # Обнова баланса по типу платежа
-        if self.payment_type in [self.PaymentType.SALARY, self.PaymentType.BONUS]:
-            self.salary.balance += self.amount  # Плюс к балансу
-        elif self.payment_type == self.PaymentType.FINE:
-            self.salary.balance -= self.amount  # Минус
-
-        # Обновление last_payment только елси SALARY
-        if self.payment_type == self.PaymentType.SALARY:
-            self.salary.last_payment = self.date
-
-        self.salary.save()
 
 
 class FinancialTransactions(models.Model):
