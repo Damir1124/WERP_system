@@ -40,6 +40,9 @@ class Contract(models.Model):
     amount = models.IntegerField(verbose_name='Сумма')
     note = models.CharField(verbose_name='Примечание', max_length=255)
 
+    def __str__(self):
+        return f"Контракт от {self.date}: {self.description}; Сумма: {self.amount}"
+
 
 
 class SubjectContract(models.Model):
@@ -62,7 +65,7 @@ class Installment(models.Model):
 
     client = models.ForeignKey(Client, on_delete=models.DO_NOTHING, verbose_name="Клиент")
     product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
-    total_amount = models.IntegerField(verbose_name='Сумма рассрочки')
+    amount = models.IntegerField(verbose_name='Сумма рассрочки', null=True, blank=True, default=0)
     paid_amount = models.IntegerField(verbose_name='Оплаченно', null=True, blank=True)
     due_date = models.DateField(verbose_name='Дата след платежа',  null=True, blank=True)
     status = models.CharField(choices=InstallmentStatus.choices, verbose_name="Статус рассрочки")
@@ -78,7 +81,7 @@ class Installment(models.Model):
         self.paid_amount = (self.paid_amount or 0) + amount
 
         # Обновляем статус рассрочки
-        if self.paid_amount >= self.total_amount:
+        if self.paid_amount >= self.amount:
             self.status = Installment.InstallmentStatus.CLOSED
         elif self.due_date and self.due_date < now().date():
             self.status = Installment.InstallmentStatus.OVERDUE
@@ -89,7 +92,7 @@ class Installment(models.Model):
 
     def check_status(self):
         """Обновляет статус рассрочки в зависимости от оплаченной суммы."""
-        if self.paid_amount >= self.total_amount:
+        if self.paid_amount >= self.amount:
             self.status = Installment.InstallmentStatus.CLOSED
         elif self.due_date and self.due_date < now().date():
             self.status = Installment.InstallmentStatus.OVERDUE
@@ -100,9 +103,12 @@ class Installment(models.Model):
 class PaymentsInstallment(models.Model):
     """Таблица платежей по рассрочкам"""
     installment = models.ForeignKey(Installment, on_delete=models.CASCADE)
-    amount = models.IntegerField(verbose_name='Сумма взноса')
+    amount = models.IntegerField(verbose_name='Сумма взноса', null=True, blank=True, default=0)
     payment_date = models.DateField(verbose_name='Дата взноса')
     created_at = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Рассрочка клиента: {self.installment.client.name} на {self.installment.product.name}; Сумма: {self.amount}"
 
 
 class Salary(models.Model):
@@ -133,13 +139,14 @@ class SalaryPayment(models.Model):
         BONUS = "BO", "Бонус"
 
     salary = models.ForeignKey(Salary,
-                               on_delete=models.CASCADE,
-                               related_name='payments'
-                              ,verbose_name="Зарплата рабоника")
+                               on_delete=models.CASCADE,)
     note = models.CharField(max_length=120, verbose_name='Примечание', null=True, blank=True)
-    amount = models.IntegerField(verbose_name='Сумма')
+    amount = models.IntegerField(verbose_name='Сумма', null=True, blank=True, default=0)
     payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')
     date = models.DateField(verbose_name='Дата')
+
+    def __str__(self):
+        return f'{self.payment_type[1]}; Сотрудник: {self.salary.worker.full_name}; Сумма: {self.amount}'
 
 
 class FinancialTransactions(models.Model):
@@ -151,16 +158,18 @@ class FinancialTransactions(models.Model):
 
     date = models.DateField(verbose_name="Дата операции")
     transaction_type = models.CharField(choices=TransactionsType.choices, verbose_name='Тип трансакции')
-    amount = models.CharField(verbose_name='Сумма')
+    amount = models.IntegerField(verbose_name=' Общая сумма', null=True, blank=True, default=0)
+    card_amount = models.IntegerField(verbose_name='Сумма картой', null=True, blank=True, default=0)
     description = models.CharField(max_length=255, null=True, blank=True, verbose_name='Примечание')
-    related_object = models.CharField(max_length=255, verbose_name="Источник операции")
+    source = models.CharField(verbose_name="Источник операции")
 
     pass
 
 class Finance(models.Model):
-    income = models.IntegerField(verbose_name='Доход')
-    consumption = models.IntegerField(verbose_name="Расход")
-    profit = models.IntegerField(verbose_name="Расход")
+    income = models.IntegerField(verbose_name='Доход', null=True, blank=True, default=0)
+    consumption = models.IntegerField(verbose_name="Расход", null=True, blank=True, default=0)
+    profit = models.IntegerField(verbose_name="Прибыль", null=True, blank=True, default=0)
+    card_profit = models.IntegerField(verbose_name="Прибыль на карту", null=True, blank=True, default=0)
     date = models.DateField(verbose_name='Дата сводки')
 
     pass

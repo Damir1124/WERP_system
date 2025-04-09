@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             name='Installment',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('total_amount', models.IntegerField(verbose_name='Сумма рассрочки')),
+                ('amount', models.IntegerField(verbose_name='Сумма рассрочки')),
                 ('paid_amount', models.IntegerField(verbose_name='Оплаченно')),
                 ('due_date', models.DateField(verbose_name='Дата след платежа')),
                 ('status', models.CharField(choices=[('AC', 'Активный'), ('OV', 'Просроченый'), ('CL', 'Погашенный')], verbose_name='Статус рассрочки')),
