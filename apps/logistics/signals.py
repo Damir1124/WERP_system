@@ -2,6 +2,7 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from .models import DeliveryLog, DeliveryLogMove, DeliveryJournal, DeliveryJournalProducts
 
+
 @receiver(post_save, sender=DeliveryLogMove)
 def update_delivery_log_totals(sender, instance, **kwargs):
     """Обновление total_quantity и total_sold в DeliveryLog после изменения DeliveryLogMove."""
@@ -10,10 +11,12 @@ def update_delivery_log_totals(sender, instance, **kwargs):
     delivery_log.calculate_total_sold()
     delivery_log.save()
 
+
 @receiver(post_save, sender=DeliveryLog)
 def check_delivery_log_total_quantity(sender, instance, **kwargs):
     """Проверка соответствия total_quantity после сохранения DeliveryLog."""
     instance.check_total_quantity()
+
 
 @receiver(post_save, sender=DeliveryJournalProducts)
 def update_delivery_journal_total_price(sender, instance, **kwargs):
@@ -33,6 +36,7 @@ def recalculate_price(sender, instance, **kwargs):
     else:
         # Если объект новый, устанавливаем цену
         instance.price = instance.product.price * instance.quantity
+
 
 @receiver(post_save, sender=DeliveryJournalProducts)
 def update_delivery_journal_totals(sender, instance, **kwargs):

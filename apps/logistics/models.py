@@ -10,7 +10,7 @@ class DeliveryLog(models.Model):
     courier = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
     total_quantity = models.IntegerField(verbose_name='Количевство',
                                          help_text='Кол-во проданой воды с тарой или несоо'
-                                         'тветсвие, пропажа', null=True,
+                                                   'тветсвие, пропажа', null=True,
                                          blank=True)
     total_sold = models.IntegerField(verbose_name='Всего проданно:', null=True, blank=True)
     date = models.DateField(verbose_name='Дата')
@@ -33,12 +33,19 @@ class DeliveryLog(models.Model):
         self.save()
 
     def calculate_total_sold(self):
-        """Вычисляет общее число проданной воды"""
+        """Вычисляет общее число проданной воды, учитывая последовательные записи с типом BG."""
         total_sold = 0
-        for move in self.deliverylogmove_set.all():
-            if move.action == DeliveryLogMove.ActionType.TAKEN: # Может еще условия добавлю потомучто из-за смены даты
-                                                                # не корректно отображается
+        moves = list(self.deliverylogmove_set.all().order_by('date',
+                                                             'id'))  # Получаем все движения, отсортированные по дате и ID
+
+        for i, move in enumerate(moves):
+            if move.action == DeliveryLogMove.ActionType.TAKEN:
                 total_sold += move.quantity
+            elif move.action == DeliveryLogMove.ActionType.BROUGHT:
+                # Проверяем, если предыдущая запись тоже была BROUGHT минусуем ее на колво проданного
+                if i > 0 and moves[i - 1].action == DeliveryLogMove.ActionType.BROUGHT:
+                    total_sold -= move.quantity
+
         self.total_sold = total_sold
 
     def save(self, *args, **kwargs):
@@ -109,7 +116,7 @@ class DeliveryJournal(models.Model):
             if product.payment_type == DeliveryJournalProducts.PaymentsType.BONUS:
                 total_price -= abs(product.price) or 0  # Вычитаем при бонусной оплате
             elif product.payment_type == DeliveryJournalProducts.PaymentsType.CARD:
-                card_price += product.price or 0 # Прибаляем при оплате картой
+                card_price += product.price or 0  # Прибаляем при оплате картой
             else:
                 total_price += product.price or 0  # Прибавляем в любом случае случаях
         self.total_price = total_price
