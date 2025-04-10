@@ -10,7 +10,7 @@ class DeliveryLogMoveInline(admin.TabularInline):
 
 
 class DeliveryLogAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'total_quantity', "total_sold", 'date')  # Поля, которые будут отображаться в списке
+    list_display = ('courier', 'total_quantity', "total_sold", 'date')
     list_filter = ('courier', 'date')  # Фильтры по полям
     search_fields = ('courier__full_name',)  # Поиск по полному имени курьера
     ordering = ('-date',)  # Сортировка по дате
@@ -52,7 +52,7 @@ class DeliveryJournalProductsAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'note')  # Поиск по имени продукта и заметке
 
 
-# Регистрация моделей в админке
+
 admin.site.register(DeliveryLog, DeliveryLogAdmin)
 admin.site.register(DeliveryLogMove, DeliveryLogMoveAdmin)
 admin.site.register(DeliveryJournal, DeliveryJournalAdmin)

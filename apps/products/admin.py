@@ -11,7 +11,6 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ('name',)  # Поиск по имени продукта
     ordering = ('name',)  # Сортировка по имени продукта
 
-
     class Meta:
         model = Product
 
