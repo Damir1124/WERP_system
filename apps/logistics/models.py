@@ -116,12 +116,6 @@ class DeliveryJournal(models.Model):
         self.card_price = card_price
         self.save()
 
-    @classmethod
-    def reset_daily_journal(cls):
-        """Обнуляет данные в журнале при смене дня."""
-        today = timezone.now().date()
-        cls.objects.filter(date=today).delete()
-
 
 class DeliveryJournalProducts(models.Model):
     """Инфа о продуктах в отчете"""
