@@ -2,10 +2,11 @@ from django.db import models
 from apps.products.models import Product
 from django.core.validators import MinValueValidator
 from apps.accounting.models import Contract
-from django.utils import timezone
+
 
 
 class StockBalance(models.Model):
+    """Баланс позиций на складе"""
     product = models.ForeignKey(Product,
                                 on_delete=models.CASCADE,
                                 null=True,
@@ -28,6 +29,7 @@ class StockBalance(models.Model):
 
 
 class StockMovement(models.Model):
+    """Движение позиций со склада на склад"""
     class OperationTypeChoices(models.TextChoices):
         BUY = 'Buy', 'В плюс'
         SELL = 'Sell', 'В минус'
@@ -59,6 +61,7 @@ class StockMovement(models.Model):
 
 
 class Garage(models.Model):
+    """Учет транспортных средств"""
     vehicle_name = models.CharField(max_length=255, verbose_name='Название автомобиля')
     plate_number = models.CharField(max_length=6, verbose_name='Номерной знак', null=True)
     milage = models.PositiveIntegerField(verbose_name='Пробег', validators=[MinValueValidator(0)])

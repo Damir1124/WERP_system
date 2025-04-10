@@ -1,13 +1,14 @@
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
-from .models import Installment, PaymentsInstallment, Salary, SalaryPayment, FinancialTransactions, Contract, Finance
+from .models import PaymentsInstallment, SalaryPayment, FinancialTransactions, Contract
 from . import utils
 from apps.logistics import models as logistics
 
 
+# Installment и PaymentsInstallment
 @receiver(pre_save, sender=PaymentsInstallment)
 def calculate_installment_payment(sender, instance, **kwargs):
-    """Пересчет суммы и статуса рассрочки перед сохранением платежа."""
+    """Пересчет суммы и статуса рассрочки перед сохранением платежа"""
     if instance.pk:  # Если объект уже существует
         old_instance = sender.objects.get(pk=instance.pk)
         if old_instance.amount != instance.amount:
@@ -25,18 +26,17 @@ def calculate_installment_payment(sender, instance, **kwargs):
 
 @receiver(post_save, sender=PaymentsInstallment)
 def update_installment_on_payment(sender, instance, created, **kwargs):
-    """Обновление рассрочки при добавлении или изменении платежа."""
+    """Обновление рассрочки при добавлении или изменении платежа"""
     if created:
         installment = instance.installment
         installment.make_payment(instance.amount)  # Обновляем сумму и статус рассрочки
         utils.update_due_date(installment)  # Обновление даты след. платeжа
 
 
-#### 2. Salary и SalaryPayment
-
+# Salary и SalaryPayment
 @receiver(pre_save, sender=SalaryPayment)
 def calculate_salary_payment(sender, instance, **kwargs):
-    """Пересчет баланса и даты последней выплаты перед сохранением платежа."""
+    """Пересчет баланса и даты последней выплаты перед сохранением платежа"""
     if instance.pk:  # Если объект уже существует
         old_instance = sender.objects.get(pk=instance.pk)
         salary = instance.salary
@@ -60,47 +60,32 @@ def calculate_salary_payment(sender, instance, **kwargs):
         salary.save()
 
 
+# Salary и SalaryPayment
 @receiver(post_save, sender=SalaryPayment)
 def update_salary_on_payment(sender, instance, created, **kwargs):
-    """Обновление баланса и даты последней выплаты при добавлении платежа."""
+    """Обновление баланса и даты последней выплаты при добавлении платежа"""
     if created:
         salary = instance.salary
 
-        utils.reset_balance_if_expired(salary)  # проверяем и обнуляем, если нужно
+        utils.reset_balance_if_expired(salary)  # проверяем и обнуляем если нужно
 
-        # Обновляем баланс в зависимости от типа платежа
+        # обновляем баланс в зависимости от типа платежа
         if instance.payment_type in [SalaryPayment.PaymentType.SALARY, SalaryPayment.PaymentType.BONUS]:
             salary.balance += instance.amount
         elif instance.payment_type == SalaryPayment.PaymentType.FINE:
             salary.balance -= instance.amount
 
-        # Обновляем дату последней выплаты, если это зарплата
+        # обновляем дату последней выплаты, если это зарплата
         if instance.payment_type == SalaryPayment.PaymentType.SALARY:
             salary.last_payment = instance.date
 
         salary.save()
 
 
-
-
-# Finance и FinancialTransactions
-def update_finance_record(date):
-    """Обновляет или создает запись в Finance для указанной даты."""
-    transactions = FinancialTransactions.objects.filter(date=date)
-    income = sum(t.amount for t in transactions if t.transaction_type == FinancialTransactions.TransactionsType.PLUS)
-    consumption = sum(t.amount for t in transactions if t.transaction_type == FinancialTransactions.TransactionsType.MINUS)
-    card_profit = sum(t.card_amount for t in transactions)
-
-    finance, created = Finance.objects.get_or_create(date=date)
-    finance.income = income
-    finance.consumption = consumption
-    finance.profit = income - consumption
-    finance.card_profit = card_profit
-    finance.save()
-
-# Contract Signals
+# Contract
 @receiver(pre_save, sender=Contract)
 def update_transactions_on_contract_update(sender, instance, **kwargs):
+    """Сохранение данных перед обновлением"""
     if instance.pk:
         old_instance = sender.objects.get(pk=instance.pk)
         if old_instance.amount != instance.amount or old_instance.contract_type != instance.contract_type:
@@ -110,8 +95,10 @@ def update_transactions_on_contract_update(sender, instance, **kwargs):
             ).delete()
             update_transactions_on_contract(sender, instance, created=True)
 
+
 @receiver(post_save, sender=Contract)
 def update_transactions_on_contract(sender, instance, created, **kwargs):
+    """Создание или обновление данных"""
     if created:
         if instance.contract_type == Contract.ContractType.BUY:
             source = f"Пополнение за: {instance.__str__()[:200]}"
@@ -130,19 +117,23 @@ def update_transactions_on_contract(sender, instance, created, **kwargs):
                 amount=instance.amount or 0,
                 source=source
             )
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
+
 
 @receiver(post_delete, sender=Contract)
 def delete_transactions_on_contract_delete(sender, instance, **kwargs):
+    """Обновление данных после удаления"""
     FinancialTransactions.objects.filter(
         date=instance.date,
         source__startswith=f"Пополнение за: {instance.__str__()[:200]}"
     ).delete()
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
 
-# DeliveryJournal Signals
+
+# DeliveryJournal
 @receiver(pre_save, sender=logistics.DeliveryJournal)
 def update_transactions_on_delivery_update(sender, instance, **kwargs):
+    """Сохранение данных перед обновлением"""
     if instance.pk:
         old_instance = sender.objects.get(pk=instance.pk)
         if old_instance.total_price != instance.total_price or old_instance.card_price != instance.card_price:
@@ -152,8 +143,10 @@ def update_transactions_on_delivery_update(sender, instance, **kwargs):
             ).delete()
             update_transactions_on_delivery(sender, instance, created=True)
 
+
 @receiver(post_save, sender=logistics.DeliveryJournal)
 def update_transactions_on_delivery(sender, instance, created, **kwargs):
+    """Создание или обновление данных"""
     if created:
         source = f"Пополнение за: {instance.__str__()[:200]}"
         FinancialTransactions.objects.create(
@@ -163,17 +156,20 @@ def update_transactions_on_delivery(sender, instance, created, **kwargs):
             card_amount=instance.card_price or 0,
             source=source
         )
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
+
 
 @receiver(post_delete, sender=logistics.DeliveryJournal)
 def delete_transactions_on_delivery_delete(sender, instance, **kwargs):
+    """Обновление данных после удаления"""
     FinancialTransactions.objects.filter(
         date=instance.date,
         source__startswith=f"Пополнение за: {instance.__str__()[:200]}"
     ).delete()
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
 
-# SalaryPayment Signals
+
+# SalaryPayment
 @receiver(pre_save, sender=SalaryPayment)
 def update_transactions_on_salary_update(sender, instance, **kwargs):
     if instance.pk:
@@ -184,6 +180,7 @@ def update_transactions_on_salary_update(sender, instance, **kwargs):
                 source=f"Списание за: {old_instance.__str__()[:200]}"
             ).delete()
             update_transactions_on_salary(sender, instance, created=True)
+
 
 @receiver(post_save, sender=SalaryPayment)
 def update_transactions_on_salary(sender, instance, created, **kwargs):
@@ -204,7 +201,8 @@ def update_transactions_on_salary(sender, instance, created, **kwargs):
                 amount=instance.amount or 0,
                 source=source
             )
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
+
 
 @receiver(post_delete, sender=SalaryPayment)
 def delete_transactions_on_salary_delete(sender, instance, **kwargs):
@@ -212,9 +210,10 @@ def delete_transactions_on_salary_delete(sender, instance, **kwargs):
         date=instance.date,
         source__startswith=f"Списание за: {instance.__str__()[:200]}"
     ).delete()
-    update_finance_record(instance.date)
+    utils.update_finance_record(instance.date)
 
-# PaymentsInstallment Signals
+
+# PaymentsInstallment
 @receiver(pre_save, sender=PaymentsInstallment)
 def update_transactions_on_installment_update(sender, instance, **kwargs):
     if instance.pk:
@@ -226,6 +225,7 @@ def update_transactions_on_installment_update(sender, instance, **kwargs):
             ).delete()
             update_transactions_on_installment(sender, instance, created=True)
 
+
 @receiver(post_save, sender=PaymentsInstallment)
 def update_transactions_on_installment(sender, instance, created, **kwargs):
     if created:
@@ -236,7 +236,8 @@ def update_transactions_on_installment(sender, instance, created, **kwargs):
             amount=instance.amount or 0,
             source=source
         )
-    update_finance_record(instance.payment_date)
+    utils.update_finance_record(instance.payment_date)
+
 
 @receiver(post_delete, sender=PaymentsInstallment)
 def delete_transactions_on_installment_delete(sender, instance, **kwargs):
@@ -244,26 +245,24 @@ def delete_transactions_on_installment_delete(sender, instance, **kwargs):
         date=instance.payment_date,
         source__startswith=f"Пополнение за: {instance.__str__()[:200]}"
     ).delete()
-    update_finance_record(instance.payment_date)
+    utils.update_finance_record(instance.payment_date)
 
 
 @receiver(pre_save, sender=FinancialTransactions)
 def update_finance_on_transaction_update(sender, instance, **kwargs):
-    """Обновляет запись в Finance перед изменением FinancialTransactions."""
-    if instance.pk:  # Проверяем, существует ли объект (т.е. это обновление, а не создание)
+    """Обновляет запись в Finance перед изменением FinancialTransactions"""
+    if instance.pk:  # Проверяем, существует ли объект, это обновление, а не создание
         old_instance = sender.objects.get(pk=instance.pk)
         if old_instance.date != instance.date:
-            # Если дата изменилась, обновляем записи для обеих дат
-            update_finance_record(old_instance.date)
-            update_finance_record(instance.date)
+            # если дата изменилась, обновляем записи для обеих дат
+            utils.update_finance_record(old_instance.date)
+            utils.update_finance_record(instance.date)
         else:
-            # Если дата не изменилась, обновляем запись для текущей даты
-            update_finance_record(instance.date)
+            # если дата не изменилась, обновляем запись для текущей даты
+            utils.update_finance_record(instance.date)
+
 
 @receiver(post_save, sender=FinancialTransactions)
 def update_finance_on_transaction_create(sender, instance, created, **kwargs):
-    """Обновляет запись в Finance при создании FinancialTransactions."""
-    update_finance_record(instance.date)
-
-
-
+    """Обновляет запись в Finance при создании FinancialTransactions"""
+    utils.update_finance_record(instance.date)

@@ -2,7 +2,6 @@ from django.db import models
 from django.db.models import Sum
 from apps.workers.models import Worker
 from apps.products.models import Product
-from django.utils import timezone
 
 
 class DeliveryLog(models.Model):
@@ -33,7 +32,7 @@ class DeliveryLog(models.Model):
         self.save()
 
     def calculate_total_sold(self):
-        """Вычисляет общее число проданной воды, учитывая последовательные записи с типом BG."""
+        """Вычисляет общее число проданной воды учитывая последовательные записи с типом BG"""
         total_sold = 0
         moves = list(self.deliverylogmove_set.all().order_by('date',
                                                              'id'))  # Получаем все движения, отсортированные по дате и ID
@@ -42,7 +41,7 @@ class DeliveryLog(models.Model):
             if move.action == DeliveryLogMove.ActionType.TAKEN:
                 total_sold += move.quantity
             elif move.action == DeliveryLogMove.ActionType.BROUGHT:
-                # Проверяем, если предыдущая запись тоже была BROUGHT минусуем ее на колво проданного
+                # Проверяем если предыдущая запись тоже была BROUGHT минусуем ее на колво проданного
                 if i > 0 and moves[i - 1].action == DeliveryLogMove.ActionType.BROUGHT:
                     total_sold -= move.quantity
 
@@ -98,7 +97,7 @@ class DeliveryJournal(models.Model):
     courier = models.ForeignKey(Worker, on_delete=models.CASCADE, verbose_name='Курьер')
     date = models.DateField(verbose_name='Дата')
     card_price = models.IntegerField(default=0, verbose_name='Сумма картой')
-    total_price = models.IntegerField(default=0, verbose_name='Общая сумма')
+    total_price = models.IntegerField(default=0, verbose_name='Сумма налом')
 
     class Meta:
         verbose_name = "Журнал доставок"
@@ -149,7 +148,7 @@ class DeliveryJournalProducts(models.Model):
 
     def save(self, *args, **kwargs):
         """Пересчет цены и обновление total_price в журнале"""
-        if self.price is None:  # Если цена не указана, считаем по формуле
+        if self.price is None:  # Если цена не указана считаем по формуле
             self.price = self.product.price * self.quantity
 
         super().save(*args, **kwargs)  # Сохраняем запись

@@ -76,7 +76,7 @@ class Installment(models.Model):
         return self.client.name
 
     def make_payment(self, amount):
-        """Обновляет общую сумму оплаченных средств и статус рассрочки."""
+        """Обновляет общую сумму оплаченных средств и статус рассрочки"""
         # Обновляем общую сумму оплаченных средств
         self.paid_amount = (self.paid_amount or 0) + amount
 
@@ -91,7 +91,7 @@ class Installment(models.Model):
         self.save()
 
     def check_status(self):
-        """Обновляет статус рассрочки в зависимости от оплаченной суммы."""
+        """Обновляет статус рассрочки в зависимости от оплаченной суммы"""
         if self.paid_amount >= self.amount:
             self.status = Installment.InstallmentStatus.CLOSED
         elif self.due_date and self.due_date < now().date():

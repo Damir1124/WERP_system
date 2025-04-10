@@ -26,7 +26,7 @@ def track_delivery_journal_changes(sender, instance, **kwargs):
             old_instance = sender.objects.get(pk=instance.pk)
             instance._old_quantity = old_instance.quantity
             logger.debug("Сохранено старое значение quantity: %s для DeliveryJournalProducts ID=%s",
-                        instance._old_quantity, instance.pk)
+                         instance._old_quantity, instance.pk)
         except sender.DoesNotExist:
             logger.warning("Не найден существующий DeliveryJournalProducts с ID=%s", instance.pk)
 
@@ -143,7 +143,7 @@ def update_stock_balance_on_delivery(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=SubjectContract)
 def track_subject_contract_changes(sender, instance, **kwargs):
     """Отслеживаем изменения до сохранения"""
-    if instance.pk:  # Если объект уже существует (обновление)
+    if instance.pk:  # Если объект уже существует, обновление
         try:
             # Получаем старый объект
             old_instance = sender.objects.get(pk=instance.pk)
@@ -228,7 +228,7 @@ def update_stock_balance_on_subject_contract(sender, instance, created, **kwargs
                         logger.warning("Недостаточно товара %s на складе. Нужно: %s, доступно: %s",
                                        product, difference, stock_balance.quantity)
 
-                else:  # difference < 0, уменьшение продажи
+                else:  # difference < 0 уменьшение продажи
                     abs_difference = abs(difference)
 
                     # Для уменьшения продажи учитываем как покупку (возврат на склад)
@@ -304,7 +304,7 @@ def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
         stock_balance = StockBalance.objects.get(product=product)
 
         if contract_type == Contract.ContractType.SELL:
-            # Если удаляется предмет контракта продажи, возвращаем товар на склад
+            # Если удаляется предмет контракта продажи возвращаем товар на склад
             StockMovement.objects.create(
                 sold_product=product,
                 contract=instance.contract,
@@ -317,7 +317,7 @@ def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
             logger.debug('Возврат %s единиц продукта %s на склад при удалении продажи', quantity, product)
 
         elif contract_type == Contract.ContractType.BUY:
-            # Если удаляется предмет контракта закупки, изымаем товар со склада
+            # Если удаляется предмет контракта закупки изымаем товар со склада
             if stock_balance.quantity >= quantity:
                 StockMovement.objects.create(
                     sold_product=product,
@@ -339,6 +339,3 @@ def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
         logger.error("Не найден StockBalance для продукта %s при удалении SubjectContract ID=%s", product, instance.pk)
 
     logger.info("СИГНАЛ pre_delete SubjectContract ЗАВЕРШЕН: ID=%s", instance.pk)
-
-
-
