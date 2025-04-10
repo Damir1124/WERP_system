@@ -32,7 +32,7 @@ class Contract(models.Model):
         SELL = 'SL', 'В плюс'
 
     description = models.CharField(max_length=255, verbose_name='Описание')
-    client = models.ForeignKey(Client, on_delete=models.SET_NULL, verbose_name='Клиент', blank=True, null=True)
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, verbose_name='Клиент', blank=True, null=True)
     date = models.DateField(verbose_name='Дата заключения')
     file = models.FileField(upload_to=contract_upload_path, verbose_name='Документ',
                             validators=[validate_contract_file], null=True, blank=True)
@@ -48,7 +48,7 @@ class Contract(models.Model):
 class SubjectContract(models.Model):
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE)
     note = models.CharField(max_length=255, verbose_name='Описание предмета')
-    product = models.ForeignKey(Product, on_delete=models.SET_NULL, verbose_name="Товар", blank=True, null=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name="Товар", blank=True, null=True)
     quantity = models.IntegerField(verbose_name="Количество")
 
     def __str__(self):
@@ -63,8 +63,8 @@ class Installment(models.Model):
         OVERDUE = 'OV', 'Просроченый'
         CLOSED = 'CL', 'Погашенный'
 
-    client = models.ForeignKey(Client, on_delete=models.DO_NOTHING, verbose_name="Клиент")
-    product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт')
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, verbose_name="Клиент")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name='Продукт')
     amount = models.IntegerField(verbose_name='Сумма рассрочки', null=True, blank=True, default=0)
     paid_amount = models.IntegerField(verbose_name='Оплаченно', null=True, blank=True)
     due_date = models.DateField(verbose_name='Дата след платежа',  null=True, blank=True)
@@ -120,7 +120,7 @@ class Salary(models.Model):
         BONUS = "BO", "Бонус"
 
     worker = models.ForeignKey('workers.Worker',
-                               on_delete=models.DO_NOTHING,
+                               on_delete=models.CASCADE,
                                related_name='workewrs',
                                verbose_name='Работник')
     last_payment = models.DateField(verbose_name='Дата последней выплаты', null=True, blank=True)

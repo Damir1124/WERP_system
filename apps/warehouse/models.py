@@ -7,7 +7,7 @@ from django.utils import timezone
 
 class StockBalance(models.Model):
     product = models.ForeignKey(Product,
-                                on_delete=models.SET_NULL,
+                                on_delete=models.CASCADE,
                                 null=True,
                                 blank=True,
                                 related_name='products',
@@ -33,14 +33,14 @@ class StockMovement(models.Model):
         SELL = 'Sell', 'В минус'
 
     sold_product = models.ForeignKey(Product,
-                                on_delete=models.SET_NULL,
+                                on_delete=models.CASCADE,
                                 null=True,
                                 blank=True,
                                 related_name='sold_product',
                                 verbose_name='Продукт'
     )
     contract = models.ForeignKey(Contract,
-                                 on_delete=models.SET_NULL,
+                                 on_delete=models.CASCADE,
                                  null=True,
                                  blank=True,
                                  related_name="contrats",

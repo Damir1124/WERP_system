@@ -7,7 +7,7 @@ from django.utils import timezone
 
 class DeliveryLog(models.Model):
     """Учет доставки по рейсам курьеров"""
-    courier = models.ForeignKey(Worker, on_delete=models.SET, related_name='couriers', verbose_name='Курьер')
+    courier = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name='couriers', verbose_name='Курьер')
     total_quantity = models.IntegerField(verbose_name='Количевство',
                                          help_text='Кол-во проданой воды с тарой или несоо'
                                                    'тветсвие, пропажа', null=True,
@@ -95,7 +95,7 @@ class DeliveryLogMove(models.Model):
 class DeliveryJournal(models.Model):
     """Отчеты курьеров"""
 
-    courier = models.ForeignKey(Worker, on_delete=models.DO_NOTHING, verbose_name='Курьер')
+    courier = models.ForeignKey(Worker, on_delete=models.CASCADE, verbose_name='Курьер')
     date = models.DateField(verbose_name='Дата')
     card_price = models.IntegerField(default=0, verbose_name='Сумма картой')
     total_price = models.IntegerField(default=0, verbose_name='Общая сумма')
@@ -135,7 +135,7 @@ class DeliveryJournalProducts(models.Model):
     note = models.CharField(verbose_name='Описание', null=True, blank=True)
     delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
                                          verbose_name='Журнал доставки')
-    product = models.ForeignKey(Product, on_delete=models.DO_NOTHING, verbose_name='Продукт', default=2)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name='Продукт', default=2)
     quantity = models.IntegerField(default=1, verbose_name='Количество')
     price = models.IntegerField(blank=True, null=True, verbose_name='Цена')
     payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
