@@ -62,10 +62,7 @@ class Garage(models.Model):
     vehicle_name = models.CharField(max_length=255, verbose_name='Название автомобиля')
     plate_number = models.CharField(max_length=6, verbose_name='Номерной знак', null=True)
     milage = models.PositiveIntegerField(verbose_name='Пробег', validators=[MinValueValidator(0)])
-    year = models.PositiveIntegerField(
-        verbose_name='Год',
-        validators=[MinValueValidator(2015)]
-    )
+    year = models.DateField(verbose_name="Год выпуска")
     courier = models.OneToOneField('workers.Worker', on_delete=models.CASCADE, verbose_name='Курьер')
 
     class Meta:
