@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Bugs_CardProfitCalc.md",
+                "file": "CLAUDE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Bugs_CardProfitCalc"
+              "title": "CLAUDE"
             }
           }
         ]
@@ -160,13 +160,15 @@
       "command-palette:Открыть палитру команд": false
     }
   },
-  "active": "cb2fe5f99abcf68c",
+  "active": "15809df6c1db8f98",
   "lastOpenFiles": [
+    "Diogramm of automatization orderrs.md",
+    "CLAUDE.md",
     "Modules_Accounting.md",
+    "Bugs_CardProfitCalc.md",
     "docs/Bugs_CardProfitCalc.md",
     "docs",
     "Index.md",
-    "CLAUDE.md",
     "Modules_Logistics.md",
     "Modules_Warehouse.md",
     "Modules_Workers.md",
@@ -191,8 +193,6 @@
     "Без названия.canvas",
     "Без названия 1.base",
     "Без названия.base",
-    "Actually/Скоростной режим.md",
-    "travel to china.md",
     "W.project/Backend structure W.project.canvas",
     "_attachments/Zotero/image-undefined-x31-y243.png",
     "_attachments/Zotero",

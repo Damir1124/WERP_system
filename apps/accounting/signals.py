@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from .models import PaymentsInstallment, SalaryPayment, FinancialTransactions, Contract
 from . import utils
 from apps.logistics import models as logistics
+from apps.logistics.models import Order
 
 
 # Installment и PaymentsInstallment
@@ -266,3 +267,29 @@ def update_finance_on_transaction_update(sender, instance, **kwargs):
 def update_finance_on_transaction_create(sender, instance, created, **kwargs):
     """Обновляет запись в Finance при создании FinancialTransactions"""
     utils.update_finance_record(instance.date)
+
+
+@receiver(post_save, sender=Order)
+def create_transaction_on_order(sender, instance, created, **kwargs):
+    """Создание финансовой транзакции при подтверждении заказа (статус DELIVERED)"""
+    if instance.status != Order.Status.DELIVERED:
+        return
+
+    # Определяем тип транзакции (PLUS - доход)
+    from .models import FinancialTransactions
+    transaction_type = FinancialTransactions.TransactionType.PLUS
+    
+    # Определяем сумму картой
+    card_amount = instance.price if instance.payment_type == Order.PaymentType.CARD else 0
+    
+    # Создаем транзакцию
+    FinancialTransactions.objects.create(
+        date=instance.trip.shift.date,
+        transaction_type=transaction_type,
+        amount=instance.price,
+        card_amount=card_amount,
+        source=f"Заказ #{instance.pk} — {instance.client}"
+    )
+    
+    # Обновляем сводку по финансам
+    utils.update_finance_record(instance.trip.shift.date)

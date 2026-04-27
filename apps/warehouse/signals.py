@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
-from apps.logistics.models import DeliveryJournalProducts
+from apps.logistics.models import DeliveryJournalProducts, Order
 from apps.products.models import Product
 from .models import StockBalance, StockMovement
 from django.db import models
@@ -157,6 +157,12 @@ def track_subject_contract_changes(sender, instance, **kwargs):
 @receiver(post_save, sender=SubjectContract)
 def update_stock_balance_on_subject_contract(sender, instance, created, **kwargs):
     """Обновление остатков по данным с предметов контрактов"""
+    # Проверяем, нужно ли учитывать этот продукт на складе
+    if not instance.product.track_inventory:
+        logger.info("Продукт %s не отслеживается на складе (track_inventory=False), пропускаем обновление остатков",
+                   instance.product.name)
+        return
+    
     # Обновляем экземпляр из базы данных, чтобы получить актуальные данные
     instance.refresh_from_db()
 
@@ -293,6 +299,12 @@ def update_stock_balance_on_subject_contract(sender, instance, created, **kwargs
 @receiver(pre_delete, sender=SubjectContract)
 def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
     """Обновление остатков перед удалением предмета контракта"""
+    # Проверяем, нужно ли учитывать этот продукт на складе
+    if not instance.product.track_inventory:
+        logger.info("Продукт %s не отслеживается на складе (track_inventory=False), пропускаем обновление остатков при удалении",
+                   instance.product.name)
+        return
+    
     logger.info("СИГНАЛ pre_delete SubjectContract ВЫЗВАН: ID=%s", instance.pk)
 
     product = instance.product
@@ -339,3 +351,53 @@ def update_stock_before_subject_contract_delete(sender, instance, **kwargs):
         logger.error("Не найден StockBalance для продукта %s при удалении SubjectContract ID=%s", product, instance.pk)
 
     logger.info("СИГНАЛ pre_delete SubjectContract ЗАВЕРШЕН: ID=%s", instance.pk)
+
+
+@receiver(post_save, sender=Order)
+def update_stock_on_order(sender, instance, created, **kwargs):
+    """Обновление остатков склада при подтверждении заказа (статус DELIVERED)"""
+    if instance.status != Order.Status.DELIVERED:
+        return
+
+    product = instance.product
+    PRODUCT_MAP = {
+        Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
+    }
+
+    mapped_product_type = PRODUCT_MAP.get(product.type_product)
+    if mapped_product_type:
+        try:
+            product = Product.objects.get(type_product=mapped_product_type)
+            logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
+        except Product.DoesNotExist:
+            logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
+            return
+
+    # Определяем операцию с тарой
+    container_op = instance.container_op
+    if container_op in (Order.ContainerOp.EXCHANGE, Order.ContainerOp.SELL_WITH):
+        # Списание тары со склада
+        quantity = instance.quantity
+        try:
+            stock_balance = StockBalance.objects.get(product=product)
+            if stock_balance.quantity >= quantity:
+                StockMovement.objects.create(
+                    sold_product=product,
+                    operation_type=StockMovement.OperationTypeChoices.SELL,
+                    quantity=quantity,
+                    note=f"Заказ #{instance.pk} ({container_op})"
+                )
+                stock_balance.quantity -= quantity
+                stock_balance.last_departure_date = timezone.now()
+                stock_balance.save()
+                logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity, product, instance.pk)
+            else:
+                logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
+                               product, instance.pk, quantity, stock_balance.quantity)
+        except StockBalance.DoesNotExist:
+            logger.error("Не найден StockBalance для продукта %s", product)
+    elif container_op == Order.ContainerOp.DEFECTIVE:
+        # Возврат брака - не списываем тару
+        logger.info("Заказ #%s - возврат брака, списание тары не производится", instance.pk)
+    else:
+        logger.warning("Заказ #%s не имеет container_op или неизвестная операция", instance.pk)

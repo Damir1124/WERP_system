@@ -23,6 +23,9 @@ urlpatterns = [
     # API для Telegram бота
     path('api/bot/', include('apps.bot_bridge.urls')),
     
+    # API для финансов и зарплат
+    path('api/accounting/', include('apps.accounting.urls')),
+    
     # DRF аутентификация (опционально)
     path('api-auth/', include('rest_framework.urls')),
 ]

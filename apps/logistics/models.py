@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import Sum
 from apps.workers.models import Worker
 from apps.products.models import Product
+from apps.clients.models import Client
 
 
 class DeliveryLog(models.Model):
@@ -153,3 +154,128 @@ class DeliveryJournalProducts(models.Model):
 
         super().save(*args, **kwargs)  # Сохраняем запись
         self.delivery_journal.update_total_price()  # Пересчитываем общую сумму
+
+
+class CourierShift(models.Model):
+    """Смена курьера"""
+    class Status(models.TextChoices):
+        OPEN   = 'OP', 'Открыта'
+        CLOSED = 'CL', 'Закрыта'
+
+    courier     = models.ForeignKey('workers.Worker', on_delete=models.CASCADE, verbose_name='Курьер')
+    date        = models.DateField(auto_now_add=True, verbose_name='Дата смены')
+    status      = models.CharField(choices=Status.choices, default=Status.OPEN, max_length=2)
+    cash_total  = models.IntegerField(default=0, verbose_name='Наличные за смену')
+    card_total  = models.IntegerField(default=0, verbose_name='Безнал за смену')
+    opened_at   = models.DateTimeField(auto_now_add=True)
+    closed_at   = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Смена курьера"
+        verbose_name_plural = "Смены курьеров"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f'Смена {self.courier} от {self.date} ({self.status})'
+
+    def close(self):
+        """Закрытие смены"""
+        from django.utils import timezone
+        self.status = self.Status.CLOSED
+        self.closed_at = timezone.now()
+        self.save(update_fields=['status', 'closed_at'])
+
+
+class CourierTrip(models.Model):
+    """Рейс внутри смены"""
+    class Status(models.TextChoices):
+        ACTIVE = 'AC', 'В пути'
+        DONE   = 'DN', 'Завершён'
+
+    shift        = models.ForeignKey(CourierShift, on_delete=models.CASCADE, related_name='trips')
+    full_loaded  = models.IntegerField(verbose_name='Загружено полных баклажек')
+    full_returned = models.IntegerField(default=0, verbose_name='Возвращено полных (недоставленных)')
+    status       = models.CharField(choices=Status.choices, default=Status.ACTIVE, max_length=2)
+    started_at   = models.DateTimeField(auto_now_add=True)
+    finished_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Рейс курьера"
+        verbose_name_plural = "Рейсы курьеров"
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f'Рейс #{self.id} смены {self.shift.id} ({self.status})'
+
+    def get_trip_summary(self) -> dict:
+        """Справка по рейсу: остатки тары в машине в реальном времени"""
+        from django.db.models import Sum
+        delivered = self.orders.filter(
+            status=Order.Status.DELIVERED
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        empty_received = self.orders.filter(
+            status=Order.Status.DELIVERED,
+            container_op=Order.ContainerOp.EXCHANGE
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        defective = self.orders.filter(
+            status=Order.Status.DELIVERED,
+            container_op=Order.ContainerOp.DEFECTIVE
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        full_remain = self.full_loaded - delivered - self.full_returned
+        return {
+            'full_loaded': self.full_loaded,
+            'delivered': delivered,
+            'full_returned': self.full_returned,
+            'full_remain': full_remain,
+            'empty_received': empty_received,
+            'defective_received': defective,
+        }
+
+
+class Order(models.Model):
+    """Заказ — строка рейса"""
+    class Status(models.TextChoices):
+        PENDING   = 'PD', 'Ожидает'
+        DELIVERED = 'DL', 'Доставлен'
+        CANCELLED = 'CN', 'Отменён'
+
+    class ContainerOp(models.TextChoices):
+        EXCHANGE  = 'EX', 'Обмен (пустая → полная)'
+        SELL_WITH = 'SW', 'Продажа с тарой'
+        DEFECTIVE = 'DF', 'Возврат брака'
+
+    class PaymentType(models.TextChoices):
+        CASH  = 'CH', 'Наличные'
+        CARD  = 'CD', 'Карта'
+        BONUS = 'BS', 'Бонус'
+
+    trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders')
+    client        = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True)
+    product       = models.ForeignKey('products.Product', on_delete=models.CASCADE)
+    quantity      = models.IntegerField(default=1, verbose_name='Количество')
+    price         = models.IntegerField(blank=True, null=True, verbose_name='Сумма')
+    payment_type  = models.CharField(choices=PaymentType.choices, default=PaymentType.CASH, max_length=2)
+    status        = models.CharField(choices=Status.choices, default=Status.PENDING, max_length=2)
+    container_op  = models.CharField(choices=ContainerOp.choices, null=True, blank=True, max_length=2,
+                                     verbose_name='Операция с тарой',
+                                     help_text='Заполняется курьером при подтверждении доставки')
+    note          = models.CharField(max_length=255, null=True, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    delivered_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Заказ"
+        verbose_name_plural = "Заказы"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Заказ #{self.id} ({self.product}, {self.quantity} шт.)'
+
+    def save(self, *args, **kwargs):
+        """Автоматический расчет цены при сохранении"""
+        if self.price is None:
+            self.price = self.product.price * self.quantity
+        super().save(*args, **kwargs)

@@ -16,6 +16,11 @@ class Product(models.Model):
                                     default=TypeProduct.COOLERS,
                                     verbose_name="Тип продукта")
     price = models.IntegerField(null=False, verbose_name="Стоимость")
+    track_inventory = models.BooleanField(
+        default=True,
+        verbose_name="Учитывать на складе",
+        help_text="Если отмечено, то для этого продукта будет вестись учет остатков на складе"
+    )
     created_at = models.DateField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateField(auto_now=True, verbose_name="Дата обновления")
 

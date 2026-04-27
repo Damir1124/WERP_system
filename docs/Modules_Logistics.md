@@ -151,9 +151,58 @@ for j in journals:
 3. **Нет проверки дубликатов** — можно создать несколько отчётов на одного курьера за день.
 4. **Сложная логика `total_sold`** — метод `calculate_total_sold()` может давать ошибки при неправильной последовательности движений.
 
+## Новые модели (P0 — Система Смен и Рейсов)
+
+**Статус:** Реализовано (2026-04-27)
+
+В рамках задачи P0 добавлены три новые модели для замены устаревшей системы `DeliveryJournal`:
+
+### `CourierShift` — смена курьера
+- `courier`: ссылка на `Worker` (курьер)
+- `date`: дата смены (auto_now_add)
+- `status`: `OPEN`/`CLOSED`
+- `cash_total`: наличные за смену
+- `card_total`: безнал за смену
+- `opened_at`, `closed_at`: временные метки
+
+**Методы:**
+- `close()` — закрытие смены (устанавливает статус CLOSED и текущее время)
+
+### `CourierTrip` — рейс внутри смены
+- `shift`: ссылка на `CourierShift` (related_name='trips')
+- `full_loaded`: загружено полных баклажек
+- `full_returned`: возвращено полных (недоставленных)
+- `status`: `ACTIVE`/`DONE`
+- `started_at`, `finished_at`: временные метки
+
+**Методы:**
+- `get_trip_summary()` — возвращает словарь с остатками тары в машине:
+  - `full_loaded`, `delivered`, `full_returned`, `full_remain`
+  - `empty_received` (кол-во EXCHANGE), `defective_received` (кол-во DEFECTIVE)
+
+### `Order` — заказ (строка рейса)
+- `trip`: ссылка на `CourierTrip` (related_name='orders')
+- `client`: ссылка на `Client` (может быть null)
+- `product`: ссылка на `Product`
+- `quantity`: количество
+- `price`: сумма (автоматически рассчитывается как product.price × quantity)
+- `payment_type`: `CASH`/`CARD`/`BONUS`
+- `status`: `PENDING`/`DELIVERED`/`CANCELLED`
+- `container_op`: операция с тарой — `EXCHANGE` (обмен), `SELL_WITH` (продажа с тарой), `DEFECTIVE` (возврат брака)
+- `note`: примечание
+- `created_at`, `delivered_at`: временные метки
+
+**Логика:**
+- При сохранении автоматически рассчитывается цена, если не задана вручную.
+- При статусе `DELIVERED` запускается цепочка сигналов:
+  1. `logistics/signals.recalculate_order_price` — пересчёт цены
+  2. `logistics/signals.update_shift_totals_on_order` — обновление cash_total/card_total в смене
+  3. `warehouse/signals.update_stock_on_order` — списание тары со склада (для EXCHANGE/SELL_WITH)
+  4. `accounting/signals.create_transaction_on_order` — создание финансовой транзакции (PLUS)
+
 ## Планы развития (Roadmap)
-- **P1:** Добавить FK `Client` в `DeliveryJournal`
-- **P2:** API для бота (подтверждение доставки, изменение количества)
+- **P1:** Добавить FK `Client` в `DeliveryJournal` (устарело, теперь есть в `Order`)
+- **P2:** API для бота (подтверждение доставки, изменение количества) — использовать новые модели
 - **P3:** Утилита автораспределения заказов по ближайшим курьерам
 
 ## Ссылки

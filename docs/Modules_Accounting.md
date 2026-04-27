@@ -153,9 +153,69 @@ print(f"Доход: {finance.income}, Расход: {finance.consumption}, Пр�
 3. **Нет истории изменений** — `Finance` перезаписывается, предыдущие значения теряются.
 4. **Зависимость от порядка сигналов** — если сигналы `accounting` выполняются раньше `logistics`, `total_price` может быть неактуальным.
 
+## API эндпоинты для курьера (бонусы/штрафы) - P2 реализовано
+
+### Назначение
+API для получения курьером информации о своей зарплате, бонусах и штрафах через Telegram-бота.
+
+### Маршруты API
+Все эндпоинты доступны по префиксу `/api/accounting/`:
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/api/accounting/salary/` | Детальная информация о зарплате курьера |
+| GET | `/api/accounting/salary/summary/` | Сводка по зарплате за текущий месяц |
+| GET | `/api/accounting/salary/payments/` | Список всех платежей по зарплате |
+| GET | `/api/accounting/salary/bonuses/` | Последние бонусы (за 30 дней) |
+| GET | `/api/accounting/salary/fines/` | Последние штрафы (за 30 дней) |
+
+### Авторизация
+Используется тот же permission-класс `IsCourier` из `bot_bridge`, который проверяет `X-Telegram-ID` в заголовках.
+
+### Сериализаторы (`accounting/serializers.py`)
+- `SalaryDetailSerializer` - детальная информация о зарплате с расширенной статистикой
+- `SalaryPaymentSerializer` - информация о платежах по зарплате
+
+### Views (`accounting/views.py`)
+- `SalaryDetailView` - основная информация о зарплате курьера
+- `SalarySummaryView` - сводка за текущий месяц
+- `SalaryPaymentsListView` - список всех платежей
+- `RecentBonusesView` - последние бонусы
+- `RecentFinesView` - последние штрафы
+
+### Пример запроса
+```bash
+curl -X GET http://localhost:8000/api/accounting/salary/ \
+  -H "X-Telegram-ID: 123456789"
+```
+
+Ответ:
+```json
+{
+  "id": 1,
+  "worker": 5,
+  "worker_name": "Иванов Иван",
+  "balance": 150000,
+  "last_payment": "2026-04-25",
+  "total_bonuses": 50000,
+  "total_fines": 10000,
+  "total_salary": 200000,
+  "payments": [
+    {
+      "id": 1,
+      "amount": 200000,
+      "payment_type": "SA",
+      "payment_type_display": "Зарплата",
+      "date": "2026-04-25",
+      "note": "Аванс за апрель"
+    }
+  ]
+}
+```
+
 ## Планы развития (Roadmap)
 - **P1:** Исправить баг `card_profit`
-- **P2:** API эндпоинты для курьера (бонусы/штрафы)
+- **P2:** API эндпоинты для курьера (бонусы/штрафы) - **РЕАЛИЗОВАНО**
 - **P3:** WebSockets для live-мониторинга финансов
 
 ## Ссылки
@@ -163,4 +223,5 @@ print(f"Доход: {finance.income}, Расход: {finance.consumption}, Пр�
 - [[docs/Bugs_CardProfitCalc|Ошибка подсчета card_profit]]
 - [[docs/Modules_Clients|Модуль Клиентов]]
 - [[docs/Modules_Logistics|Модуль Логистики]]
+- [[docs/Modules_BotBridge|Модуль Bot Bridge]]
 - [[CLAUDE.md|Архитектурный справочник]]

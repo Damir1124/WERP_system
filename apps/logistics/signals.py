@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from .models import DeliveryLog, DeliveryLogMove, DeliveryJournalProducts
+from .models import DeliveryLog, DeliveryLogMove, DeliveryJournalProducts, Order, CourierShift
 
 
 @receiver(post_save, sender=DeliveryLogMove)
@@ -56,3 +56,28 @@ def update_delivery_journal_totals(sender, instance, **kwargs):
     delivery_journal.total_price = total_price
     delivery_journal.card_price = card_price
     delivery_journal.save()
+
+
+@receiver(pre_save, sender=Order)
+def recalculate_order_price(sender, instance, **kwargs):
+    """Пересчет цены заказа перед сохранением, если количество изменилось"""
+    if instance.price is None:
+        # Если цена не задана, рассчитываем автоматически
+        instance.price = instance.product.price * instance.quantity
+    elif instance.pk:  # Если объект уже существует
+        old_instance = sender.objects.get(pk=instance.pk)
+        if old_instance.quantity != instance.quantity:
+            # Пересчитываем цену только если количество изменилось
+            instance.price = instance.product.price * instance.quantity
+
+
+@receiver(post_save, sender=Order)
+def update_shift_totals_on_order(sender, instance, created, **kwargs):
+    """Обновление cash_total/card_total в смене при изменении заказа"""
+    if instance.status == Order.Status.DELIVERED:
+        shift = instance.trip.shift
+        if instance.payment_type == Order.PaymentType.CARD:
+            shift.card_total += instance.price
+        else:
+            shift.cash_total += instance.price
+        shift.save(update_fields=['cash_total', 'card_total'])
