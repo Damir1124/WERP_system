@@ -78,7 +78,7 @@ class DeliveryLogMove(models.Model):
         RETURNED = 'RT', 'Возврат'
 
     delivery_log = models.ForeignKey(DeliveryLog, on_delete=models.CASCADE, verbose_name='Журнал')
-    action = models.CharField(choices=ActionType.choices, verbose_name='Тип действия')
+    action = models.CharField(choices=ActionType.choices, verbose_name='Тип действия', max_length=2)
     quantity = models.IntegerField(verbose_name='Количество')
     date = models.DateField(verbose_name='Дата дейсвия')
 
@@ -131,13 +131,13 @@ class DeliveryJournalProducts(models.Model):
         CASH = 'CH', 'Наличные'
         BONUS = 'BS', 'Бонус'
 
-    note = models.CharField(verbose_name='Описание', null=True, blank=True)
+    note = models.CharField(verbose_name='Описание', null=True, blank=True, max_length=255)
     delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
                                          verbose_name='Журнал доставки')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name='Продукт', default=2)
     quantity = models.IntegerField(default=1, verbose_name='Количество')
     price = models.IntegerField(blank=True, null=True, verbose_name='Цена')
-    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты')
+    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты', max_length=2)
 
     class Meta:
         verbose_name = "Продукт в журнале доставок"

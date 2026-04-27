@@ -36,7 +36,7 @@ class Contract(models.Model):
     date = models.DateField(verbose_name='Дата заключения')
     file = models.FileField(upload_to=contract_upload_path, verbose_name='Документ',
                             validators=[validate_contract_file], null=True, blank=True)
-    contract_type = models.CharField(choices=ContractType.choices, verbose_name='Тип контрака')
+    contract_type = models.CharField(choices=ContractType.choices, verbose_name='Тип контрака', max_length=2)
     amount = models.IntegerField(verbose_name='Сумма')
     note = models.CharField(verbose_name='Примечание', max_length=255)
 
@@ -68,7 +68,7 @@ class Installment(models.Model):
     amount = models.IntegerField(verbose_name='Сумма рассрочки', null=True, blank=True, default=0)
     paid_amount = models.IntegerField(verbose_name='Оплаченно', null=True, blank=True)
     due_date = models.DateField(verbose_name='Дата след платежа',  null=True, blank=True)
-    status = models.CharField(choices=InstallmentStatus.choices, verbose_name="Статус рассрочки")
+    status = models.CharField(choices=InstallmentStatus.choices, verbose_name="Статус рассрочки", max_length=2)
     created_at = models.DateField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateField(auto_now=True, verbose_name='Дата обновления')
 
@@ -142,7 +142,7 @@ class SalaryPayment(models.Model):
                                on_delete=models.CASCADE,)
     note = models.CharField(max_length=120, verbose_name='Примечание', null=True, blank=True)
     amount = models.IntegerField(verbose_name='Сумма', null=True, blank=True, default=0)
-    payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа')
+    payment_type = models.CharField(choices=PaymentType.choices, verbose_name='Тип платежа', max_length=2)
     date = models.DateField(verbose_name='Дата')
 
     def __str__(self):
@@ -157,11 +157,11 @@ class FinancialTransactions(models.Model):
         MINUS = 'MI', 'Расход'
 
     date = models.DateField(verbose_name="Дата операции")
-    transaction_type = models.CharField(choices=TransactionsType.choices, verbose_name='Тип трансакции')
+    transaction_type = models.CharField(choices=TransactionsType.choices, verbose_name='Тип трансакции', max_length=2)
     amount = models.IntegerField(verbose_name=' Общая сумма', null=True, blank=True, default=0)
     card_amount = models.IntegerField(verbose_name='Сумма картой', null=True, blank=True, default=0)
     description = models.CharField(max_length=255, null=True, blank=True, verbose_name='Примечание')
-    source = models.CharField(verbose_name="Источник операции")
+    source = models.CharField(verbose_name="Источник операции", max_length=100)
 
     pass
 

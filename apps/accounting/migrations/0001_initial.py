@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 ('description', models.CharField(max_length=255, verbose_name='Описание')),
                 ('date', models.DateField(verbose_name='Дата заключения')),
                 ('file', models.FileField(blank=True, null=True, upload_to=apps.accounting.models.contract_upload_path, validators=[apps.accounting.models.validate_contract_file], verbose_name='Документ')),
-                ('contract_type', models.CharField(choices=[('BY', 'В минус'), ('SL', 'В плюс')], verbose_name='Тип контрака')),
+                ('contract_type', models.CharField(choices=[('BY', 'В минус'), ('SL', 'В плюс')], verbose_name='Тип контрака', max_length=2)),
                 ('amount', models.IntegerField(verbose_name='Сумма')),
                 ('note', models.CharField(max_length=255, verbose_name='Примечание')),
             ],
