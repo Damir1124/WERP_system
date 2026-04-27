@@ -10,17 +10,17 @@
 
 ### 1.1 Стек и зависимости
 
-| Компонент | Технология | Версия |
-|-----------|-----------|--------|
-| Backend framework | Django | 5.1.6 |
-| REST API | Django REST Framework (DRF) | планируется |
-| Telegram Bot | Aiogram | 3.x (планируется) |
-| База данных | PostgreSQL | — |
-| Real-time | Django Channels (WebSockets) | планируется |
-| ASGI-сервер | asgiref | 3.8.1 |
-| Драйвер БД | psycopg2 | 2.9.10 |
-| Работа с датами | python-dateutil | 2.9.0 |
-| Генерация данных | Faker | 37.0.0 |
+| Компонент         | Технология                   | Версия            |
+| ----------------- | ---------------------------- | ----------------- |
+| Backend framework | Django                       | 5.1.6             |
+| REST API          | Django REST Framework (DRF)  | планируется       |
+| Telegram Bot      | Aiogram                      | 3.x (планируется) |
+| База данных       | PostgreSQL                   | 17                |
+| Real-time         | Django Channels (WebSockets) | планируется       |
+| ASGI-сервер       | asgiref                      | 3.8.1             |
+| Драйвер БД        | psycopg2                     | 2.9.10            |
+| Работа с датами   | python-dateutil              | 2.9.0             |
+| Генерация данных  | Faker                        | 37.0.0            |
 
 ### 1.2 Структура приложений
 

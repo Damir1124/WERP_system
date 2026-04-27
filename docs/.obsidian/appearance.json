@@ -1,0 +1,9 @@
+{
+  "cssTheme": "Primary",
+  "baseFontSize": 26,
+  "showViewHeader": true,
+  "baseFontSizeAction": true,
+  "enabledCssSnippets": [
+    "ZoteroHighlights"
+  ]
+}
