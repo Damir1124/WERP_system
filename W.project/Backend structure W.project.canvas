@@ -1,0 +1,41 @@
+{
+	"nodes":[
+		{"id":"c63d8c5d9af859a6","type":"text","text":"DeliveryLogMove\n\ndelivery_log\naction\nquantity\ndate","x":-250,"y":420,"width":250,"height":440,"color":"5"},
+		{"id":"059b3d8cc2d27665","type":"text","text":"StockMovement\n\nsold_product\ncontract\noperation_type\nquantity\ndate\nnote","x":40,"y":480,"width":250,"height":440,"color":"6"},
+		{"id":"d89f8996c7b0f482","type":"text","text":"DeliveryJournalProducts\n\nnote\ndelivery_journal\nproduct\nquantity","x":330,"y":540,"width":250,"height":440,"color":"5"},
+		{"id":"1e089718097caba5","type":"text","text":"StockBalance\n\nproduct\nquantity\nlast_received_date\nlast_dispatch_date","x":610,"y":700,"width":250,"height":440,"color":"6"},
+		{"id":"1189a4eede867ad7","type":"text","text":"Contract\n\ndescription\nclient\ndate\nfile\ncontract_type\namount\nnote","x":-555,"y":720,"width":250,"height":440,"color":"3"},
+		{"id":"646858db02e7684a","type":"text","text":"SubjectContract\ncontract\nnote \nproduct\nquantitly\n","x":-555,"y":200,"width":250,"height":440,"color":"3"},
+		{"id":"7f1353352c01ee64","type":"text","text":"SalaryPayment\n\nsalary\nnote\namount\npayment_type\ndate","x":-840,"y":200,"width":250,"height":440,"color":"3"},
+		{"id":"3fc4887b3d179e42","type":"text","text":"Salary\n\nworker\nlast_payment\nbalance","x":-840,"y":720,"width":250,"height":440,"color":"3"},
+		{"id":"51303403ce7273f4","type":"text","text":"Garage\n\nvehicle_name\nplate_number\ncourier\nmileage\nyear","x":-2360,"y":640,"width":250,"height":440,"color":"6"},
+		{"id":"e56b5864d68cb1d8","type":"text","text":"DeliveryJournal\n\ncourier\ndate\ntotal_price\npyment_type","x":-2080,"y":480,"width":250,"height":440,"color":"5"},
+		{"id":"e99b84b7504a305e","type":"text","text":"DeliveryLog\n\ncourier\naction\nquantity\ndate","x":-1800,"y":420,"width":250,"height":440,"color":"5"},
+		{"id":"b8aa9fd89e1ac65f","type":"text","text":"Installment\n\nclient\nproduct\ntotal_amount\npaid_payment\ndue_date\nstatus\ncreated_at\nupdated_at","x":-1140,"y":720,"width":250,"height":440,"color":"3"},
+		{"id":"c05cc5d7672987d1","type":"text","text":"InstallmentPayments\n\ninstallment\ndate\namount\ncreated_at","x":-1140,"y":200,"width":250,"height":440,"color":"3"},
+		{"id":"75f15b8eb2e59251","type":"text","text":"Finance\n\nincome\nconsumption\nprofit\ndate","x":-1440,"y":720,"width":250,"height":440,"color":"#eeff00"},
+		{"id":"ce36080446c2637c","type":"text","text":"FinancialTransactions\n\ndate\ntransaction_type\namount\ndescription\nrelated_objects","x":-1440,"y":200,"width":250,"height":440,"color":"#eeff00"},
+		{"id":"229a31e6c2f0d4e5","type":"text","text":"Worker\n\nfull_name\nworker_type\ndate_for_pay\nnote\ncreated_at\nupdated_at\n","x":-1675,"y":1280,"width":250,"height":440,"color":"2"},
+		{"id":"2a01d483512c3f44","type":"text","text":"Client\n\nname\nphone\nadress\nbalance\nnote\ncreated_at\nupdated_at\n","x":-990,"y":1320,"width":250,"height":440,"color":"1"},
+		{"id":"3cb8df9fa0788ff5","type":"text","text":"Product\n\nname \nproduct_type\nprice\ncreated_at\nupdated_at","x":-270,"y":1280,"width":250,"height":440,"color":"4"}
+	],
+	"edges":[
+		{"id":"2d0c1a143943eff3","fromNode":"7f1353352c01ee64","fromSide":"bottom","toNode":"3fc4887b3d179e42","toSide":"top"},
+		{"id":"acfcc5c1c9230c62","fromNode":"d89f8996c7b0f482","fromSide":"top","toNode":"e99b84b7504a305e","toSide":"top"},
+		{"id":"397f43bcbc178403","fromNode":"c05cc5d7672987d1","fromSide":"bottom","toNode":"b8aa9fd89e1ac65f","toSide":"top"},
+		{"id":"93d3eabfca16d649","fromNode":"51303403ce7273f4","fromSide":"bottom","toNode":"229a31e6c2f0d4e5","toSide":"left"},
+		{"id":"de2b3c093d044f78","fromNode":"e56b5864d68cb1d8","fromSide":"bottom","toNode":"229a31e6c2f0d4e5","toSide":"top"},
+		{"id":"35f0c1f52d35b94c","fromNode":"e99b84b7504a305e","fromSide":"bottom","toNode":"229a31e6c2f0d4e5","toSide":"right"},
+		{"id":"62c207239411c229","fromNode":"1e089718097caba5","fromSide":"bottom","toNode":"3cb8df9fa0788ff5","toSide":"right"},
+		{"id":"195299c9fd092969","fromNode":"059b3d8cc2d27665","fromSide":"bottom","toNode":"3cb8df9fa0788ff5","toSide":"left"},
+		{"id":"131561f62d0bae42","fromNode":"b8aa9fd89e1ac65f","fromSide":"right","toNode":"3cb8df9fa0788ff5","toSide":"left"},
+		{"id":"d1e9b00a87e73eb0","fromNode":"3fc4887b3d179e42","fromSide":"bottom","toNode":"229a31e6c2f0d4e5","toSide":"right"},
+		{"id":"ea3526a979cb01f4","fromNode":"b8aa9fd89e1ac65f","fromSide":"bottom","toNode":"2a01d483512c3f44","toSide":"top"},
+		{"id":"6540611fc4c25079","fromNode":"d89f8996c7b0f482","fromSide":"bottom","toNode":"3cb8df9fa0788ff5","toSide":"top"},
+		{"id":"935c7514c8bb321e","fromNode":"c63d8c5d9af859a6","fromSide":"top","toNode":"e56b5864d68cb1d8","toSide":"top"},
+		{"id":"ba3e5b6eeea5ed0e","fromNode":"646858db02e7684a","fromSide":"bottom","toNode":"1189a4eede867ad7","toSide":"top"},
+		{"id":"6e4db3fabe3e71df","fromNode":"1189a4eede867ad7","fromSide":"bottom","toNode":"2a01d483512c3f44","toSide":"top"},
+		{"id":"44a8e2987722d8c0","fromNode":"646858db02e7684a","fromSide":"bottom","toNode":"3cb8df9fa0788ff5","toSide":"top"},
+		{"id":"d236e569f7d17b7c","fromNode":"ce36080446c2637c","fromSide":"bottom","toNode":"75f15b8eb2e59251","toSide":"top"}
+	]
+}

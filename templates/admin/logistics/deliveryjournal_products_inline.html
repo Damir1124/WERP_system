@@ -1,0 +1,8 @@
+{% for form in inline_admin_formset %}
+    <tr class="inline-related">
+        <td>{{ form.product }}</td>
+        <td>{{ form.quantity }}</td>
+        <td>{{ form.price }}</td>
+        <td>{{ form.note }}</td>
+    </tr>
+{% endfor %}
