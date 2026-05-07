@@ -2,7 +2,7 @@
 
 ## Архитектура и Модули
 * [[Modules_Accounting|Модуль Финансов (Accounting)]] — логика транзакций. **P2: API для курьера реализовано**
-* [[Modules_BotBridge|Мост Telegram (Bot Bridge)]] — API шлюз. **P2: Приложение создано**
+* [[Modules_BotBridge|Мост Telegram (Bot Bridge)]] — API шлюз. **P0: API адаптировано под модели CourierShift, CourierTrip, Order**
 * [[Modules_Clients|Модуль Клиентов (Clients)]] — CRM.
 * [[Modules_Logistics|Модуль Логистики (Logistics)]] — ядро доставок.
 * [[Modules_Warehouse|Модуль Склада (Warehouse)]] — остатки и автопарк. **P2: Генератор путевых листов и инвентаризация реализованы**
@@ -24,6 +24,15 @@
 2. ✅ **API эндпоинты для курьера (бонусы/штрафы)** - в модуле Accounting
 3. ✅ **Генератор путевых листов (docx)** - в модуле Warehouse
 4. ✅ **Инвентаризация склада через админку** - модель InventoryAdjustment
+
+## Статус выполнения задач P0 (адаптация API)
+**Адаптация API bot_bridge под модели P0 выполнена:**
+1. ✅ **Изучение моделей** `CourierShift`, `CourierTrip`, `Order` в `logistics/models.py`
+2. ✅ **Адаптация сериализаторов** — добавлены `OrderSerializer`, `CourierTripSerializer`, `CourierShiftSerializer`, `OrderConfirmationSerializer`, `OrderQuantityUpdateSerializer`, `OrderCreateModelSerializer`
+3. ✅ **Адаптация представлений** — добавлены `CourierShiftListView`, `CourierTripListView`, `OrderListView`, `OrderConfirmationView`, `OrderQuantityUpdateView`, `CreateOrderView`
+4. ✅ **Добавление URL-маршрутов** — новые эндпоинты для работы с P0
+5. ✅ **Проверка корректности** — синтаксическая проверка кода
+6. ✅ **Обновление документации** — раздел [[Modules_BotBridge]] дополнен информацией о P0
 
 ## Ссылки
 * [CLAUDE.md](../CLAUDE.md) — архитектурный справочник проекта.

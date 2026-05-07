@@ -1,7 +1,8 @@
 # Модуль Bot Bridge (Мост для Telegram-бота)
 
-**Создан:** 2026-04-27  
-**Статус:** Реализован (P2)  
+**Создан:** 2026-04-27
+**Обновлён:** 2026-05-02
+**Статус:** Реализован (P0 адаптирован)
 **Зависимости:** `rest_framework`, `apps.logistics`, `apps.clients`, `apps.products`, `apps.workers`
 
 ## Назначение
@@ -33,13 +34,20 @@ apps/bot_bridge/
 | Метод | Путь | Назначение |
 |-------|------|------------|
 | GET | `/api/bot/courier/profile/` | Профиль курьера |
-| GET | `/api/bot/courier/deliveries/` | Список доставок курьера |
-| GET | `/api/bot/courier/deliveries/today/` | Доставки на сегодня |
-| POST | `/api/bot/courier/deliveries/confirm/` | Подтверждение доставки |
-| POST | `/api/bot/courier/deliveries/update-quantity/` | Изменение количества товара |
+| GET | `/api/bot/courier/deliveries/` | Список доставок курьера (старая модель) |
+| GET | `/api/bot/courier/deliveries/today/` | Доставки на сегодня (старая модель) |
+| POST | `/api/bot/courier/deliveries/confirm/` | Подтверждение доставки (старая модель) |
+| POST | `/api/bot/courier/deliveries/update-quantity/` | Изменение количества товара (старая модель) |
 | GET | `/api/bot/products/` | Каталог продуктов |
 | GET | `/api/bot/clients/` | Поиск клиентов |
-| POST | `/api/bot/courier/deliveries/{id}/mark-delivered/` | Пометка доставки как выполненной |
+| POST | `/api/bot/courier/deliveries/{id}/mark-delivered/` | Пометка доставки как выполненной (старая модель) |
+| **Новые эндпоинты для моделей P0** | | |
+| GET | `/api/bot/courier/shifts/` | Список смен курьера |
+| GET | `/api/bot/courier/trips/` | Список рейсов активной смены |
+| GET | `/api/bot/courier/trips/{trip_id}/orders/` | Заказы рейса |
+| POST | `/api/bot/courier/orders/confirm/` | Подтверждение заказа (P0) |
+| POST | `/api/bot/courier/orders/update-quantity/` | Изменение количества в заказе (P0) |
+| POST | `/api/bot/courier/orders/create/` | Создание нового заказа в рейсе |
 
 ## Авторизация
 Курьер аутентифицируется через **Telegram ID**, который передаётся в заголовке `X-Telegram-ID`.
@@ -75,6 +83,42 @@ apps/bot_bridge/
 - `actual_quantity` (int, опционально)
 - `note` (str, опционально)
 
+### Новые сериализаторы для моделей P0
+API адаптировано для работы с моделями `CourierShift`, `CourierTrip`, `Order` из `apps/logistics/models.py`.
+
+#### `OrderSerializer`
+Сериализатор для заказа (модель `Order`). Включает читаемые поля:
+- `product_name`, `client_name`
+- `status_display`, `payment_type_display`, `container_op_display`
+- Все основные поля модели
+
+#### `CourierTripSerializer`
+Сериализатор для рейса курьера. Включает:
+- `shift_id` (ID смены)
+- `status_display`
+- Вложенные `orders` (список заказов)
+
+#### `CourierShiftSerializer`
+Сериализатор для смены курьера. Включает:
+- `courier_name`
+- `status_display`
+- Вложенные `trips` (список рейсов)
+
+#### `OrderConfirmationSerializer`
+Валидатор для подтверждения заказа (P0):
+- `order_id` (int)
+- `confirmed` (bool)
+- `container_op` (выбор из `Order.ContainerOp.choices`, опционально)
+- `note` (str, опционально)
+
+#### `OrderQuantityUpdateSerializer`
+Валидатор для изменения количества в заказе:
+- `order_id` (int)
+- `new_quantity` (int, min_value=1)
+
+#### `OrderCreateModelSerializer`
+Сериализатор для создания заказа курьером (ModelSerializer). Проверяет, что рейс принадлежит текущему курьеру.
+
 ## Views (логика)
 
 ### `CourierDeliveryListView`
@@ -91,6 +135,29 @@ apps/bot_bridge/
 
 ### `ClientInfoView`
 Поиск клиентов по телефону или адресу (подстрока).
+
+### Новые представления для моделей P0
+
+#### `CourierShiftListView`
+Возвращает список смен курьера (отсортированные по дате). Использует `IsCourier` permission.
+
+#### `CourierTripListView`
+Возвращает список рейсов для активной (открытой) смены курьера. Если активной смены нет, возвращает `{"active_shift": false}`.
+
+#### `OrderListView`
+Возвращает список заказов для конкретного рейса. Проверяет, что рейс принадлежит текущему курьеру.
+
+#### `OrderConfirmationView`
+Подтверждение или отмена заказа (P0). При подтверждении:
+- Обновляет статус заказа на `DELIVERED`
+- Устанавливает `delivered_at = timezone.now()`
+- Записывает операцию с тарой (`container_op`) и примечание
+
+#### `OrderQuantityUpdateView`
+Изменение количества в заказе. Автоматически пересчитывает цену (через `save()` модели `Order`).
+
+#### `CreateOrderView`
+Создание нового заказа в рейсе. Использует `OrderCreateModelSerializer` с проверкой принадлежности рейса курьеру.
 
 ## Интеграция с системой
 

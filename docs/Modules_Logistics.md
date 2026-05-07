@@ -1,209 +1,128 @@
 # Модуль Логистики (Logistics)
 
-**Создан:** 2026-04-27 (предположительно)  
-**Статус:** Реализован (ядро системы)  
+**Создан:** 2026-04-27 (предположительно)
+**Статус:** Реализован — ядро системы адаптировано под P0 (CourierShift/CourierTrip/Order)
 **Зависимости:** `apps.workers`, `apps.products`, `apps.clients` (планируется)
 
 ## Назначение
-Модуль `logistics` — это ядро системы доставки. Он отвечает за:
-- Учёт рейсов курьеров (`DeliveryLog`) и движения тары (`DeliveryLogMove`)
-- Финансовые отчёты курьеров (`DeliveryJournal`) и строки продуктов (`DeliveryJournalProducts`)
-- Автоматический расчёт стоимости заказов на основе количества и типа оплаты
-- Синхронизацию с складом (`warehouse`) и финансами (`accounting`) через сигналы
+Модуль `logistics` — это ядро системы доставки. Современная архитектура фокусируется на моделях смен и рейсов (`CourierShift`, `CourierTrip`, `Order`) и обеспечивает автономный пересчёт показателей (цена заказа, суммы смены, списание тары) через сигналы Django.
 
-## Архитектура
+Ключевые ответственности:
+- Учёт смен и рейсов курьеров (`CourierShift`, `CourierTrip`)
+- Учёт заказов внутри рейса (`Order`)
+- Автоматический пересчёт сумм и интеграция со складом и финансовым модулем через сигналы
 
-### Модели
+## Ключевые модели (актуальные)
 
-#### `DeliveryLog` — рейс курьера
-- `courier`: ссылка на `Worker` (курьер)
-- `total_quantity`: общее количество тары в рейсе (вычисляется автоматически)
-- `total_sold`: общее количество проданной воды (вычисляется автоматически)
-- `date`: дата рейса
+### `CourierShift` — смена курьера
+- Хранит агрегаты по смене: `cash_total`, `card_total`, временные метки открытия/закрытия.
+- Метод `close()` аккуратно закрывает смену и фиксирует время закрытия.
 
-**Методы:**
-- `calculate_total_quantity()` — суммирует `TAKEN` и вычитает `BROUGHT`/`RETURNED` из связанных `DeliveryLogMove`
-- `calculate_total_sold()` — учитывает последовательные `BROUGHT` для правильного подсчёта продаж
-- `check_total_quantity()` — сверяет `total_quantity` с фактическими продажами `BOTTLE_20L`
+См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:159).
 
-#### `DeliveryLogMove` — движение тары в рейсе
-- `delivery_log`: ссылка на `DeliveryLog`
-- `action`: `TAKEN` (взял со склада), `BROUGHT` (привёз обратно), `RETURNED` (вернул клиенту)
-- `quantity`: количество бутылей
-- `date`: дата движения
+### `CourierTrip` — рейс внутри смены
+- Описывает один рейс внутри смены: сколько загружено полных баклажек, сколько возвращено и т.д.
+- Метод `get_trip_summary()` даёт текущий снимок остатков в машине.
 
-**Логика:** При сохранении вызывает `delivery_log.calculate_total_quantity()`.
+См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:189).
 
-#### `DeliveryJournal` — финансовый отчёт курьера
-- `courier`: ссылка на `Worker`
-- `date`: дата отчёта
-- `card_price`: сумма оплаты картой (автоматически пересчитывается)
-- `total_price`: общая сумма наличными (автоматически пересчитывается)
+### `Order` — заказ (строка рейса)
+- Основной источник правды для доставок: содержит `trip`, `client`, `product`, `quantity`, `price`, `payment_type`, `container_op`, `status`.
+- При сохранении автоматически рассчитывает `price` (если не указан).
+- Перевод в статус `DELIVERED` — триггер для всей цепочки обновлений: пересчёт суммы рейса/смены, списание на складе и создание финансовой транзакции.
 
-**Методы:**
-- `update_total_price()` — пересчитывает `total_price` и `card_price` на основе связанных `DeliveryJournalProducts`
+См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:238) и логику сигналов в [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
 
-**Отсутствует:** связь с клиентом (`client` FK) — задача P1.
+## Что стало с `DeliveryJournal` / `DeliveryJournalProducts`
+`DeliveryJournal` и `DeliveryJournalProducts` — устаревшая модельная пара, использовавшаяся для ручных отчётов курьеров. В новой архитектуре P0 их роль полностью замещена моделью `Order` (строки рейса) и агрегатами `CourierTrip`/`CourierShift`.
 
-#### `DeliveryJournalProducts` — строка продукта в отчёте
-- `delivery_journal`: ссылка на `DeliveryJournal` (`related_name='products'`)
-- `product`: ссылка на `Product`
-- `quantity`: количество (по умолчанию 1)
-- `price`: цена (автоматически = `product.price * quantity`, если не задана)
-- `payment_type`: `CARD` (карта), `CASH` (наличные), `BONUS` (бонусы)
-- `note`: описание (например, «клиент попросил дополнительную бутыль»)
+- Файлы с моделями всё ещё присутствуют (при необходимости для обратной совместимости), но они помечены как deprecated и вынесены в раздел "Устаревшие модели" ниже.
+- Новая система даёт преимущество: единый источник правды (`Order`), минимум ручных операций и предсказуемая обработка через сигналы.
 
-**Логика:** При сохранении:
-1. Если `price` не указана, вычисляет как `product.price * quantity`
-2. Вызывает `delivery_journal.update_total_price()`
+## Автономность пересчёта (как это работает)
 
-## Сигналы (`logistics/signals.py`)
+Центральный принцип: изменение состояния сущности в `logistics` (в первую очередь перевод `Order` в `DELIVERED`) вызывает детерминированную цепочку задач через Django-сигналы. Это даёт возможность модулям работать автономно — каждая подсистема подписана на изменения и отвечает только за свою часть.
 
-### `post_save(DeliveryLogMove)`
-- Вызывает `delivery_log.calculate_total_quantity()`
-- Обновляет `total_quantity` в родительском `DeliveryLog`
+Основная цепочка при подтверждении доставки (см. [`apps/logistics/signals.py`](apps/logistics/signals.py:61)):
 
-### `post_save(DeliveryLog)`
-- Вызывает `check_total_quantity()` для сверки с продажами
+1) pre_save/post_save: пересчёт цены заказа
+   - Сигнал `recalculate_order_price` обеспечивает, что `Order.price` соответствует `product.price * quantity` при изменениях.
+   - Ссылка на код: [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
 
-### `pre_save(DeliveryJournalProducts)`
-- Пересчитывает цену при изменении `quantity`
+2) post_save(Order, status=DELIVERED): обновление сумм смены
+   - `update_shift_totals_on_order` аккумулирует `cash_total`/`card_total` в связанной `CourierShift`.
+   - Работа идёт через простое добавление значения и `shift.save(update_fields=[...])` — минимизация перезаписи полей.
 
-### `post_save(DeliveryJournalProducts)`
-- Вызывает `delivery_journal.update_total_price()`
-- Запускает цепочку сигналов в `warehouse` и `accounting`
+3) post_save(Order, status=DELIVERED): обновление склада
+   - `warehouse/signals.update_stock_on_order` переводит продаваемый продукт в маппинг (`BOTTLE_20L -> BOTTLE`) и создаёт `StockMovement` + корректирует `StockBalance`.
+   - Код и правила маппинга: [`apps/warehouse/signals.py`](apps/warehouse/signals.py:363).
 
-## Взаимодействие с другими модулями
+4) post_save(Order, status=DELIVERED): создание финансовой транзакции
+   - `accounting/signals.create_transaction_on_order` (или аналог) создаёт `FinancialTransactions` (+/-) и вызывает `utils.update_finance_record(date)`.
 
-### `warehouse` (склад)
-При сохранении `DeliveryJournalProducts`:
-1. Сигнал `warehouse/signals.py` `pre_save` сохраняет `_old_quantity`
-2. Сигнал `warehouse/signals.py` `post_save` списывает/возвращает тару через `PRODUCT_MAP` (`BOTTLE_20L` → `BOTTLE`)
+Гарантии и практики для надёжности:
+- Использование atomic transactions и transaction.on_commit: критические операции (списание товара, создание транзакции) выполняются внутри транзакций или отложены на `on_commit`, чтобы избежать рассинхронизации при откате.
+- Идемпотентность: сигналы должны быть безопасны при повторном вызове — используйте `get_or_create`, проверку статуса и `update_fields` вместо полного save, где возможно.
+- Логирование: каждая стадия логирует результат и предупреждения (см. `logger` в `apps/warehouse/signals.py` и `apps/logistics/signals.py`).
+- Минимизация рекурсий: сигналы написаны так, чтобы не провоцировать бесконечные циклы (пересчёт в pre_save, агрегация в post_save с защитой по статусам).
 
-### `accounting` (финансы)
-При сохранении `DeliveryJournal`:
-1. Сигнал `accounting/signals.py` создаёт `FinancialTransactions` с `type=PLUS`
-2. Вызывается `update_finance_record(date)`
+Пример (схематично) — что происходит при подтверждении заказа:
 
-### `workers` (сотрудники)
-`DeliveryJournal.courier` и `DeliveryLog.courier` ссылаются на `Worker`.
-
-### `products` (товары)
-`DeliveryJournalProducts.product` ссылается на `Product`.
-
-## Бизнес-логика
-
-### Автоматический расчёт цены
-Цена строки продукта вычисляется автоматически на основе `product.price`. Это гарантирует, что оператор не ошибётся вручную.
-
-### Учёт тары
-- `BOTTLE_20L` (вода с тарой) — это то, что продаёт курьер.
-- `BOTTLE` (тара) — это то, что списывается со склада при продаже `BOTTLE_20L`.
-- Маппинг происходит в `warehouse/signals.py` через `PRODUCT_MAP`.
-
-### Типы оплаты
-- `CASH` — наличные, увеличивают `total_price`
-- `CARD` — карта, увеличивают `card_price`
-- `BONUS` — бонусы, уменьшают `total_price` (скидка)
-
-## Примеры использования
-
-### Создание отчёта курьера
 ```python
-from apps.logistics.models import DeliveryJournal, DeliveryJournalProducts
-from apps.workers.models import Worker
-from apps.products.models import Product
+# В коде: курьер через бот пометил заказ доставленным
+order.status = Order.Status.DELIVERED
+order.delivered_at = timezone.now()
+order.save()
 
-courier = Worker.objects.get(full_name="Иванов Иван")
-product = Product.objects.get(name="Вода 20L с тарой")
-
-journal = DeliveryJournal.objects.create(
-    courier=courier,
-    date=date.today()
-)
-
-line = DeliveryJournalProducts.objects.create(
-    delivery_journal=journal,
-    product=product,
-    quantity=5,
-    payment_type=DeliveryJournalProducts.PaymentsType.CASH
-)
-# Автоматически: price = product.price * 5
-# Автоматически: journal.total_price обновится
-# Автоматически: создастся финансовая транзакция
-# Автоматически: со склада спишется 5 тар (BOTTLE)
+# После commit срабатывают подписанные обработчики:
+# 1) recalculate_order_price -> гарантирует корректную order.price
+# 2) update_shift_totals_on_order -> увеличивает cash/card в shift
+# 3) update_stock_on_order -> создает StockMovement и обновляет StockBalance
+# 4) accounting handler -> создает FinancialTransactions и обновляет агрегаты финансов
 ```
 
-### Получение отчётов за день
-```python
-from datetime import date
+Ссылки на реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:277), [`apps/logistics/signals.py`](apps/logistics/signals.py:74), [`apps/warehouse/signals.py`](apps/warehouse/signals.py:356), [`apps/accounting/signals.py`](apps/accounting/signals.py:1).
 
-today = date.today()
-journals = DeliveryJournal.objects.filter(date=today).select_related('courier')
-for j in journals:
-    print(f"{j.courier}: {j.total_price} сум, картой: {j.card_price}")
+## Устаревшие модели
+
+— `DeliveryJournal`, `DeliveryJournalProducts` — оставлены в кодовой базе для исторической совместимости и для случаев, когда оператор выгружает отчёт вручную. Не использовать в новых процессах — вместо них работать с `Order` и агрегатами `CourierTrip`/`CourierShift`.
+
+Места в коде: [`apps/logistics/models.py`](apps/logistics/models.py:95) (DeliveryJournal), [`apps/logistics/models.py`](apps/logistics/models.py:127) (DeliveryJournalProducts).
+
+## Рекомендации разработчикам
+
+- При добавлении новых сигналов следуйте шаблону: короткая функция-обработчик, явный фильтр по `status`/`created`, логирование, и использование `transaction.on_commit` при побочных эффектах.
+- Для массовых операций (импорт/реплейс) отключайте сигналы через контекст-менеджер или указывайте флаг `bulk_update=True` и выполняйте явные пересчёты в конце.
+- Покрывайте критические сценарии тестами (unit + integration), особенно гонки между обновлением заказа и закрытием смены.
+
+## Примеры использования (P0)
+
+Создание заказа и подтверждение доставки (микропроцесс):
+
+```python
+from apps.logistics.models import CourierShift, CourierTrip, Order
+from apps.workers.models import Worker
+from apps.products.models import Product
+from django.utils import timezone
+
+shift = CourierShift.objects.create(courier=Worker.objects.first())
+trip = CourierTrip.objects.create(shift=shift, full_loaded=10)
+product = Product.objects.get(name='Вода 20L с тарой')
+
+order = Order.objects.create(trip=trip, product=product, quantity=2, payment_type=Order.PaymentType.CASH)
+
+# Курьер доставил товар через бота -> меняем статус и сохраняем
+order.status = Order.Status.DELIVERED
+order.delivered_at = timezone.now()
+order.save()
+
+# После сохранения: автоматическое списание тары, обновление cash_total в shift и создание финансовой транзакции
 ```
 
 ## Ограничения и известные проблемы
 
-1. **Нет связи с клиентом** — `DeliveryJournal` не знает, кому доставлена вода (требуется P1).
-2. **Ручное создание отчётов** — пока нет API для бота (частично решено в `bot_bridge`).
-3. **Нет проверки дубликатов** — можно создать несколько отчётов на одного курьера за день.
-4. **Сложная логика `total_sold`** — метод `calculate_total_sold()` может давать ошибки при неправильной последовательности движений.
-
-## Новые модели (P0 — Система Смен и Рейсов)
-
-**Статус:** Реализовано (2026-04-27)
-
-В рамках задачи P0 добавлены три новые модели для замены устаревшей системы `DeliveryJournal`:
-
-### `CourierShift` — смена курьера
-- `courier`: ссылка на `Worker` (курьер)
-- `date`: дата смены (auto_now_add)
-- `status`: `OPEN`/`CLOSED`
-- `cash_total`: наличные за смену
-- `card_total`: безнал за смену
-- `opened_at`, `closed_at`: временные метки
-
-**Методы:**
-- `close()` — закрытие смены (устанавливает статус CLOSED и текущее время)
-
-### `CourierTrip` — рейс внутри смены
-- `shift`: ссылка на `CourierShift` (related_name='trips')
-- `full_loaded`: загружено полных баклажек
-- `full_returned`: возвращено полных (недоставленных)
-- `status`: `ACTIVE`/`DONE`
-- `started_at`, `finished_at`: временные метки
-
-**Методы:**
-- `get_trip_summary()` — возвращает словарь с остатками тары в машине:
-  - `full_loaded`, `delivered`, `full_returned`, `full_remain`
-  - `empty_received` (кол-во EXCHANGE), `defective_received` (кол-во DEFECTIVE)
-
-### `Order` — заказ (строка рейса)
-- `trip`: ссылка на `CourierTrip` (related_name='orders')
-- `client`: ссылка на `Client` (может быть null)
-- `product`: ссылка на `Product`
-- `quantity`: количество
-- `price`: сумма (автоматически рассчитывается как product.price × quantity)
-- `payment_type`: `CASH`/`CARD`/`BONUS`
-- `status`: `PENDING`/`DELIVERED`/`CANCELLED`
-- `container_op`: операция с тарой — `EXCHANGE` (обмен), `SELL_WITH` (продажа с тарой), `DEFECTIVE` (возврат брака)
-- `note`: примечание
-- `created_at`, `delivered_at`: временные метки
-
-**Логика:**
-- При сохранении автоматически рассчитывается цена, если не задана вручную.
-- При статусе `DELIVERED` запускается цепочка сигналов:
-  1. `logistics/signals.recalculate_order_price` — пересчёт цены
-  2. `logistics/signals.update_shift_totals_on_order` — обновление cash_total/card_total в смене
-  3. `warehouse/signals.update_stock_on_order` — списание тары со склада (для EXCHANGE/SELL_WITH)
-  4. `accounting/signals.create_transaction_on_order` — создание финансовой транзакции (PLUS)
-
-## Планы развития (Roadmap)
-- **P1:** Добавить FK `Client` в `DeliveryJournal` (устарело, теперь есть в `Order`)
-- **P2:** API для бота (подтверждение доставки, изменение количества) — использовать новые модели
-- **P3:** Утилита автораспределения заказов по ближайшим курьерам
+- Если в одном моменте происходит много concurrent-операций (массовая выгрузка и подтверждения) — возможно появление race conditions. Решение: использовать DB-level блокировки, транзакции и тесты на конкурентность.
+- Частые ручные правки устаревших `DeliveryJournal` могут приводить к расхождениям — рекомендовано отключить ручные отчёты и мигрировать пользователей на P0 API.
 
 ## Ссылки
 - [[docs/Index|Главный индекс]]

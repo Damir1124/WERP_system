@@ -24,4 +24,16 @@ urlpatterns = [
     
     # Информация о клиентах
     path('clients/', views.ClientInfoView.as_view(), name='client_info'),
+    
+    # Telegram Mini App (TWA) endpoints
+    path('twa/products/', views.PublicProductListView.as_view(), name='twa_product_list'),
+    path('twa/order/', views.ClientOrderView.as_view(), name='twa_create_order'),
+    
+    # Новые эндпоинты для моделей P0
+    path('courier/shifts/', views.CourierShiftListView.as_view(), name='courier_shifts'),
+    path('courier/trips/', views.CourierTripListView.as_view(), name='courier_trips'),
+    path('courier/trips/<int:trip_id>/orders/', views.OrderListView.as_view(), name='trip_orders'),
+    path('courier/orders/confirm/', views.OrderConfirmationView.as_view(), name='order_confirmation'),
+    path('courier/orders/update-quantity/', views.OrderQuantityUpdateView.as_view(), name='order_update_quantity'),
+    path('courier/orders/create/', views.CreateOrderView.as_view(), name='create_order'),
 ]

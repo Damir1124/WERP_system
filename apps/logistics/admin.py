@@ -1,59 +1,36 @@
 from django.contrib import admin
-from .models import DeliveryJournal, DeliveryJournalProducts, DeliveryLogMove, DeliveryLog
+from .models import DeliveryLogMove, DeliveryLog
 
 
 class DeliveryLogMoveInline(admin.TabularInline):
     model = DeliveryLogMove
-    extra = 1  # Количество пустых форм для добавления новых движений
-    verbose_name = "Движение доставки"  # Отображаемое имя для инлайна
-    verbose_name_plural = "Движения доставки"  # Множественное имя для инлайна
+    extra = 1
+    verbose_name = "Движение доставки"
+    verbose_name_plural = "Движения доставки"
 
 
 class DeliveryLogAdmin(admin.ModelAdmin):
     list_display = ('courier', 'total_quantity', "total_sold", 'date')
-    list_filter = ('courier', 'date')  # Фильтры по полям
-    search_fields = ('courier__full_name',)  # Поиск по полному имени курьера
-    ordering = ('-date',)  # Сортировка по дате
-    date_hierarchy = 'date'  # Дата для навигации
-    inlines = [DeliveryLogMoveInline]  # Встраиваемые движения в журнале
+    list_filter = ('courier', 'date')
+    search_fields = ('courier__full_name',)
+    ordering = ('-date',)
+    date_hierarchy = 'date'
+    inlines = [DeliveryLogMoveInline]
     readonly_fields = ('total_quantity', 'total_sold')
 
     def save_model(self, request, obj, form, change):
-        """Отвечает за исполнение функции"""
-        super().save_model(request, obj, form, change)  # Сначала сохраняем объект
-        obj.check_total_quantity()  # Вызываем метод проверки
+        super().save_model(request, obj, form, change)
+        obj.check_total_quantity()
 
 
 class DeliveryLogMoveAdmin(admin.ModelAdmin):
-    list_display = ('delivery_log', 'action', 'quantity', 'date')  # Поля, которые будут отображаться в списке
-    list_filter = ('action', 'delivery_log__courier', 'date')  # Фильтры по полям
-    search_fields = ('delivery_log__courier__full_name',)  # Поиск по полному имени курьера
-    ordering = ('-date',)  # Сортировка по дате
-    date_hierarchy = 'date'  # Дата для навигации
-
-
-class DeliveryJournalProductsInline(admin.TabularInline):
-    model = DeliveryJournalProducts
-    extra = 0  # Количество пустых форм для добавления новых продуктов
-
-
-class DeliveryJournalAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'date', 'card_price', 'total_price',)  # Поля, которые будут отображаться в списке
-    list_filter = ('courier', 'date',)  # Фильтры по полям
-    inlines = [DeliveryJournalProductsInline]  # Встраиваемые продукты в журнале
-    readonly_fields = ('card_price', 'total_price')
-
-
-
-
-class DeliveryJournalProductsAdmin(admin.ModelAdmin):
-    list_display = ('note', 'product', 'quantity', 'price', 'payment_type')  # Добавлено поле note
-    list_filter = ('product',)  # Фильтры по полям
-    search_fields = ('product__name', 'note')  # Поиск по имени продукта и заметке
-
+    list_display = ('delivery_log', 'action', 'quantity', 'date')
+    list_filter = ('action', 'delivery_log__courier', 'date')
+    search_fields = ('delivery_log__courier__full_name',)
+    ordering = ('-date',)
+    date_hierarchy = 'date'
 
 
 admin.site.register(DeliveryLog, DeliveryLogAdmin)
 admin.site.register(DeliveryLogMove, DeliveryLogMoveAdmin)
-admin.site.register(DeliveryJournal, DeliveryJournalAdmin)
-admin.site.register(DeliveryJournalProducts, DeliveryJournalProductsAdmin)
+

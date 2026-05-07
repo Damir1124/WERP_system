@@ -335,15 +335,304 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 
 ---
 
-### [P3] Telegram Mini App (TWA) — заказы от клиентов
+### [P3] Telegram Mini App (TWA) — три профиля: курьер, клиент, админ
 
-**Что делать:** Отдельный API endpoint для клиентского Mini App: просмотр каталога `Product` и создание заказа в `Order`.
+> **Цель:** Единый Telegram-бот на aiogram 3.x с тремя ролевыми профилями, каждый открывает свой Mini App (TWA). Бот — точка входа и авторизации; вся бизнес-логика остаётся в Django через bot_bridge API.
 
-**Файлы:**
-- `apps/bot_bridge/views.py` — добавить `ClientOrderView`, `ProductListView`
-- `apps/bot_bridge/serializers.py` — добавить `ProductSerializer`, `OrderCreateSerializer`
+---
 
-**Зависимости:** bot_bridge (P2), P1 (tg_id в Client), P0 (модель Order)
+#### 3.1 Архитектура бота (aiogram 3.x)
+
+```
+tg_bot/
+├── __main__.py              — точка входа, запуск polling / webhook
+├── bot.py                   — создание Bot и Dispatcher
+├── config.py                — настройки (BOT_TOKEN, DJANGO_API_URL, MINI_APP_URL)
+├── middlewares/
+│   └── auth.py              — определение роли пользователя по tg_id через API
+├── routers/
+│   ├── courier.py           — хэндлеры для курьера
+│   ├── client.py            — хэндлеры для клиента
+│   └── admin.py             — хэндлеры для администратора
+└── keyboards/
+    ├── courier.py           — клавиатуры курьера (inline + reply)
+    ├── client.py            — клавиатуры клиента
+    └── admin.py             — клавиатуры администратора
+```
+
+**Авторизация и определение роли:**
+- При старте (`/start`) бот отправляет `GET /api/bot/identify/?tg_id=<id>` → Django возвращает роль: `courier` / `client` / `admin` / `unknown`
+- Middleware сохраняет роль в `FSMContext` / `data` для каждого апдейта
+- Новый пользователь (`unknown`) → предложение зарегистрироваться как клиент
+
+**Добавить в `Worker`:**
+```python
+tg_id = models.BigIntegerField(null=True, blank=True, unique=True, verbose_name='Telegram ID')
+```
+> ⚠️ Сейчас `tg_id` есть только у `Client`. Для идентификации курьеров нужно добавить поле `tg_id` в `Worker`.
+
+**Новый endpoint идентификации** (`bot_bridge/views.py`):
+```python
+# GET /api/bot/identify/?tg_id=<id>
+# Проверяет: Worker.tg_id → role=courier, Worker.is_admin → role=admin, Client.tg_id → role=client
+# Ответ: {"role": "courier"|"client"|"admin"|"unknown", "name": "...", "id": ...}
+```
+
+---
+
+#### 3.2 Профиль «Курьер» — Mini App пула заказов
+
+**Что видит курьер в боте:**
+- Кнопка «Открыть рабочий стол» → открывает TWA курьера
+- Inline-уведомления: новый заказ в пул, статус рейса
+
+**Mini App курьера (React/Vue SPA, размещается на отдельном домене или в `static/`):**
+
+```
+Экраны Mini App курьера:
+├── Главный экран
+│   ├── Статус смены (OPEN / нет смены)
+│   ├── Кнопка «Открыть смену» (если нет активной)
+│   └── Кнопка «Открыть рейс» (если смена открыта)
+│
+├── Пул заказов (таблица)
+│   ├── Колонки: # | Клиент | Адрес | Продукт | Кол-во | Тип оплаты | Статус
+│   ├── Фильтр: PENDING / все
+│   ├── Взять заказ → POST /api/bot/courier/order/<id>/assign/
+│   └── Отмена взятого заказа
+│
+├── Мой рейс (активный CourierTrip)
+│   ├── Счётчики:
+│   │   ├── Загружено полных (full_loaded)
+│   │   ├── Доставлено (delivered count)
+│   │   ├── Остаток полных в машине (full_loaded - delivered - full_returned)
+│   │   ├── Пустых в машине (empty_received из EXCHANGE-заказов)
+│   │   └── Брак (defective_received из DEFECTIVE-заказов)
+│   ├── Сколько должно быть пустых баклажек (расчёт: кол-во EXCHANGE заказов в рейсе)
+│   ├── Наличных должно быть в кармане (sum CASH-заказов со статусом DELIVERED)
+│   ├── По карте должно быть (sum CARD-заказов со статусом DELIVERED)
+│   └── Список заказов рейса с возможностью подтвердить каждый
+│
+├── Подтверждение заказа (форма)
+│   ├── Выбор container_op: ОБМЕН / ПРОДАЖА С ТАРОЙ / БРАК
+│   ├── Тип оплаты (cash/card/bonus)
+│   ├── Примечание
+│   └── Кнопка «Доставлено» → PATCH /api/bot/orders/<id>/deliver/
+│
+├── Смены и рейсы (история)
+│   ├── Список своих CourierShift (дата, статус, наличные, безнал)
+│   └── По клику → список CourierTrip → список Order
+│
+└── Таблица «Мои коллеги» (другие курьеры)
+    ├── ФИО | Статус смены | Кол-во доставлено сегодня | Телефон (из Worker)
+    └── Только для курьеров со статусом OPEN сегодня
+```
+
+**Новые API endpoints для курьерского Mini App** (`bot_bridge/views.py`):
+
+```python
+# --- Пул заказов ---
+# GET  /api/bot/courier/pool/          — PENDING заказы без назначенного курьера или все рейса
+# POST /api/bot/courier/order/<id>/assign/  — взять заказ (добавить в свой активный trip)
+
+# --- Текущий рейс ---
+# GET  /api/bot/courier/trip/current/  — активный CourierTrip + его заказы + summary
+# Расчётные поля в ответе:
+#   empty_expected  = кол-во EXCHANGE заказов в рейсе
+#   cash_expected   = сумма CASH DELIVERED заказов
+#   card_expected   = сумма CARD DELIVERED заказов
+
+# --- Коллеги ---
+# GET  /api/bot/courier/colleagues/    — курьеры с открытой сменой сегодня
+```
+
+> **Примечание по пулу заказов:** В текущей архитектуре заказы создаются диспетчером и уже привязаны к рейсу. Для реального пула нужно добавить промежуточный статус: `Order.status = POOL` (не назначен курьеру). Или пул = PENDING заказы клиентов (созданные через клиентский Mini App), которые диспетчер / курьер берёт в рейс.
+
+---
+
+#### 3.3 Профиль «Клиент» — Mini App каталога и заказов
+
+**Что видит клиент в боте:**
+- Приветствие с именем из `Client.name`
+- Кнопка «Каталог и заказ» → открывает TWA клиента
+- Уведомление о статусе заказа (через bot.send_message при изменении Order.status)
+
+**Mini App клиента (React/Vue SPA):**
+
+```
+Экраны Mini App клиента:
+├── Каталог товаров
+│   ├── Список Product (тип, название, цена)
+│   ├── Карточка товара: фото (если есть), описание, цена
+│   └── Кнопка «Заказать»
+│
+├── Оформление заказа
+│   ├── Выбор количества
+│   ├── Тип оплаты (CASH / CARD)
+│   ├── Адрес (подтягивается из Client, можно изменить)
+│   └── Кнопка «Подтвердить» → POST /api/bot/client/order/
+│
+└── Мои заказы
+    ├── История заказов клиента (Order по client.tg_id)
+    └── Статус: PENDING (ожидает) | DELIVERED (доставлен) | CANCELLED
+```
+
+**Уведомление клиенту при доставке** (отправляется из Django через Webhook или отдельный сервис):
+```
+Курьер принял ваш заказ:
+  Курьер: Иван Иванов
+  Телефон: +998901234567
+  Заказ: Вода 20л × 2 шт.
+  Статус: В пути 🚚
+```
+
+**Новые API endpoints для клиентского Mini App**:
+```python
+# GET  /api/bot/client/products/           — каталог товаров (только WATER, BOTTLE_20L)
+# POST /api/bot/client/order/              — создать заказ (status=PENDING, trip=None до назначения)
+# GET  /api/bot/client/orders/             — история заказов клиента (by tg_id)
+# GET  /api/bot/client/order/<id>/status/  — текущий статус + информация о курьере если DELIVERED
+```
+
+**Добавить в `Order`:**
+```python
+assigned_courier = models.ForeignKey(
+    'workers.Worker', null=True, blank=True,
+    on_delete=models.SET_NULL, related_name='assigned_orders',
+    verbose_name='Назначенный курьер'
+)
+```
+> Это поле нужно для отображения клиенту информации о курьере при доставке.
+
+**Уведомление реализуется через** `bot_bridge/notify.py`:
+```python
+# async def notify_client_order_accepted(order: Order):
+#     """Отправляет tg-уведомление клиенту когда курьер взял заказ"""
+#     # bot.send_message(client.tg_id, text=...)
+```
+
+---
+
+#### 3.4 Профиль «Администратор» — мини-статистика из Django Admin
+
+**Что видит администратор в боте:**
+- Кнопки быстрого доступа: «Статистика сегодня», «Активные смены», «Склад»
+- Открыть TWA admin (опционально) или получить данные прямо в чате
+
+**Команды администратора в боте:**
+```
+/stats        — сводка за сегодня (Finance: доход, расход, прибыль, безнал)
+/shifts       — список активных смен сегодня (курьер, наличные, безнал, заказов)
+/stock        — топ-5 позиций склада с критическими остатками (quantity < 10)
+/orders       — последние 10 заказов (клиент, сумма, статус, курьер)
+```
+
+**Inline-кнопки в сообщении `/stats`:**
+```
+[ Смены сегодня ] [ Склад ] [ Финансы за неделю ]
+```
+
+**Ответ на `/stats` (форматированный текст, без TWA):**
+```
+📊 Сводка за 05.05.2026
+━━━━━━━━━━━━━━━━
+💰 Доход:    1 250 000 сум
+📉 Расход:     180 000 сум
+✅ Прибыль:  1 070 000 сум
+💳 Безнал:     320 000 сум
+━━━━━━━━━━━━━━━━
+🚚 Активных смен: 3
+📦 Заказов выполнено: 47
+```
+
+**Новые API endpoints для admin-профиля**:
+```python
+# GET /api/bot/admin/stats/today/   — Finance за сегодня + кол-во активных смен + заказов
+# GET /api/bot/admin/shifts/        — активные CourierShift с courier, cash_total, card_total
+# GET /api/bot/admin/stock/alerts/  — StockBalance где quantity < 10
+# GET /api/bot/admin/orders/recent/ — последние N заказов
+```
+
+**Авторизация администратора:** Добавить флаг `is_admin` в модель `Worker`:
+```python
+is_admin = models.BooleanField(default=False, verbose_name='Администратор бота')
+```
+
+---
+
+#### 3.5 Хостинг Mini App
+
+**Вариант A (рекомендуемый для MVP):** Mini App как статика в Django
+```
+static/miniapp/
+├── courier/index.html   — сборка React/Vue для курьера
+├── client/index.html    — сборка для клиента
+└── admin/index.html     — сборка для администратора (опционально)
+```
+Доступ: `https://yourdomain.com/static/miniapp/courier/index.html`
+
+**Вариант B:** Отдельный фронтенд-сервер (Vite + Nginx)
+
+**Технология TWA:**
+- Инициализация через `window.Telegram.WebApp`
+- Передача `initData` в каждый API запрос: `X-Telegram-Init-Data: <hash>`
+- Валидация `initData` на Django-стороне (`bot_bridge/permissions.py`)
+
+---
+
+#### 3.6 Файлы для создания/изменения (P3 полный список)
+
+**Django backend:**
+```
+apps/bot_bridge/
+├── views.py             — дополнить: identify, courier pool/trip/colleagues, client orders, admin stats
+├── serializers.py       — дополнить: CourierPoolSerializer, TripSummarySerializer, ClientOrderSerializer
+├── permissions.py       — дополнить: TelegramInitDataPermission (валидация TWA initData)
+├── notify.py            — создать: async функции отправки уведомлений через бот
+└── urls.py              — дополнить: все новые маршруты
+
+apps/workers/models.py   — добавить поля: tg_id, is_admin в Worker
+apps/logistics/models.py — добавить поле: assigned_courier в Order (optional)
+```
+
+**Telegram bot:**
+```
+tg_bot/
+├── __main__.py
+├── bot.py
+├── config.py
+├── middlewares/auth.py
+├── routers/courier.py
+├── routers/client.py
+├── routers/admin.py
+├── keyboards/courier.py
+├── keyboards/client.py
+└── keyboards/admin.py
+
+requirements_bot.txt     — aiogram>=3.0, aiohttp, python-dotenv
+```
+
+**Mini App frontend (отдельный репозиторий или папка `frontend/`):**
+```
+frontend/
+├── courier/             — Vite + React
+│   └── src/
+│       ├── pages/Pool.jsx, Trip.jsx, Shifts.jsx, Colleagues.jsx
+│       ├── components/OrderCard.jsx, TripSummary.jsx
+│       └── api/client.js  — fetch-обёртка с X-Telegram-ID заголовком
+└── client/              — Vite + React
+    └── src/
+        ├── pages/Catalog.jsx, OrderForm.jsx, MyOrders.jsx
+        └── api/client.js
+```
+
+**Зависимости P3:**
+- P0 (модели CourierShift, CourierTrip, Order)
+- P1 (Client.tg_id)
+- P2 (bot_bridge API, DRF)
+- Redis (для Channels, уже в стеке)
+- aiogram 3.x установлен в bot-окружении
+- Mini App хостится на HTTPS (требование Telegram)
 
 ---
 
@@ -1000,7 +1289,11 @@ def handle_save(sender, instance, created, **kwargs):
 | 7 | **P2** | Генератор путевых листов `.docx` (`warehouse/utils.py`) | ⏳ Ожидает |
 | 8 | **P2** | `InventoryAdjustment` — ручная корректировка склада | ✅ Выполнено |
 | 9 | **P3** | WebSockets — Django Channels, `DashboardConsumer` | ⏳ Ожидает |
-| 10 | **P3** | Telegram Mini App (TWA) — клиентский заказ через бот | ⏳ Ожидает |
+| 10 | **P3** | aiogram-бот: три профиля (курьер / клиент / админ), роль-авторизация по tg_id | ⏳ Ожидает |
+| 10a | **P3** | Mini App курьера: пул заказов, активный рейс, счётчики пустых/наличных/карты, коллеги | ⏳ Ожидает |
+| 10b | **P3** | Mini App клиента: каталог, оформление заказа, уведомление о курьере | ⏳ Ожидает |
+| 10c | **P3** | Mini App / bot-команды администратора: статистика Finance, смены, алерты склада | ⏳ Ожидает |
+| 10d | **P3** | Новые bot_bridge endpoints: identify, courier pool/trip/colleagues, client orders, admin stats | ⏳ Ожидает |
 | 11 | **P4** | URLs — `urls.py` для всех приложений + обновить `WERP_system/urls.py` | ⏳ Ожидает |
 | 12 | **P5** | Django Admin — полная настройка всех моделей с inline, фильтрами, actions | ⏳ Ожидает |
 | 13 | **P6** | Веб-дашборд — приложение `dashboard`, шаблоны Bootstrap 5, 5 страниц | ⏳ Ожидает |

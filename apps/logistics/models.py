@@ -54,20 +54,30 @@ class DeliveryLog(models.Model):
         self.calculate_total_sold()
 
     def check_total_quantity(self):
-        """Проверяет соответствие total_quantity после сохранения DeliveryLog
-        и работает в связке с функцией models_save в админке"""
-        total_sales_bottle_20l = DeliveryJournalProducts.objects.filter(
-            delivery_journal__date=self.date,
-            delivery_journal__courier=self.courier,
-            product__type_product=Product.TypeProduct.BOTTLE_20L
+        """Проверяет соответствие total_quantity.
+
+        Ранее логика опиралась на устаревшую модель DeliveryJournalProducts.
+        Сейчас источник истины — модель Order (статус DELIVERED).
+        Сравниваем total_quantity журнала с суммой доставленных BOTTLE_20L
+        за ту же дату и курьера.
+        """
+        total_sales_bottle_20l = Order.objects.filter(
+            status=Order.Status.DELIVERED,
+            product__type_product=Product.TypeProduct.BOTTLE_20L,
+            trip__shift__courier=self.courier,
+            delivered_at__date=self.date,
         ).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
 
         if self.total_quantity != total_sales_bottle_20l:
-            print(f"Несоответствие для курьера {self.courier}: total_quantity = {self.total_quantity}, "
-                  f"продажи BOTTLE_20L = {total_sales_bottle_20l}")
+            print(
+                f"Несоответствие для курьера {self.courier}: total_quantity = {self.total_quantity}, "
+                f"продажи BOTTLE_20L (Order) = {total_sales_bottle_20l}"
+            )
         else:
-            print(f"Совпадение для курьера {self.courier}: total_quantity = {self.total_quantity}, "
-                  f"продажи BOTTLE_20L = {total_sales_bottle_20l}")
+            print(
+                f"Совпадение для курьера {self.courier}: total_quantity = {self.total_quantity}, "
+                f"продажи BOTTLE_20L (Order) = {total_sales_bottle_20l}"
+            )
 
 
 class DeliveryLogMove(models.Model):
@@ -93,67 +103,13 @@ class DeliveryLogMove(models.Model):
 
 
 class DeliveryJournal(models.Model):
-    """Отчеты курьеров"""
+    """Deprecated: DeliveryJournal model removed.
 
-    courier = models.ForeignKey(Worker, on_delete=models.CASCADE, verbose_name='Курьер')
-    date = models.DateField(verbose_name='Дата')
-    card_price = models.IntegerField(default=0, verbose_name='Сумма картой')
-    total_price = models.IntegerField(default=0, verbose_name='Сумма налом')
-
-    class Meta:
-        verbose_name = "Журнал доставок"
-        verbose_name_plural = "Журналы доставок"
-        ordering = ['-date']  # Сортировка по дате
-
-    def __str__(self):
-        return f'Отчет курьера {self.courier} за {self.date}: {self.total_price}'
-
-    def update_total_price(self):
-        """Пересчитывает общую сумму отчета"""
-        total_price = 0
-        card_price = 0
-        for product in self.products.all():
-            if product.payment_type == DeliveryJournalProducts.PaymentsType.BONUS:
-                total_price -= abs(product.price) or 0  # Вычитаем при бонусной оплате
-            elif product.payment_type == DeliveryJournalProducts.PaymentsType.CARD:
-                card_price += product.price or 0  # Прибаляем при оплате картой
-            else:
-                total_price += product.price or 0  # Прибавляем в любом случае случаях
-        self.total_price = total_price
-        self.card_price = card_price
-        self.save()
-
-
-class DeliveryJournalProducts(models.Model):
-    """Инфа о продуктах в отчете"""
-
-    class PaymentsType(models.TextChoices):
-        CARD = 'CD', 'Карта'
-        CASH = 'CH', 'Наличные'
-        BONUS = 'BS', 'Бонус'
-
-    note = models.CharField(verbose_name='Описание', null=True, blank=True, max_length=255)
-    delivery_journal = models.ForeignKey(DeliveryJournal, on_delete=models.CASCADE, related_name='products',
-                                         verbose_name='Журнал доставки')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name='Продукт', default=2)
-    quantity = models.IntegerField(default=1, verbose_name='Количество')
-    price = models.IntegerField(blank=True, null=True, verbose_name='Цена')
-    payment_type = models.CharField(choices=PaymentsType.choices, default=PaymentsType.CASH, verbose_name='Тип оплаты', max_length=2)
-
-    class Meta:
-        verbose_name = "Продукт в журнале доставок"
-        verbose_name_plural = "Продукты в журналах доставок"
-
-    def __str__(self):
-        return f'{self.product} ({self.quantity} шт.)'
-
-    def save(self, *args, **kwargs):
-        """Пересчет цены и обновление total_price в журнале"""
-        if self.price is None:  # Если цена не указана считаем по формуле
-            self.price = self.product.price * self.quantity
-
-        super().save(*args, **kwargs)  # Сохраняем запись
-        self.delivery_journal.update_total_price()  # Пересчитываем общую сумму
+    Ранее использовался для ручных отчетов курьеров. Источник правды в
+    новой архитектуре — модели CourierShift/CourierTrip/Order.
+    Этот класс удалён из кода. Если требуется историческая совместимость,
+    используйте резервные таблицы или миграции для доступа к старым данным.
+    """
 
 
 class CourierShift(models.Model):

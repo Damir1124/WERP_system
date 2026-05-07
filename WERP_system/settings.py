@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     
     # Third-party apps
     'rest_framework',
+    'channels',
     
     # Local apps
     'apps.accounting',
@@ -94,6 +95,19 @@ CACHES = {
         }
     }
 }
+
+# Channels configuration for WebSockets
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")],
+        },
+    },
+}
+
+# ASGI application for Django Channels
+ASGI_APPLICATION = "WERP_system.asgi.application"
 
 LANGUAGE_CODE = 'ru-ru' # Поставил русский для удобства ERP
 TIME_ZONE = 'Asia/Samarkand' # Твой часовой пояс
