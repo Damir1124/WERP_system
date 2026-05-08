@@ -415,3 +415,58 @@ class CreateOrderView(APIView):
             'quantity': order.quantity,
             'price': order.price
         }, status=status.HTTP_201_CREATED)
+
+
+class IdentifyView(APIView):
+    """
+    Идентификация пользователя по Telegram ID.
+    GET /api/bot/identify/?tg_id=<id>
+    Возвращает роль (courier, client, admin, unknown) и данные пользователя.
+    """
+    permission_classes = []  # публичный endpoint
+
+    def get(self, request):
+        tg_id = request.query_params.get('tg_id')
+        if not tg_id:
+            return Response(
+                {'error': 'Параметр tg_id обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            tg_id_int = int(tg_id)
+        except ValueError:
+            return Response(
+                {'error': 'tg_id должен быть числом'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем Worker (курьер или администратор)
+        from apps.workers.models import Worker
+        from apps.clients.models import Client
+        
+        worker = Worker.objects.filter(tg_id=tg_id_int).first()
+        if worker:
+            role = 'admin' if worker.is_admin else 'courier'
+            return Response({
+                'role': role,
+                'name': worker.full_name,
+                'id': worker.id,
+                'worker_type': worker.worker_type,
+            })
+        
+        # Проверяем Client
+        client = Client.objects.filter(tg_id=tg_id_int).first()
+        if client:
+            return Response({
+                'role': 'client',
+                'name': client.name,
+                'id': client.id,
+                'phone': client.phone,
+            })
+        
+        # Не найден
+        return Response({
+            'role': 'unknown',
+            'message': 'Пользователь не зарегистрирован в системе'
+        })

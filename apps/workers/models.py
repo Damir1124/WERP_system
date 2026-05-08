@@ -16,6 +16,18 @@ class Worker(models.Model):
     )
     date_for_payed = models.DateField(blank=True, null=False, verbose_name='Начисление зарплаты', default=date.today)
     note = models.TextField(blank=True, verbose_name="Примечание")
+    tg_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name='Telegram ID',
+        help_text='ID пользователя в Telegram для авторизации в боте'
+    )
+    is_admin = models.BooleanField(
+        default=False,
+        verbose_name='Администратор бота',
+        help_text='Даёт доступ к командам администратора в Telegram-боте'
+    )
 
     created_at = models.DateField(auto_now_add=True, verbose_name='Созданно')
     updated_at = models.DateField(auto_now=True, verbose_name='Обнавлено')

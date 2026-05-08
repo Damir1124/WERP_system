@@ -1,0 +1,39 @@
+2026-05-07 21:31:38,169 - __main__ - ERROR - Критическая ошибка: No module named 'aiogram'
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 74, in <module>
+    asyncio.run(main())
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 28, in main
+    from tg_bot.bot import bot, dp
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\bot.py", line 7, in <module>
+    from aiogram import Bot, Dispatcher
+ModuleNotFoundError: No module named 'aiogram'
+2026-05-07 21:32:34,424 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-07 21:32:34,424 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-07 21:32:38,014 - aiogram.dispatcher - INFO - Start polling
+2026-05-07 21:32:38,134 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-07 21:33:28,854 - tg_bot.routers.courier - INFO - Курьер 754549457 запустил бота
+2026-05-07 21:33:29,157 - aiogram.event - INFO - Update id=389406781 is handled. Duration 578 ms by bot id=8614741494
+2026-05-07 21:33:39,471 - aiogram.event - INFO - Update id=389406782 is handled. Duration 422 ms by bot id=8614741494
+2026-05-07 21:33:46,069 - aiogram.event - INFO - Update id=389406783 is handled. Duration 530 ms by bot id=8614741494
+2026-05-07 21:34:30,594 - aiogram.event - INFO - Update id=389406784 is handled. Duration 407 ms by bot id=8614741494
+2026-05-07 21:34:58,510 - aiogram.event - INFO - Update id=389406785 is not handled. Duration 282 ms by bot id=8614741494
+2026-05-07 21:35:20,177 - aiogram.event - INFO - Update id=389406786 is not handled. Duration 280 ms by bot id=8614741494
+2026-05-07 21:35:22,584 - aiogram.event - INFO - Update id=389406787 is not handled. Duration 280 ms by bot id=8614741494
+2026-05-07 21:35:24,098 - aiogram.event - INFO - Update id=389406788 is not handled. Duration 266 ms by bot id=8614741494
+2026-05-07 21:35:26,024 - aiogram.event - INFO - Update id=389406789 is not handled. Duration 282 ms by bot id=8614741494
+2026-05-07 21:35:27,231 - aiogram.event - INFO - Update id=389406790 is handled. Duration 436 ms by bot id=8614741494
+2026-05-07 21:35:30,666 - aiogram.event - INFO - Update id=389406791 is not handled. Duration 280 ms by bot id=8614741494
+2026-05-07 21:35:37,430 - aiogram.event - INFO - Update id=389406792 is handled. Duration 421 ms by bot id=8614741494
+2026-05-07 21:35:54,782 - aiogram.event - INFO - Update id=389406793 is handled. Duration 436 ms by bot id=8614741494
+2026-05-07 21:36:03,462 - aiogram.event - INFO - Update id=389406794 is handled. Duration 422 ms by bot id=8614741494
+2026-05-07 21:36:09,913 - aiogram.event - INFO - Update id=389406795 is handled. Duration 390 ms by bot id=8614741494
+2026-05-07 21:36:12,612 - aiogram.event - INFO - Update id=389406796 is not handled. Duration 264 ms by bot id=8614741494

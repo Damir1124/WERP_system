@@ -36,4 +36,7 @@ urlpatterns = [
     path('courier/orders/confirm/', views.OrderConfirmationView.as_view(), name='order_confirmation'),
     path('courier/orders/update-quantity/', views.OrderQuantityUpdateView.as_view(), name='order_update_quantity'),
     path('courier/orders/create/', views.CreateOrderView.as_view(), name='create_order'),
+    
+    # Идентификация пользователя по Telegram ID (для бота)
+    path('identify/', views.IdentifyView.as_view(), name='identify'),
 ]

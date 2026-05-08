@@ -15,6 +15,10 @@
 | Backend framework | Django                       | 5.1.6 ✅          |
 | REST API          | Django REST Framework (DRF)  | 3.15.2 ✅         |
 | Telegram Bot      | Aiogram                      | 3.x (планируется) |
+| Mini App фронтенд | React 18 + Vite              | планируется (P3)  |
+| Стили Mini App    | Tailwind CSS                 | планируется (P3)  |
+| Telegram SDK      | @twa-dev/sdk                 | планируется (P3)  |
+| Веб-сервер        | Nginx + Gunicorn/Uvicorn     | планируется (P3)  |
 | База данных       | PostgreSQL                   | 17 ✅             |
 | Real-time         | Django Channels (WebSockets) | 4.1.0 ✅          |
 | Channels Redis    | channels-redis               | 4.2.0 ✅          |
@@ -335,15 +339,649 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 
 ---
 
-### [P3] Telegram Mini App (TWA) — заказы от клиентов
+### [P3] Telegram Mini App (TWA) — три профиля: курьер, клиент, админ
 
-**Что делать:** Отдельный API endpoint для клиентского Mini App: просмотр каталога `Product` и создание заказа в `Order`.
+> **Цель:** Единый Telegram-бот на aiogram 3.x с тремя ролевыми профилями, каждый открывает свой Mini App (TWA). Бот — точка входа и авторизации; вся бизнес-логика остаётся в Django через bot_bridge API.
 
-**Файлы:**
-- `apps/bot_bridge/views.py` — добавить `ClientOrderView`, `ProductListView`
-- `apps/bot_bridge/serializers.py` — добавить `ProductSerializer`, `OrderCreateSerializer`
+---
 
-**Зависимости:** bot_bridge (P2), P1 (tg_id в Client), P0 (модель Order)
+#### 3.1 Архитектура бота (aiogram 3.x)
+
+```
+tg_bot/
+├── __main__.py              — точка входа, запуск polling / webhook
+├── bot.py                   — создание Bot и Dispatcher
+├── config.py                — настройки (BOT_TOKEN, DJANGO_API_URL, MINI_APP_URL)
+├── middlewares/
+│   └── auth.py              — определение роли пользователя по tg_id через API
+├── routers/
+│   ├── courier.py           — хэндлеры для курьера
+│   ├── client.py            — хэндлеры для клиента
+│   └── admin.py             — хэндлеры для администратора
+└── keyboards/
+    ├── courier.py           — клавиатуры курьера (inline + reply)
+    ├── client.py            — клавиатуры клиента
+    └── admin.py             — клавиатуры администратора
+```
+
+**Авторизация и определение роли:**
+- При старте (`/start`) бот отправляет `GET /api/bot/identify/?tg_id=<id>` → Django возвращает роль: `courier` / `client` / `admin` / `unknown`
+- Middleware сохраняет роль в `FSMContext` / `data` для каждого апдейта
+- Новый пользователь (`unknown`) → предложение зарегистрироваться как клиент
+
+**Добавить в `Worker`:**
+```python
+tg_id = models.BigIntegerField(null=True, blank=True, unique=True, verbose_name='Telegram ID')
+```
+> ⚠️ Сейчас `tg_id` есть только у `Client`. Для идентификации курьеров нужно добавить поле `tg_id` в `Worker`.
+
+**Новый endpoint идентификации** (`bot_bridge/views.py`):
+```python
+# GET /api/bot/identify/?tg_id=<id>
+# Проверяет: Worker.tg_id → role=courier, Worker.is_admin → role=admin, Client.tg_id → role=client
+# Ответ: {"role": "courier"|"client"|"admin"|"unknown", "name": "...", "id": ...}
+```
+
+---
+
+#### 3.2 Профиль «Курьер» — Mini App пула заказов
+
+**Что видит курьер в боте:**
+- Кнопка «Открыть рабочий стол» → открывает TWA курьера
+- Inline-уведомления: новый заказ в пул, статус рейса
+
+**Mini App курьера (React/Vue SPA, размещается на отдельном домене или в `static/`):**
+
+```
+Экраны Mini App курьера:
+├── Главный экран
+│   ├── Статус смены (OPEN / нет смены)
+│   ├── Кнопка «Открыть смену» (если нет активной)
+│   └── Кнопка «Открыть рейс» (если смена открыта)
+│
+├── Пул заказов (таблица)
+│   ├── Колонки: # | Клиент | Адрес | Продукт | Кол-во | Тип оплаты | Статус
+│   ├── Фильтр: PENDING / все
+│   ├── Взять заказ → POST /api/bot/courier/order/<id>/assign/
+│   └── Отмена взятого заказа
+│
+├── Мой рейс (активный CourierTrip)
+│   ├── Счётчики:
+│   │   ├── Загружено полных (full_loaded)
+│   │   ├── Доставлено (delivered count)
+│   │   ├── Остаток полных в машине (full_loaded - delivered - full_returned)
+│   │   ├── Пустых в машине (empty_received из EXCHANGE-заказов)
+│   │   └── Брак (defective_received из DEFECTIVE-заказов)
+│   ├── Сколько должно быть пустых баклажек (расчёт: кол-во EXCHANGE заказов в рейсе)
+│   ├── Наличных должно быть в кармане (sum CASH-заказов со статусом DELIVERED)
+│   ├── По карте должно быть (sum CARD-заказов со статусом DELIVERED)
+│   └── Список заказов рейса с возможностью подтвердить каждый
+│
+├── Подтверждение заказа (форма)
+│   ├── Выбор container_op: ОБМЕН / ПРОДАЖА С ТАРОЙ / БРАК
+│   ├── Тип оплаты (cash/card/bonus)
+│   ├── Примечание
+│   └── Кнопка «Доставлено» → PATCH /api/bot/orders/<id>/deliver/
+│
+├── Смены и рейсы (история)
+│   ├── Список своих CourierShift (дата, статус, наличные, безнал)
+│   └── По клику → список CourierTrip → список Order
+│
+└── Таблица «Мои коллеги» (другие курьеры)
+    ├── ФИО | Статус смены | Кол-во доставлено сегодня | Телефон (из Worker)
+    └── Только для курьеров со статусом OPEN сегодня
+```
+
+**Новые API endpoints для курьерского Mini App** (`bot_bridge/views.py`):
+
+```python
+# --- Пул заказов ---
+# GET  /api/bot/courier/pool/          — PENDING заказы без назначенного курьера или все рейса
+# POST /api/bot/courier/order/<id>/assign/  — взять заказ (добавить в свой активный trip)
+
+# --- Текущий рейс ---
+# GET  /api/bot/courier/trip/current/  — активный CourierTrip + его заказы + summary
+# Расчётные поля в ответе:
+#   empty_expected  = кол-во EXCHANGE заказов в рейсе
+#   cash_expected   = сумма CASH DELIVERED заказов
+#   card_expected   = сумма CARD DELIVERED заказов
+
+# --- Коллеги ---
+# GET  /api/bot/courier/colleagues/    — курьеры с открытой сменой сегодня
+```
+
+> **Примечание по пулу заказов:** В текущей архитектуре заказы создаются диспетчером и уже привязаны к рейсу. Для реального пула нужно добавить промежуточный статус: `Order.status = POOL` (не назначен курьеру). Или пул = PENDING заказы клиентов (созданные через клиентский Mini App), которые диспетчер / курьер берёт в рейс.
+
+---
+
+#### 3.3 Профиль «Клиент» — Mini App каталога и заказов
+
+**Что видит клиент в боте:**
+- Приветствие с именем из `Client.name`
+- Кнопка «Каталог и заказ» → открывает TWA клиента
+- Уведомление о статусе заказа (через bot.send_message при изменении Order.status)
+
+**Mini App клиента (React/Vue SPA):**
+
+```
+Экраны Mini App клиента:
+├── Каталог товаров
+│   ├── Список Product (тип, название, цена)
+│   ├── Карточка товара: фото (если есть), описание, цена
+│   └── Кнопка «Заказать»
+│
+├── Оформление заказа
+│   ├── Выбор количества
+│   ├── Тип оплаты (CASH / CARD)
+│   ├── Адрес (подтягивается из Client, можно изменить)
+│   └── Кнопка «Подтвердить» → POST /api/bot/client/order/
+│
+└── Мои заказы
+    ├── История заказов клиента (Order по client.tg_id)
+    └── Статус: PENDING (ожидает) | DELIVERED (доставлен) | CANCELLED
+```
+
+**Уведомление клиенту при доставке** (отправляется из Django через Webhook или отдельный сервис):
+```
+Курьер принял ваш заказ:
+  Курьер: Иван Иванов
+  Телефон: +998901234567
+  Заказ: Вода 20л × 2 шт.
+  Статус: В пути 🚚
+```
+
+**Новые API endpoints для клиентского Mini App**:
+```python
+# GET  /api/bot/client/products/           — каталог товаров (только WATER, BOTTLE_20L)
+# POST /api/bot/client/order/              — создать заказ (status=PENDING, trip=None до назначения)
+# GET  /api/bot/client/orders/             — история заказов клиента (by tg_id)
+# GET  /api/bot/client/order/<id>/status/  — текущий статус + информация о курьере если DELIVERED
+```
+
+**Добавить в `Order`:**
+```python
+assigned_courier = models.ForeignKey(
+    'workers.Worker', null=True, blank=True,
+    on_delete=models.SET_NULL, related_name='assigned_orders',
+    verbose_name='Назначенный курьер'
+)
+```
+> Это поле нужно для отображения клиенту информации о курьере при доставке.
+
+**Уведомление реализуется через** `bot_bridge/notify.py`:
+```python
+# async def notify_client_order_accepted(order: Order):
+#     """Отправляет tg-уведомление клиенту когда курьер взял заказ"""
+#     # bot.send_message(client.tg_id, text=...)
+```
+
+---
+
+#### 3.4 Профиль «Администратор» — мини-статистика из Django Admin
+
+**Что видит администратор в боте:**
+- Кнопки быстрого доступа: «Статистика сегодня», «Активные смены», «Склад»
+- Открыть TWA admin (опционально) или получить данные прямо в чате
+
+**Команды администратора в боте:**
+```
+/stats        — сводка за сегодня (Finance: доход, расход, прибыль, безнал)
+/shifts       — список активных смен сегодня (курьер, наличные, безнал, заказов)
+/stock        — топ-5 позиций склада с критическими остатками (quantity < 10)
+/orders       — последние 10 заказов (клиент, сумма, статус, курьер)
+```
+
+**Inline-кнопки в сообщении `/stats`:**
+```
+[ Смены сегодня ] [ Склад ] [ Финансы за неделю ]
+```
+
+**Ответ на `/stats` (форматированный текст, без TWA):**
+```
+📊 Сводка за 05.05.2026
+━━━━━━━━━━━━━━━━
+💰 Доход:    1 250 000 сум
+📉 Расход:     180 000 сум
+✅ Прибыль:  1 070 000 сум
+💳 Безнал:     320 000 сум
+━━━━━━━━━━━━━━━━
+🚚 Активных смен: 3
+📦 Заказов выполнено: 47
+```
+
+**Новые API endpoints для admin-профиля**:
+```python
+# GET /api/bot/admin/stats/today/   — Finance за сегодня + кол-во активных смен + заказов
+# GET /api/bot/admin/shifts/        — активные CourierShift с courier, cash_total, card_total
+# GET /api/bot/admin/stock/alerts/  — StockBalance где quantity < 10
+# GET /api/bot/admin/orders/recent/ — последние N заказов
+```
+
+**Авторизация администратора:** Добавить флаг `is_admin` в модель `Worker`:
+```python
+is_admin = models.BooleanField(default=False, verbose_name='Администратор бота')
+```
+
+---
+
+#### 3.5 Фронтенд Mini App — полное руководство для бэкендера
+
+> ⚠️ **Контекст для AI:** Разработчик проекта — бэкендер на Python/Django. В проекте нет ни одного файла фронтенда. Этот раздел — полная инструкция с нуля: что установить, что создать, как связать с Django. AI должен создавать фронтенд-файлы самостоятельно, не ожидая что они уже существуют.
+
+---
+
+##### Что такое TWA (Telegram Web App) — кратко
+
+TWA (Telegram Web App / Mini App) — это обычная веб-страница (HTML + JS + CSS), которая открывается **внутри Telegram** как модальное окно. Для пользователя это выглядит как нативное приложение. Telegram предоставляет JS SDK (`window.Telegram.WebApp`) для взаимодействия с ботом.
+
+**Схема работы:**
+```
+Пользователь нажимает кнопку в боте
+        │
+        └─► Telegram открывает URL (твоя веб-страница) внутри себя
+                │
+                └─► Страница читает window.Telegram.WebApp.initData
+                        │  (содержит tg_id пользователя, подписанный Telegram)
+                        └─► Страница делает fetch() к Django API
+                                │  (передаёт initData в заголовке для авторизации)
+                                └─► Django отвечает данными → страница их рендерит
+```
+
+**Жёсткое требование Telegram:** URL Mini App **обязан** работать по HTTPS. На локальной разработке — использовать ngrok или Cloudflare Tunnel.
+
+---
+
+##### Выбранный стек фронтенда (рекомендация для этого проекта)
+
+| Компонент | Технология | Зачем |
+|-----------|-----------|-------|
+| Фреймворк | **React 18** (через Vite) | Компонентный подход, большое сообщество |
+| Сборщик | **Vite** | Быстрая сборка, простая настройка, `npm run build` → статика |
+| Стили | **Tailwind CSS** | Утилитарные классы, не надо писать CSS вручную |
+| Telegram SDK | `@twa-dev/sdk` | TypeScript-обёртка над `window.Telegram.WebApp` |
+| HTTP-клиент | `fetch` (встроенный) | Запросы к Django DRF API |
+| Хостинг | **Статика через Django + Nginx** | Нет отдельного сервера, всё в одном месте |
+
+---
+
+##### Структура фронтенд-проекта (создать рядом с Django)
+
+```
+корень проекта/
+├── WERP_system/          — Django settings
+├── apps/                 — Django apps
+├── manage.py
+├── static/               — статика Django
+│
+└── frontend/             — ВСЁ НОВОЕ: фронтенд Mini App
+    ├── courier/          — Mini App для курьера
+    │   ├── package.json
+    │   ├── vite.config.js
+    │   ├── index.html         — точка входа (Vite заполняет автоматически)
+    │   ├── tailwind.config.js
+    │   ├── postcss.config.js
+    │   └── src/
+    │       ├── main.jsx       — ReactDOM.createRoot(...)
+    │       ├── App.jsx        — роутинг между экранами
+    │       ├── tg.js          — инициализация Telegram.WebApp
+    │       ├── api.js         — fetch-функции к /api/bot/courier/...
+    │       └── pages/
+    │           ├── Pool.jsx       — пул заказов
+    │           ├── Trip.jsx       — активный рейс + счётчики
+    │           ├── OrderConfirm.jsx — подтверждение доставки
+    │           ├── Shifts.jsx     — история смен
+    │           └── Colleagues.jsx — коллеги онлайн
+    │
+    └── client/           — Mini App для клиента
+        ├── package.json
+        ├── vite.config.js
+        ├── index.html
+        └── src/
+            ├── main.jsx
+            ├── App.jsx
+            ├── tg.js
+            ├── api.js
+            └── pages/
+                ├── Catalog.jsx     — каталог товаров
+                ├── OrderForm.jsx   — оформление заказа
+                └── MyOrders.jsx    — история заказов
+```
+
+---
+
+##### Пошаговая инструкция: создать Mini App курьера с нуля **POWERSHELL**
+
+**Шаг 1 — Установить Node.js** (если не установлен) 
+```bash
+# Проверить наличие:
+node --version   # нужен v18+
+npm --version
+
+# Установка на Ubuntu/Debian:
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+**Шаг 2 — Создать Vite + React проект**
+```bash
+cd /путь/к/проекту/frontend
+npm create vite@latest courier -- --template react
+cd courier
+npm install
+```
+
+**Шаг 3 — Установить зависимости**
+```bash
+npm install @twa-dev/sdk        # Telegram WebApp SDK
+npm install react-router-dom    # роутинг между страницами
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+**Шаг 4 — Настроить Tailwind** (`tailwind.config.js`):
+```js
+export default {
+  content: ["./index.html", "./src/**/*.{js,jsx}"],
+  theme: { extend: {} },
+  plugins: [],
+}
+```
+Добавить в `src/index.css`:
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+**Шаг 5 — Настроить Vite** (`vite.config.js`):
+```js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  // base — путь где будет лежать собранное приложение
+  // если раздаёт Django по /static/miniapp/courier/ то:
+  base: '/static/miniapp/courier/',
+  build: {
+    outDir: '../../static/miniapp/courier',  // сборка прямо в Django static
+    emptyOutDir: true,
+  }
+})
+```
+
+**Шаг 6 — Создать `src/tg.js`** (инициализация Telegram SDK):
+```js
+import WebApp from '@twa-dev/sdk'
+
+// Вызывать один раз при старте приложения
+export function initTelegram() {
+  WebApp.ready()          // сообщить Telegram что приложение загрузилось
+  WebApp.expand()         // раскрыть на весь экран
+}
+
+// tg_id текущего пользователя — использовать в каждом API запросе
+export const tgUser = WebApp.initDataUnsafe?.user
+export const tgId = tgUser?.id
+export const initData = WebApp.initData  // подписанная строка — для авторизации на сервере
+```
+
+**Шаг 7 — Создать `src/api.js`** (запросы к Django):
+```js
+import { initData, tgId } from './tg.js'
+
+const BASE_URL = import.meta.env.VITE_API_URL  // берётся из .env файла
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-ID': tgId,           // идентификация курьера
+      'X-Telegram-Init-Data': initData, // валидация на сервере
+      ...options.headers,
+    },
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export const api = {
+  getPool:        ()       => apiFetch('/api/bot/courier/pool/'),
+  getCurrentTrip: ()       => apiFetch('/api/bot/courier/trip/current/'),
+  deliverOrder:   (id, data) => apiFetch(`/api/bot/orders/${id}/deliver/`, {
+    method: 'PATCH', body: JSON.stringify(data)
+  }),
+  getColleagues:  ()       => apiFetch('/api/bot/courier/colleagues/'),
+  getShifts:      ()       => apiFetch('/api/bot/courier/shifts/'),
+  openShift:      ()       => apiFetch('/api/bot/shifts/', { method: 'POST' }),
+  openTrip:       (data)   => apiFetch('/api/bot/trips/', { method: 'POST', body: JSON.stringify(data) }),
+}
+```
+
+**Шаг 8 — Создать `.env` файл** (в папке `frontend/courier/`):
+```
+VITE_API_URL=https://yourdomain.com
+```
+> На локальной разработке: `VITE_API_URL=https://xxxx.ngrok.io` (через ngrok)
+
+**Шаг 9 — Собрать и раздать через Django**
+```bash
+cd frontend/courier
+npm run build
+# → файлы появятся в static/miniapp/courier/
+```
+Django автоматически раздаёт всё из `STATICFILES_DIRS`. URL: `https://yourdomain.com/static/miniapp/courier/index.html`
+
+---
+
+##### Как Django узнаёт кто делает запрос (авторизация TWA)
+
+**Проблема:** Браузер внутри Telegram не знает логин/пароль Django.  
+**Решение:** Telegram подписывает данные пользователя (`initData`) своим секретным ключом. Django проверяет подпись.
+
+**Валидация в `bot_bridge/permissions.py`:**
+```python
+import hashlib
+import hmac
+from urllib.parse import parse_qsl
+from rest_framework.permissions import BasePermission
+
+class TelegramInitDataPermission(BasePermission):
+    def has_permission(self, request, view):
+        init_data = request.headers.get('X-Telegram-Init-Data', '')
+        bot_token = settings.TELEGRAM_BOT_TOKEN
+
+        # Алгоритм валидации из документации Telegram:
+        data_check_string = '\n'.join(
+            f'{k}={v}' for k, v in sorted(parse_qsl(init_data))
+            if k != 'hash'
+        )
+        secret_key = hmac.new(b'WebAppData', bot_token.encode(), hashlib.sha256).digest()
+        expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        received_hash = dict(parse_qsl(init_data)).get('hash', '')
+        return hmac.compare_digest(expected_hash, received_hash)
+```
+
+> **Упрощение для MVP:** На этапе разработки можно использовать только `X-Telegram-ID` заголовок без валидации подписи. Включить полную валидацию перед продакшеном.
+
+---
+
+##### Nginx — как раздать и Django, и Mini App по HTTPS
+
+> **Контекст:** Без Nginx в продакшене не обойтись — Telegram требует HTTPS, а Django `runserver` не поддерживает SSL. Nginx терминирует SSL и проксирует запросы к Django (Gunicorn/Uvicorn).
+
+**Схема:**
+```
+Интернет → Nginx (порт 443, SSL) → Gunicorn (порт 8000, Django)
+                │
+                └─► /static/ → Django collectstatic папка (статика без Python)
+```
+
+**Конфигурация `/etc/nginx/sites-available/werp`:**
+```nginx
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    # Статика Django (включает собранные Mini App)
+    location /static/ {
+        alias /путь/к/проекту/staticfiles/;  # после python manage.py collectstatic
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # Медиафайлы (контракты)
+    location /media/ {
+        alias /путь/к/проекту/media/;
+    }
+
+    # Все остальные запросы → Django
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        # WebSockets (для Django Channels)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+# Редирект HTTP → HTTPS
+server {
+    listen 80;
+    server_name yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+**SSL сертификат (бесплатно через Let's Encrypt):**
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
+
+**Django collectstatic** (собрать всю статику в одну папку для Nginx):
+```bash
+python manage.py collectstatic --noinput
+# → все файлы из static/ и приложений попадут в staticfiles/
+```
+
+Добавить в `settings.py`:
+```python
+STATIC_ROOT = BASE_DIR / 'staticfiles'   # куда collectstatic кладёт файлы
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static'] # исходная папка (твоя + собранные Mini App)
+```
+
+---
+
+##### Локальная разработка TWA (без домена)
+
+Telegram не открывает `localhost`. Нужен публичный HTTPS-туннель:
+
+```bash
+# Вариант 1: ngrok (проще)
+npm install -g ngrok
+ngrok http 8000
+# → получишь https://xxxx.ngrok.io → вставь в .env и в настройки бота
+
+# Вариант 2: Cloudflare Tunnel (стабильнее, бесплатно)
+cloudflared tunnel --url http://localhost:8000
+```
+
+В aiogram-боте URL кнопки Mini App:
+```python
+from aiogram.types import InlineKeyboardButton, WebAppInfo
+
+button = InlineKeyboardButton(
+    text="Открыть рабочий стол",
+    web_app=WebAppInfo(url="https://xxxx.ngrok.io/static/miniapp/courier/index.html")
+)
+```
+
+---
+
+##### Порядок действий при реализации P3 (для AI)
+
+> Это чёткий порядок. Не начинать следующий шаг, не завершив предыдущий.
+
+```
+1. [Django] Добавить tg_id, is_admin в Worker. Миграция.
+2. [Django] Добавить /api/bot/identify/ endpoint.
+3. [Django] Добавить все новые bot_bridge endpoints (courier pool, trip, client orders, admin stats).
+4. [Django] Написать TelegramInitDataPermission в bot_bridge/permissions.py.
+5. [Django] Написать notify.py для уведомлений клиентам.
+6. [Bot] Создать tg_bot/ структуру. Настроить роутеры по ролям.
+7. [Frontend] Создать frontend/courier/ через Vite (шаги 1-8 выше).
+8. [Frontend] Создать frontend/client/ аналогично.
+9. [Build] npm run build в обоих приложениях → файлы в static/miniapp/.
+10. [Django] python manage.py collectstatic.
+11. [Nginx] Настроить конфиг. Получить SSL.
+12. [Bot] Прописать HTTPS URL кнопок Mini App.
+13. [Тест] Проверить открытие TWA в Telegram → запросы доходят до Django.
+```
+
+---
+
+#### 3.6 Файлы для создания/изменения (P3 полный список)
+
+**Django backend:**
+```
+apps/bot_bridge/
+├── views.py             — дополнить: identify, courier pool/trip/colleagues, client orders, admin stats
+├── serializers.py       — дополнить: CourierPoolSerializer, TripSummarySerializer, ClientOrderSerializer
+├── permissions.py       — дополнить: TelegramInitDataPermission (валидация TWA initData)
+├── notify.py            — создать: async функции отправки уведомлений через бот
+└── urls.py              — дополнить: все новые маршруты
+
+apps/workers/models.py   — добавить поля: tg_id, is_admin в Worker
+apps/logistics/models.py — добавить поле: assigned_courier в Order (optional)
+```
+
+**Telegram bot:**
+```
+tg_bot/
+├── __main__.py
+├── bot.py
+├── config.py
+├── middlewares/auth.py
+├── routers/courier.py
+├── routers/client.py
+├── routers/admin.py
+├── keyboards/courier.py
+├── keyboards/client.py
+└── keyboards/admin.py
+
+requirements_bot.txt     — aiogram>=3.0, aiohttp, python-dotenv
+```
+
+**Mini App frontend (отдельный репозиторий или папка `frontend/`):**
+```
+frontend/
+├── courier/             — Vite + React
+│   └── src/
+│       ├── pages/Pool.jsx, Trip.jsx, Shifts.jsx, Colleagues.jsx
+│       ├── components/OrderCard.jsx, TripSummary.jsx
+│       └── api/client.js  — fetch-обёртка с X-Telegram-ID заголовком
+└── client/              — Vite + React
+    └── src/
+        ├── pages/Catalog.jsx, OrderForm.jsx, MyOrders.jsx
+        └── api/client.js
+```
+
+**Зависимости P3:**
+- P0 (модели CourierShift, CourierTrip, Order)
+- P1 (Client.tg_id)
+- P2 (bot_bridge API, DRF)
+- Redis (для Channels, уже в стеке)
+- aiogram 3.x установлен в bot-окружении
+- Mini App хостится на HTTPS (требование Telegram)
 
 ---
 
@@ -1000,7 +1638,11 @@ def handle_save(sender, instance, created, **kwargs):
 | 7 | **P2** | Генератор путевых листов `.docx` (`warehouse/utils.py`) | ⏳ Ожидает |
 | 8 | **P2** | `InventoryAdjustment` — ручная корректировка склада | ✅ Выполнено |
 | 9 | **P3** | WebSockets — Django Channels, `DashboardConsumer` | ⏳ Ожидает |
-| 10 | **P3** | Telegram Mini App (TWA) — клиентский заказ через бот | ⏳ Ожидает |
+| 10 | **P3** | aiogram-бот: три профиля (курьер / клиент / админ), роль-авторизация по tg_id | ⏳ Ожидает |
+| 10a | **P3** | Mini App курьера: пул заказов, активный рейс, счётчики пустых/наличных/карты, коллеги | ⏳ Ожидает |
+| 10b | **P3** | Mini App клиента: каталог, оформление заказа, уведомление о курьере | ⏳ Ожидает |
+| 10c | **P3** | Mini App / bot-команды администратора: статистика Finance, смены, алерты склада | ⏳ Ожидает |
+| 10d | **P3** | Новые bot_bridge endpoints: identify, courier pool/trip/colleagues, client orders, admin stats | ⏳ Ожидает |
 | 11 | **P4** | URLs — `urls.py` для всех приложений + обновить `WERP_system/urls.py` | ⏳ Ожидает |
 | 12 | **P5** | Django Admin — полная настройка всех моделей с inline, фильтрами, actions | ⏳ Ожидает |
 | 13 | **P6** | Веб-дашборд — приложение `dashboard`, шаблоны Bootstrap 5, 5 страниц | ⏳ Ожидает |

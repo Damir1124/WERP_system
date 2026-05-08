@@ -1,8 +1,8 @@
 # Модуль Bot Bridge (Мост для Telegram-бота)
 
 **Создан:** 2026-04-27
-**Обновлён:** 2026-05-02
-**Статус:** Реализован (P0 адаптирован)
+**Обновлён:** 2026-05-07
+**Статус:** Реализован (P0 адаптирован, P3 частично)
 **Зависимости:** `rest_framework`, `apps.logistics`, `apps.clients`, `apps.products`, `apps.workers`
 
 ## Назначение
@@ -203,11 +203,48 @@ curl -X GET http://localhost:8000/api/bot/courier/deliveries/today/ \
 ]
 ```
 
+## Реализация P3: Telegram Mini App и aiogram-бот
+
+**Выполнено (этап 3.1):**
+
+1. **Архитектура бота (aiogram 3.x)** — создана структура `tg_bot/`:
+   - `tg_bot/__main__.py` — точка входа с поддержкой polling/webhook
+   - `tg_bot/config.py` — конфигурация через переменные окружения (BOT_TOKEN, USE_WEBHOOK, DJANGO_API_URL)
+   - `tg_bot/bot.py` — инициализация бота, диспетчера, подключение middleware и роутеров
+   - `tg_bot/middlewares/auth.py` — `AuthMiddleware` для идентификации пользователя через Django API (`/api/bot/identify/`)
+   - `tg_bot/routers/` — отдельные роутеры для трёх ролей: курьер, клиент, администратор
+   - `tg_bot/keyboards/` — reply‑ и inline‑клавиатуры для каждой роли
+
+2. **Расширение модели Worker** — добавлены поля:
+   - `tg_id` (BigIntegerField, unique=True, null=True) — для связи с Telegram ID
+   - `is_admin` (BooleanField) — флаг администратора бота
+   - Миграция `workers.0002_worker_is_admin_worker_tg_id` создана и применена.
+
+3. **Endpoint идентификации** — `IdentifyView` в `bot_bridge/views.py`:
+   - GET `/api/bot/identify/?tg_id=...` возвращает `{"role": "courier"|"client"|"admin", "name": "...", "id": ..., "worker_type": "..."}`
+   - Используется middleware бота для автоматического определения роли пользователя.
+
+4. **Роутеры и команды**:
+   - **Курьер:** `/start`, `/deliveries`, `/profile`, `/shift`
+   - **Клиент:** `/start`, `/catalog`, `/order`, `/status`
+   - **Администратор:** `/start`, `/stats`, `/broadcast`, `/users`
+
+5. **Конфигурация и тестирование**:
+   - Обновлён `.env` с переменными бота
+   - Создан `requirements_bot.txt` с зависимостями aiogram, aiohttp, python‑dotenv
+   - Протестирован endpoint идентификации с тестовым Worker (tg_id=123456789)
+
+**Что осталось сделать (следующие этапы P3):**
+- Настройка WebSocket‑уведомлений (живой мониторинг)
+- Реализация Telegram Mini App (TWA) — фронтенд для клиентов и курьеров
+- Интеграция с геопозицией и автоматическим распределением заказов
+- Настройка webhook для продакшена
+
 ## Ограничения и планы развития
-1. **Нет поля `tg_id` в Worker** — временное решение использует `id`.
+1. **Поле `tg_id` в Worker добавлено** — теперь авторизация работает через Telegram ID.
 2. **Отсутствует веб‑сокет уведомление** — бот должен опрашивать API (polling).
 3. **Нет валидации геопозиции** — координаты клиента не проверяются.
-4. **В будущем:** Добавить WebSocket‑уведомления (P3), Telegram Mini App (P3), автоматическое распределение заказов (P3).
+4. **В будущем:** Завершить WebSocket‑уведомления (P3), Telegram Mini App (P3), автоматическое распределение заказов (P3).
 
 ## Ссылки
 - [[docs/Index|Главный индекс]]
