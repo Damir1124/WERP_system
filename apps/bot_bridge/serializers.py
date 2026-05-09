@@ -44,13 +44,14 @@ class OrderSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     payment_type_display = serializers.CharField(source='get_payment_type_display', read_only=True)
     container_op_display = serializers.CharField(source='get_container_op_display', read_only=True)
+    assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True, allow_null=True)
     
     class Meta:
         model = Order
         fields = ['id', 'trip', 'client', 'client_name', 'product', 'product_name',
                   'quantity', 'price', 'payment_type', 'payment_type_display',
                   'status', 'status_display', 'container_op', 'container_op_display',
-                  'note', 'created_at', 'delivered_at']
+                  'assigned_courier', 'assigned_courier_name', 'note', 'created_at', 'delivered_at']
         read_only_fields = ['price', 'created_at', 'delivered_at']
 
 

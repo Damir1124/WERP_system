@@ -37,3 +37,19 @@ ModuleNotFoundError: No module named 'aiogram'
 2026-05-07 21:36:03,462 - aiogram.event - INFO - Update id=389406794 is handled. Duration 422 ms by bot id=8614741494
 2026-05-07 21:36:09,913 - aiogram.event - INFO - Update id=389406795 is handled. Duration 390 ms by bot id=8614741494
 2026-05-07 21:36:12,612 - aiogram.event - INFO - Update id=389406796 is not handled. Duration 264 ms by bot id=8614741494
+2026-05-08 20:03:18,226 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-08 20:03:18,229 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-08 20:03:18,651 - aiogram.dispatcher - INFO - Start polling
+2026-05-08 20:03:18,751 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-08 20:03:31,430 - aiogram.event - INFO - Update id=389406797 is handled. Duration 952 ms by bot id=8614741494
+2026-05-08 20:03:33,890 - aiogram.event - INFO - Update id=389406798 is not handled. Duration 265 ms by bot id=8614741494
+2026-05-08 20:03:38,909 - aiogram.event - INFO - Update id=389406799 is handled. Duration 422 ms by bot id=8614741494
+2026-05-08 20:03:48,658 - aiogram.event - INFO - Update id=389406800 is handled. Duration 484 ms by bot id=8614741494
+2026-05-08 20:03:50,692 - aiogram.event - INFO - Update id=389406801 is handled. Duration 530 ms by bot id=8614741494
+2026-05-08 20:04:22,285 - tg_bot.routers.courier - INFO - Курьер 754549457 запустил бота
+2026-05-08 20:04:22,769 - aiogram.event - INFO - Update id=389406802 is handled. Duration 765 ms by bot id=8614741494
+2026-05-08 20:04:27,389 - aiogram.event - INFO - Update id=389406803 is handled. Duration 421 ms by bot id=8614741494
+2026-05-08 20:04:32,908 - aiogram.event - INFO - Update id=389406804 is not handled. Duration 265 ms by bot id=8614741494
+2026-05-08 20:04:38,365 - aiogram.event - INFO - Update id=389406805 is not handled. Duration 280 ms by bot id=8614741494
+2026-05-08 20:04:39,177 - aiogram.event - INFO - Update id=389406806 is not handled. Duration 265 ms by bot id=8614741494
+2026-05-08 20:04:39,967 - aiogram.event - INFO - Update id=389406807 is not handled. Duration 297 ms by bot id=8614741494

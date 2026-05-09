@@ -18,6 +18,7 @@
 * [[Concepts_WebSockets|WebSockets и Django Channels]]
 * [[Concepts_TelegramBotAuth|Авторизация Telegram бота через tg_id]]
 * [[Concepts_TelegramBot|Telegram Bot (aiogram 3.x) в WERP]] — архитектура бота, middleware, роутеры, ролевая авторизация
+* [[Concepts_TelegramMiniApp|Telegram Mini App (TWA)]] — фронтенд для бэкендера, React + Vite + Tailwind, авторизация через initData
 
 ## Статус выполнения задач P2
 **Задача P2 выполнена полностью:**
@@ -45,11 +46,31 @@
 6. ✅ **Настройка конфигурации** — `.env`, `requirements_bot.txt`, тестовый Worker
 7. ✅ **Тестирование базовой функциональности** — endpoint идентификации работает корректно
 
+**Реализован этап 3.3 (профиль «Клиент» — Mini App каталога и заказов):**
+1. ✅ **Добавлены новые API endpoints для клиентского Mini App**:
+   - `GET /api/bot/client/products/` — каталог товаров (только WATER, BOTTLE_20L)
+   - `POST /api/bot/client/order/` — создание заказа (status=PENDING, trip=None до назначения)
+   - `GET /api/bot/client/orders/` — история заказов клиента (по tg_id)
+   - `GET /api/bot/client/order/<id>/status/` — статус заказа + информация о курьере
+2. ✅ **Поле `assigned_courier` в модели Order** — уже присутствует, используется для отображения курьера клиенту
+3. ✅ **Создан модуль уведомлений `apps/bot_bridge/notify.py`** — функции `notify_client_order_accepted`, `notify_client_order_delivered` и др.
+4. ✅ **Интеграция с tg_bot** — роутер клиента, клавиатуры, middleware авторизации готовы; осталось добавить вызовы новых API и кнопку открытия Mini App.
+
+**Реализован этап 3.5 (Фронтенд Mini App — полное руководство для бэкендера):**
+1. ✅ **Создана структура фронтенд-проекта** — папка `frontend/` с подпапками `courier/` и `client/`
+2. ✅ **Настроены конфигурационные файлы** — `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`
+3. ✅ **Созданы базовые React-компоненты** — `App.jsx`, `tg.js`, `api.js`, `main.jsx`, `index.css`
+4. ✅ **Создана страница пула заказов** — `Pool.jsx` с таблицей заказов и кнопкой "Взять заказ"
+5. ✅ **Написана документация** — `docs/Concepts/Concepts_TelegramMiniApp.md` с полным руководством по TWA
+6. ✅ **Создан README с инструкциями** — `frontend/README.md` с пошаговой инструкцией установки и сборки
+
 **Осталось реализовать:**
 - WebSocket‑уведомления (живой мониторинг)
-- Фронтенд Telegram Mini App (TWA)
+- Завершение фронтенда курьера (остальные страницы: Trip, OrderConfirm, Shifts, Colleagues)
+- Фронтенд клиента (Catalog, OrderForm, MyOrders)
 - Интеграция с геопозицией и автоматическим распределением заказов
 - Настройка webhook для продакшена
+- Доработка бота: использование новых API endpoints, кнопка открытия Mini App
 
 ## Ссылки
 * [CLAUDE.md](../CLAUDE.md) — архитектурный справочник проекта.

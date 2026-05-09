@@ -48,6 +48,11 @@ apps/bot_bridge/
 | POST | `/api/bot/courier/orders/confirm/` | Подтверждение заказа (P0) |
 | POST | `/api/bot/courier/orders/update-quantity/` | Изменение количества в заказе (P0) |
 | POST | `/api/bot/courier/orders/create/` | Создание нового заказа в рейсе |
+| **Новые эндпоинты для администратора (этап 3.4)** | | |
+| GET | `/api/bot/admin/stats/today/` | Финансовая сводка за сегодня + активные смены + заказы |
+| GET | `/api/bot/admin/shifts/` | Активные смены курьеров с деталями |
+| GET | `/api/bot/admin/stock/alerts/` | Остатки склада с quantity < 10 (алерты) |
+| GET | `/api/bot/admin/orders/recent/` | Последние N заказов (по умолчанию 10) |
 
 ## Авторизация
 Курьер аутентифицируется через **Telegram ID**, который передаётся в заголовке `X-Telegram-ID`.
@@ -202,6 +207,38 @@ curl -X GET http://localhost:8000/api/bot/courier/deliveries/today/ \
   }
 ]
 ```
+
+## API endpoints для администратора (этап 3.4)
+
+**Выполнено (этап 3.4):**
+
+Добавлены четыре новых эндпоинта для администраторов бота, позволяющие получать оперативную статистику без входа в Django Admin.
+
+### 1. `AdminStatsTodayView` — `/api/bot/admin/stats/today/`
+- **Назначение:** Финансовая сводка за сегодня (модель `Finance`) + количество активных смен + количество заказов.
+- **Логика:** Возвращает объект `finance` (income, consumption, profit, card_profit) за текущую дату, количество активных смен (`CourierShift` со статусом OPEN) и общее количество заказов за день.
+- **Permission:** `IsAdmin` — проверяет, что `Worker.is_admin == True`.
+
+### 2. `AdminShiftsView` — `/api/bot/admin/shifts/`
+- **Назначение:** Список активных смен курьеров на сегодня с деталями (курьер, наличные, безнал, количество заказов).
+- **Логика:** Возвращает массив объектов, каждый содержит `courier_name`, `cash_total`, `card_total`, `total`, `orders_count`.
+- **Permission:** `IsAdmin`.
+
+### 3. `AdminStockAlertsView` — `/api/bot/admin/stock/alerts/`
+- **Назначение:** Остатки склада с критическим уровнем (`quantity < 10`).
+- **Логика:** Возвращает список продуктов с полями `product_name`, `product_type`, `quantity`, `last_received_date`, `last_departure_date`.
+- **Permission:** `IsAdmin`.
+
+### 4. `AdminOrdersRecentView` — `/api/bot/admin/orders/recent/`
+- **Назначение:** Последние N заказов (по умолчанию 10) с детальной информацией (клиент, продукт, сумма, статус, курьер).
+- **Логика:** Возвращает массив заказов с полными данными, включая `client_name`, `product_name`, `assigned_courier_name`, `courier_name` (из рейса).
+- **Permission:** `IsAdmin`.
+
+### Permission-класс `IsAdmin`
+Расширяет `IsCourier`, дополнительно проверяет флаг `is_admin` у найденного работника. Если работник не администратор, доступ запрещён.
+
+> 💡 **Почему отдельные эндпоинты для администратора?**
+> Администратору нужна агрегированная информация, которую неудобно получать через общие курьерские эндпоинты. Кроме того, это позволяет разграничить права доступа на уровне URL, что упрощает безопасность и логику бота.
 
 ## Реализация P3: Telegram Mini App и aiogram-бот
 
