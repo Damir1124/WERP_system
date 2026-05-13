@@ -277,6 +277,49 @@ curl -X GET http://localhost:8000/api/bot/courier/deliveries/today/ \
 - Интеграция с геопозицией и автоматическим распределением заказов
 - Настройка webhook для продакшена
 
+## Проверка подписи Telegram Mini App и CORS (обновление 2026-05-11)
+
+Для корректной работы Telegram Mini App (TWA) добавлены два важных механизма:
+
+### 1. Валидация initData
+Telegram Mini App передаёт подписанные данные (`initData`) в заголовке `X-Telegram-Init-Data`. Чтобы предотвратить подделку, сервер проверяет подпись с использованием секретного ключа бота.
+
+**Реализация:**
+- Создан файл `apps/bot_bridge/utils.py` с функциями:
+  - `verify_telegram_init_data(init_data)` — проверяет HMAC-SHA256 подпись.
+  - `extract_user_id_from_init_data(init_data)` — извлекает `tg_id` из JSON `user`.
+- Обновлён `IdentifyView`:
+  - Принимает заголовок `X-Telegram-Init-Data`.
+  - Проверяет подпись, возвращает `401` при несоответствии.
+  - Извлекает `tg_id` из проверенных данных.
+  - Сохраняет обратную совместимость с параметром `tg_id` (для бота).
+
+**Почему это важно:** Без проверки подписи злоумышленник может отправить любой `tg_id` и получить доступ к данным чужого аккаунта. Проверка гарантирует, что запрос действительно пришёл из Telegram.
+
+### 2. Настройка CORS для ngrok и фронтенда
+Mini App работает на домене `https://monkhood-chaperone-stinger.ngrok-free.dev`, а фронтенд в разработке — на `localhost:5173`. Чтобы браузер разрешил кросс‑доменные запросы, настроен `django-cors-headers`.
+
+**Изменения в `WERP_system/settings.py`:**
+- Добавлен `corsheaders` в `INSTALLED_APPS` и `MIDDLEWARE`.
+- Указаны разрешённые origins:
+  ```python
+  CORS_ALLOWED_ORIGINS = [
+      "https://monkhood-chaperone-stinger.ngrok-free.dev",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+  ]
+  ```
+- Разрешены кастомные заголовки `X-Telegram-ID` и `X-Telegram-Init-Data`.
+
+**Почему это важно:** Без CORS браузер блокирует запросы от фронтенда к API, и кнопки в Mini App не работают.
+
+### 3. Настройка базового URL фронтенда
+Для production‑сборки Mini App создан файл `frontend/courier/.env.local` с переменной:
+```
+VITE_API_URL=https://monkhood-chaperone-stinger.ngrok-free.dev/api/bot
+```
+Это гарантирует, что все API‑запросы направляются на правильный домен.
+
 ## Ограничения и планы развития
 1. **Поле `tg_id` в Worker добавлено** — теперь авторизация работает через Telegram ID.
 2. **Отсутствует веб‑сокет уведомление** — бот должен опрашивать API (polling).

@@ -208,7 +208,8 @@ class Order(models.Model):
         CARD  = 'CD', 'Карта'
         BONUS = 'BS', 'Бонус'
 
-    trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders')
+    trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders',
+                                      null=True, blank=True, verbose_name='Рейс')
     client        = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True)
     assigned_courier = models.ForeignKey(
         'workers.Worker',

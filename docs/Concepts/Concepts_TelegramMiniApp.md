@@ -86,33 +86,93 @@ frontend/
 
 ## Как Django узнаёт кто делает запрос (авторизация TWA)
 
-**Проблема:** Браузер внутри Telegram не знает логин/пароль Django.  
+**Проблема:** Браузер внутри Telegram не знает логин/пароль Django.
 **Решение:** Telegram подписывает данные пользователя (`initData`) своим секретным ключом. Django проверяет подпись.
 
-**Валидация в `bot_bridge/permissions.py`:**
+### Реализованная валидация (2026-05-11)
+
+Вместо отдельного permission‑класса мы добавили проверку подписи непосредственно в `IdentifyView` и вынесли логику в утилиты.
+
+**Файл `apps/bot_bridge/utils.py`:**
 ```python
-import hashlib
-import hmac
-from urllib.parse import parse_qsl
-from rest_framework.permissions import BasePermission
-
-class TelegramInitDataPermission(BasePermission):
-    def has_permission(self, request, view):
-        init_data = request.headers.get('X-Telegram-Init-Data', '')
-        bot_token = settings.TELEGRAM_BOT_TOKEN
-
-        # Алгоритм валидации из документации Telegram:
-        data_check_string = '\n'.join(
-            f'{k}={v}' for k, v in sorted(parse_qsl(init_data))
-            if k != 'hash'
-        )
-        secret_key = hmac.new(b'WebAppData', bot_token.encode(), hashlib.sha256).digest()
-        expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-        received_hash = dict(parse_qsl(init_data)).get('hash', '')
-        return hmac.compare_digest(expected_hash, received_hash)
+def verify_telegram_init_data(init_data: str) -> bool:
+    """
+    Проверяет подпись initData от Telegram Mini App.
+    Алгоритм: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+    """
+    if not init_data:
+        return False
+    
+    # Разбираем строку на параметры
+    parsed = parse_qs(init_data, keep_blank_values=False)
+    
+    # Извлекаем hash
+    hash_value = parsed.get('hash', [None])[0]
+    if not hash_value:
+        return False
+    
+    # Удаляем hash из параметров для вычисления HMAC
+    del parsed['hash']
+    
+    # Сортируем ключи в алфавитном порядке
+    sorted_params = sorted(parsed.items(), key=lambda x: x[0])
+    
+    # Формируем строку данных в формате "key=value" с разделителем "\n"
+    data_check_string = '\n'.join(
+        f"{key}={value[0]}" for key, value in sorted_params
+    )
+    
+    # Секретный ключ: HMAC_SHA256(BOT_TOKEN, "WebAppData")
+    bot_token = os.getenv('BOT_TOKEN')
+    if not bot_token:
+        # Если BOT_TOKEN не установлен, пропускаем проверку (для разработки)
+        return True
+    
+    secret_key = hmac.new(
+        key=b"WebAppData",
+        msg=bot_token.encode(),
+        digestmod=hashlib.sha256
+    ).digest()
+    
+    # Вычисляем HMAC_SHA256(secret_key, data_check_string)
+    computed_hash = hmac.new(
+        key=secret_key,
+        msg=data_check_string.encode(),
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    # Сравниваем хеши
+    return hmac.compare_digest(computed_hash, hash_value)
 ```
 
-> **Упрощение для MVP:** На этапе разработки можно использовать только `X-Telegram-ID` заголовок без валидации подписи. Включить полную валидацию перед продакшеном.
+**Обновлённый `IdentifyView` (`apps/bot_bridge/views.py`):**
+- Принимает заголовок `X-Telegram-Init-Data`.
+- Вызывает `verify_telegram_init_data()`.
+- При неверной подписи возвращает `401 Unauthorized`.
+- При успехе извлекает `tg_id` из `initData` и ищет пользователя в базе.
+- Сохраняет обратную совместимость с параметром `tg_id` (для бота).
+
+**Почему мы не сделали отдельный permission?**
+На текущем этапе достаточно проверять подпись только в `IdentifyView`, потому что все последующие запросы от фронтенда используют `tg_id`, извлечённый из проверенных данных. Однако для продакшена рекомендуется добавить `TelegramInitDataPermission` ко всем защищённым эндпоинтам.
+
+### Настройка CORS
+
+Чтобы браузер Telegram разрешил кросс‑доменные запросы, добавлен `django-cors-headers`:
+
+```python
+# settings.py
+INSTALLED_APPS += ['corsheaders']
+MIDDLEWARE.insert(1, 'corsheaders.middleware.CorsMiddleware')
+
+CORS_ALLOWED_ORIGINS = [
+    "https://monkhood-chaperone-stinger.ngrok-free.dev",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+CORS_ALLOW_HEADERS += ['X-Telegram-ID', 'X-Telegram-Init-Data']
+```
+
+> **Важно:** Без CORS браузер блокирует запросы от Mini App к API, и кнопки не работают.
 
 ## Ловушки и частые ошибки
 

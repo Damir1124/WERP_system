@@ -12,6 +12,7 @@
 ## Разбор багов (Post-mortems)
 * [[Bugs_RecursiveSignals|Бесконечный цикл в сигналах post_save]]
 * [[Bugs_CardProfitCalc|Ошибка подсчета card_profit]]
+* [[Bugs_MiniAppP35Fix|8 критических багов Mini App после P3.5]] — Order.trip NULL, choices несовпадение, CORS, битые импорты, неверная структура API-ответа
 
 ## Теоретические справки
 * [[Concepts_DjangoSignals|Как работают сигналы в Django]]
@@ -64,13 +65,30 @@
 5. ✅ **Написана документация** — `docs/Concepts/Concepts_TelegramMiniApp.md` с полным руководством по TWA
 6. ✅ **Создан README с инструкциями** — `frontend/README.md` с пошаговой инструкцией установки и сборки
 
+**Реализован этап 3.6 (Исправление работы Mini App — проверка подписи и CORS):**
+1. ✅ **Добавлена проверка подписи Telegram (hash)** — создан `apps/bot_bridge/utils.py` с функциями `verify_telegram_init_data` и `extract_user_id_from_init_data`.
+2. ✅ **Обновлён `IdentifyView`** — теперь принимает заголовок `X-Telegram-Init-Data`, проверяет подпись, возвращает `401` при несоответствии.
+3. ✅ **Настроены CORS для домена ngrok** — добавлен `corsheaders` в `INSTALLED_APPS` и `MIDDLEWARE`, разрешены origins `https://monkhood-chaperone-stinger.ngrok-free.dev`, `localhost:5173`.
+4. ✅ **Создан `.env.local` для фронтенда** — переменная `VITE_API_URL` указывает на ngrok-адрес API.
+5. ✅ **Обновлена документация модуля BotBridge** — добавлен раздел о проверке подписи и CORS.
+
+**Реализован этап 3.7 (Исправление критических багов Mini App — 2026-05-13):**
+1. ✅ **`Order.trip` → `null=True`** — клиентские заказы создаются без рейса, миграция `0003` применена
+2. ✅ **Choices несовпадение исправлено** — маппинг `CASH→CH`, `OPEN→OP` в views и фронтенде
+3. ✅ **`WorkerSerializer.type_worker` → `worker_type`** — поле переименовано
+4. ✅ **Битые импорты убраны** — устаревшие views переведены в `410 Gone`
+5. ✅ **`CourierShiftListView` + `CourierTripListView`** — добавлены POST-методы (открытие смены/рейса)
+6. ✅ **`CourierPoolView` разделён** — отдельный `CourierAssignOrderView` для `POST /pool/<id>/assign/`
+7. ✅ **`Trip.jsx` переработан** — правильная деструктуризация `{trip, summary}`, кнопки открытия смены/рейса
+8. ✅ **CORS → regex** — разрешены все `*.ngrok-free.dev` домены динамически
+9. ✅ **Клиентский Mini App создан с нуля** — Register, Catalog, OrderForm, MyOrders
+10. ✅ **`launch_all_in_one.bat` обновлён** — 9 пунктов меню, сборка фронтенда, миграции, открытие в браузере
+
 **Осталось реализовать:**
 - WebSocket‑уведомления (живой мониторинг)
-- Завершение фронтенда курьера (остальные страницы: Trip, OrderConfirm, Shifts, Colleagues)
-- Фронтенд клиента (Catalog, OrderForm, MyOrders)
 - Интеграция с геопозицией и автоматическим распределением заказов
 - Настройка webhook для продакшена
-- Доработка бота: использование новых API endpoints, кнопка открытия Mini App
+- Доработка бота: кнопки открытия Mini App с правильными URL
 
 ## Ссылки
 * [CLAUDE.md](../CLAUDE.md) — архитектурный справочник проекта.

@@ -32,7 +32,7 @@ class WorkerSerializer(serializers.ModelSerializer):
     """Сериализатор для сотрудника (курьера)"""
     class Meta:
         model = Worker
-        fields = ['id', 'full_name', 'type_worker', 'date_for_payed', 'tg_id']
+        fields = ['id', 'full_name', 'worker_type', 'date_for_payed', 'tg_id', 'is_admin']
 
 
 # Новые сериализаторы для моделей P0
@@ -67,6 +67,40 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
             'quantity': {'required': True, 'min_value': 1},
             'payment_type': {'required': True},
         }
+    
+    def validate_payment_type(self, value):
+        if not value:
+            return value
+        const_to_value = {
+            'CASH': 'CH',
+            'CARD': 'CD',
+            'BONUS': 'BS',
+        }
+        if value in Order.PaymentType.values:
+            return value
+        if value in const_to_value:
+            return const_to_value[value]
+        raise serializers.ValidationError(
+            f"Недопустимый тип оплаты '{value}'. Допустимые значения: {list(Order.PaymentType.values)} "
+            f"или имена констант: {list(const_to_value.keys())}"
+        )
+    
+    def validate_container_op(self, value):
+        if not value:
+            return value
+        const_to_value = {
+            'EXCHANGE': 'EX',
+            'SELL_WITH': 'SW',
+            'DEFECTIVE': 'DF',
+        }
+        if value in Order.ContainerOp.values:
+            return value
+        if value in const_to_value:
+            return const_to_value[value]
+        raise serializers.ValidationError(
+            f"Недопустимая операция с тарой '{value}'. Допустимые значения: {list(Order.ContainerOp.values)} "
+            f"или имена констант: {list(const_to_value.keys())}"
+        )
     
     def validate(self, data):
         """Проверка, что рейс принадлежит текущему курьеру"""
@@ -121,8 +155,29 @@ class OrderConfirmationSerializer(serializers.Serializer):
     """Сериализатор для подтверждения заказа (новый, для P0)"""
     order_id = serializers.IntegerField()
     confirmed = serializers.BooleanField(default=True)
-    container_op = serializers.ChoiceField(choices=Order.ContainerOp.choices, required=False, allow_null=True)
+    container_op = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     note = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_container_op(self, value):
+        if not value:
+            return None
+        # Маппинг имен констант на значения
+        const_to_value = {
+            'EXCHANGE': 'EX',
+            'SELL_WITH': 'SW',
+            'DEFECTIVE': 'DF',
+        }
+        # Если значение уже является допустимым (EX, SW, DF), оставляем как есть
+        if value in Order.ContainerOp.values:
+            return value
+        # Если это имя константы, преобразуем
+        if value in const_to_value:
+            return const_to_value[value]
+        # Иначе ошибка
+        raise serializers.ValidationError(
+            f"Значение '{value}' недопустимо. Допустимые значения: {list(Order.ContainerOp.values)} "
+            f"или имена констант: {list(const_to_value.keys())}"
+        )
 
 
 class QuantityUpdateSerializer(serializers.Serializer):

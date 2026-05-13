@@ -1,66 +1,59 @@
 """
 Клавиатуры для клиента (reply и inline).
 """
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    WebAppInfo,
+)
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+
+from tg_bot.config import MINI_APP_URL
 
 
 def get_client_main_keyboard() -> ReplyKeyboardMarkup:
-    """Главное меню клиента (reply)."""
+    """Главное меню клиента с кнопкой открытия Mini App."""
     builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="🛒 Каталог и заказ"))
+    # Кнопка открытия Mini App клиента
+    builder.add(KeyboardButton(
+        text="🛒 Заказать воду",
+        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
+    ))
     builder.add(KeyboardButton(text="📋 Мои заказы"))
     builder.add(KeyboardButton(text="📍 Мой адрес"))
     builder.add(KeyboardButton(text="🆘 Помощь"))
-    builder.adjust(2, 2)
+    builder.adjust(1, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 
-def get_catalog_keyboard() -> InlineKeyboardMarkup:
-    """Каталог товаров (inline)."""
+def get_unknown_user_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для незарегистрированного пользователя."""
     builder = InlineKeyboardBuilder()
     builder.add(InlineKeyboardButton(
-        text="Вода 20л с тарой — 25 000 сум",
-        callback_data="product_1"
+        text="📝 Зарегистрироваться как клиент",
+        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
     ))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_catalog_keyboard() -> InlineKeyboardMarkup:
+    """Открыть каталог через Mini App."""
+    builder = InlineKeyboardBuilder()
     builder.add(InlineKeyboardButton(
-        text="Вода 20л без тары — 20 000 сум",
-        callback_data="product_2"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="Кулер напольный — 1 200 000 сум",
-        callback_data="product_3"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="Помпа для бутыли — 80 000 сум",
-        callback_data="product_4"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="🔄 Обновить каталог",
-        callback_data="refresh_catalog"
+        text="🛒 Открыть каталог",
+        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
     ))
     builder.adjust(1)
     return builder.as_markup()
 
 
 def get_order_history_keyboard() -> InlineKeyboardMarkup:
-    """История заказов с кнопками деталей."""
+    """Открыть историю заказов через Mini App."""
     builder = InlineKeyboardBuilder()
     builder.add(InlineKeyboardButton(
-        text="📦 Заказ #101 (В пути)",
-        callback_data="order_detail_101"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="📦 Заказ #100 (Доставлен)",
-        callback_data="order_detail_100"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="📦 Заказ #99 (Доставлен)",
-        callback_data="order_detail_99"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="🔄 Обновить историю",
-        callback_data="refresh_history"
+        text="📦 Открыть мои заказы",
+        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
     ))
     builder.adjust(1)
     return builder.as_markup()
@@ -78,23 +71,8 @@ def get_order_confirmation_keyboard(order_id: int) -> InlineKeyboardMarkup:
         callback_data=f"edit_quantity_{order_id}"
     ))
     builder.add(InlineKeyboardButton(
-        text="🚫 Отменить",
-        callback_data=f"cancel_order_{order_id}"
-    ))
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def get_payment_type_keyboard() -> InlineKeyboardMarkup:
-    """Выбор типа оплаты."""
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="💵 Наличными при получении",
-        callback_data="payment_CASH"
-    ))
-    builder.add(InlineKeyboardButton(
-        text="💳 Картой онлайн",
-        callback_data="payment_CARD"
+        text="❌ Отменить",
+        callback_data="cancel_order"
     ))
     builder.adjust(1)
     return builder.as_markup()

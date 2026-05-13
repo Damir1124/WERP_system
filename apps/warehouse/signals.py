@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def create_stock_balance_product(sender, instance, created, **kwargs):
     """Создание баланса продукта по созданному продукту"""
     if created:
-        StockBalance.objects.create(product=instance, quantitly=0)
+        StockBalance.objects.create(product=instance, quantity=0)
 
 
 # TODO: Устаревший сигнал, использовать Order

@@ -277,7 +277,7 @@ def create_transaction_on_order(sender, instance, created, **kwargs):
 
     # Определяем тип транзакции (PLUS - доход)
     from .models import FinancialTransactions
-    transaction_type = FinancialTransactions.TransactionType.PLUS
+    transaction_type = FinancialTransactions.TransactionsType.PLUS
     
     # Определяем сумму картой
     card_amount = instance.price if instance.payment_type == Order.PaymentType.CARD else 0

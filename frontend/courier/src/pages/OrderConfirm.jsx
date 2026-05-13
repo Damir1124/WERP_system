@@ -16,12 +16,13 @@ export default function OrderConfirm() {
     e.preventDefault()
     setLoading(true)
     try {
-      await api.deliverOrder(id, form)
+      // Используем новый endpoint подтверждения заказа
+      await api.confirmOrder(id, true, form.container_op, form.note)
       alert('Заказ подтверждён как доставленный!')
       navigate('/trip')
     } catch (error) {
       console.error('Failed to deliver order:', error)
-      alert('Ошибка при подтверждении заказа')
+      alert('Ошибка при подтверждении заказа: ' + error.message)
     } finally {
       setLoading(false)
     }

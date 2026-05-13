@@ -3,14 +3,17 @@
 """
 import logging
 
+import aiohttp
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 
+from tg_bot.config import DJANGO_API_URL, MINI_APP_URL
 from tg_bot.keyboards.client import (
     get_client_main_keyboard,
     get_catalog_keyboard,
     get_order_history_keyboard,
+    get_unknown_user_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -19,94 +22,71 @@ router = Router(name="client")
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, user: dict = None):
     """Обработка команды /start для клиента."""
-    user_data = message.from_user
-    logger.info(f"Клиент {user_data.id} запустил бота")
-    
-    await message.answer(
-        f"👋 Здравствуйте, {user_data.first_name}!\n"
-        "Вы авторизованы как клиент.\n"
-        "Здесь вы можете заказать воду, посмотреть историю заказов и получить помощь.",
-        reply_markup=get_client_main_keyboard()
-    )
+    tg_user = message.from_user
+    name = (user or {}).get('name') or tg_user.first_name
 
-
-@router.message(F.text == "🛒 Каталог и заказ")
-async def show_catalog(message: Message):
-    """Показать каталог товаров."""
-    # TODO: запрос к API /api/bot/client/products/
     await message.answer(
-        "📦 **Каталог товаров:**\n"
-        "• Вода 20л с тарой — 25 000 сум\n"
-        "• Вода 20л без тары — 20 000 сум\n"
-        "• Кулер напольный — 1 200 000 сум\n"
-        "• Помпа для бутыли — 80 000 сум\n\n"
-        "Нажмите на товар для заказа.",
-        reply_markup=get_catalog_keyboard()
+        f"👋 Здравствуйте, {name}!\n\n"
+        f"💧 <b>Osnova 2.0</b> — доставка питьевой воды\n\n"
+        f"Нажмите кнопку ниже, чтобы открыть каталог и сделать заказ:",
+        reply_markup=get_client_main_keyboard(),
+        parse_mode='HTML'
     )
 
 
 @router.message(F.text == "📋 Мои заказы")
-async def show_my_orders(message: Message):
-    """Показать историю заказов клиента."""
-    # TODO: запрос к API /api/bot/client/orders/
+async def show_my_orders(message: Message, user: dict = None):
+    """Показать историю заказов клиента через Mini App."""
     await message.answer(
-        "📅 **Ваши последние заказы:**\n"
-        "1. #101 — Вода 20л × 2 — 50 000 сум — 🚚 В пути\n"
-        "2. #100 — Вода 20л × 1 — 25 000 сум — ✅ Доставлен\n"
-        "3. #99 — Кулер напольный × 1 — 1 200 000 сум — ✅ Доставлен",
-        reply_markup=get_order_history_keyboard()
+        "📦 <b>Ваши заказы</b>\n\n"
+        "Нажмите кнопку ниже, чтобы открыть историю заказов:",
+        reply_markup=get_order_history_keyboard(),
+        parse_mode='HTML'
     )
 
 
 @router.message(F.text == "📍 Мой адрес")
-async def show_my_address(message: Message):
+async def show_my_address(message: Message, user: dict = None):
     """Показать сохранённый адрес клиента."""
-    # TODO: запрос к API /api/bot/client/profile/
-    await message.answer(
-        "🏠 **Ваш адрес доставки:**\n"
-        "г. Самарканд, ул. Мира, д. 12, кв. 34\n\n"
-        "Чтобы изменить адрес, обратитесь в поддержку."
-    )
+    tg_id = (user or {}).get('tg_id') or message.from_user.id
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{DJANGO_API_URL}/client/profile/",
+                params={'tg_id': tg_id},
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    address = data.get('address') or 'Адрес не указан'
+                    name = data.get('name', '')
+                    phone = data.get('phone', '')
+                    await message.answer(
+                        f"🏠 <b>Ваш профиль:</b>\n\n"
+                        f"👤 Имя: {name}\n"
+                        f"📞 Телефон: {phone}\n"
+                        f"📍 Адрес: {address}\n\n"
+                        f"Для изменения адреса обратитесь в поддержку.",
+                        parse_mode='HTML'
+                    )
+                else:
+                    await message.answer("❌ Не удалось загрузить профиль. Попробуйте позже.")
+    except Exception as e:
+        logger.error(f"Ошибка при получении профиля клиента: {e}")
+        await message.answer("❌ Ошибка подключения к серверу.")
 
 
 @router.message(F.text == "🆘 Помощь")
 async def show_help(message: Message):
     """Показать справку для клиента."""
     await message.answer(
-        "📖 **Помощь по командам клиента:**\n"
-        "• *Каталог и заказ* — выбрать товар и оформить заказ\n"
-        "• *Мои заказы* — история и статусы ваших заказов\n"
-        "• *Мой адрес* — проверить адрес доставки\n"
-        "• *Помощь* — это сообщение\n\n"
-        "Для открытия Mini App нажмите кнопку «Каталог и заказ»."
-    )
-
-
-# Callback-хэндлеры
-@router.callback_query(F.data.startswith("product_"))
-async def select_product(callback: CallbackQuery):
-    """Выбор товара из каталога."""
-    product_id = callback.data.split("_")[-1]
-    # TODO: переход к оформлению заказа
-    await callback.answer(f"Товар #{product_id} выбран")
-    await callback.message.edit_text(
-        f"Вы выбрали товар #{product_id}.\n"
-        "Укажите количество и адрес доставки."
-    )
-
-
-@router.callback_query(F.data.startswith("order_detail_"))
-async def show_order_detail(callback: CallbackQuery):
-    """Показать детали заказа."""
-    order_id = callback.data.split("_")[-1]
-    # TODO: запрос к API /api/bot/client/order/{order_id}/status/
-    await callback.answer(f"Заказ #{order_id}")
-    await callback.message.edit_text(
-        f"📦 **Заказ #{order_id}**\n"
-        "Статус: 🚚 В пути\n"
-        "Курьер: Иван Иванов\n"
-        "Телефон курьера: +998901234567\n"
-        "Ориентировочное время доставки: 30 мин."
+        "📖 <b>Помощь:</b>\n\n"
+        "🛒 <b>Заказать воду</b> — открывает каталог товаров\n"
+        "📋 <b>Мои заказы</b> — история и статусы заказов\n"
+        "📍 <b>Мой адрес</b> — ваш адрес доставки\n\n"
+        "По вопросам обращайтесь к оператору.",
+        parse_mode='HTML'
     )
