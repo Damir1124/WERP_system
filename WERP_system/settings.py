@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-if-not-found')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,.ngrok-free.dev').split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'channels',
+    'corsheaders',
     
     # Local apps
     'apps.accounting',
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -114,7 +116,48 @@ TIME_ZONE = 'Asia/Samarkand' # Твой часовой пояс
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# CORS settings
+# Разрешаем все ngrok-домены + localhost для разработки
+_cors_extra = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_extra if o.strip()] or [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+# Всегда добавляем localhost для разработки
+if "http://localhost:5173" not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append("http://localhost:5173")
+if "http://127.0.0.1:5173" not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append("http://127.0.0.1:5173")
+
+# Разрешаем все ngrok-домены через regex
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.ngrok-free\.dev$",
+    r"^https://.*\.ngrok\.io$",
+]
+
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-telegram-id',
+    'x-telegram-init-data',
+]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

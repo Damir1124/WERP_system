@@ -208,8 +208,17 @@ class Order(models.Model):
         CARD  = 'CD', 'Карта'
         BONUS = 'BS', 'Бонус'
 
-    trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders')
+    trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders',
+                                      null=True, blank=True, verbose_name='Рейс')
     client        = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True)
+    assigned_courier = models.ForeignKey(
+        'workers.Worker',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_orders',
+        verbose_name='Назначенный курьер'
+    )
     product       = models.ForeignKey('products.Product', on_delete=models.CASCADE)
     quantity      = models.IntegerField(default=1, verbose_name='Количество')
     price         = models.IntegerField(blank=True, null=True, verbose_name='Сумма')

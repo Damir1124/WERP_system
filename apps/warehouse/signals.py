@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
-from apps.logistics.models import DeliveryJournalProducts, Order
+from apps.logistics.models import Order
 from apps.products.models import Product
 from .models import StockBalance, StockMovement
 from django.db import models
@@ -15,129 +15,131 @@ logger = logging.getLogger(__name__)
 def create_stock_balance_product(sender, instance, created, **kwargs):
     """Создание баланса продукта по созданному продукту"""
     if created:
-        StockBalance.objects.create(product=instance, quantitly=0)
+        StockBalance.objects.create(product=instance, quantity=0)
 
 
-@receiver(pre_save, sender=DeliveryJournalProducts)
-def track_delivery_journal_changes(sender, instance, **kwargs):
-    """Отслеживаем изменения до сохранения"""
-    if instance.pk:  # Если объект уже существует (обновление)
-        try:
-            old_instance = sender.objects.get(pk=instance.pk)
-            instance._old_quantity = old_instance.quantity
-            logger.debug("Сохранено старое значение quantity: %s для DeliveryJournalProducts ID=%s",
-                         instance._old_quantity, instance.pk)
-        except sender.DoesNotExist:
-            logger.warning("Не найден существующий DeliveryJournalProducts с ID=%s", instance.pk)
+# TODO: Устаревший сигнал, использовать Order
+# @receiver(pre_save, sender=DeliveryJournalProducts)
+# def track_delivery_journal_changes(sender, instance, **kwargs):
+#     """Отслеживаем изменения до сохранения"""
+#     if instance.pk:  # Если объект уже существует (обновление)
+#         try:
+#             old_instance = sender.objects.get(pk=instance.pk)
+#             instance._old_quantity = old_instance.quantity
+#             logger.debug("Сохранено старое значение quantity: %s для DeliveryJournalProducts ID=%s",
+#                          instance._old_quantity, instance.pk)
+#         except sender.DoesNotExist:
+#             logger.warning("Не найден существующий DeliveryJournalProducts с ID=%s", instance.pk)
 
 
-@receiver(post_save, sender=DeliveryJournalProducts)
-def update_stock_balance_on_delivery(sender, instance, created, **kwargs):
-    """Обновления остатков по данным с отчетов курьеров(с продаж)"""
-    logger.info("СИГНАЛ DeliveryJournalProducts ВЫЗВАН: ID=%s, created=%s", instance.pk, created)
-
-    product = instance.product
-
-    PRODUCT_MAP = {
-        Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
-        # "вода с тарой" → "просто тара"
-    }
-
-    mapped_product_type = PRODUCT_MAP.get(product.type_product)
-    if mapped_product_type:
-        try:
-            product = Product.objects.get(type_product=mapped_product_type)
-            logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
-        except Product.DoesNotExist:
-            logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
-            return
-
-    if created:
-        # Получение кол-во продукта
-        quantity_sold = instance.quantity
-
-        # Проверка наличия достаточного количества
-        try:
-            current_balance = StockBalance.objects.get(product=product)
-            if current_balance.quantity >= quantity_sold:
-                # Создание записи движения товара
-                StockMovement.objects.create(
-                    sold_product=product,
-                    operation_type=StockMovement.OperationTypeChoices.SELL,
-                    quantity=quantity_sold,
-                    note=f"Продажа через доставку #{instance.pk}"
-                )
-
-                # Обновление баланса
-                StockBalance.objects.filter(product=product).update(
-                    quantity=models.F('quantity') - quantity_sold,
-                    last_departure_date=timezone.now()
-                )
-                logger.debug("Уменьшен StockBalance для продукта %s на %s", product, quantity_sold)
-            else:
-                logger.warning("Недостаточно товара %s на складе. Запрошено: %s, доступно: %s",
-                               product, quantity_sold, current_balance.quantity)
-        except StockBalance.DoesNotExist:
-            logger.error("Не найден StockBalance для продукта %s", product)
-    else:
-        # Обработка обновления существующей записи
-        try:
-            # Получаем предыдущее значение
-            old_quantity = getattr(instance, '_old_quantity', 0)
-            new_quantity = instance.quantity
-
-            # Рассчитываем разницу
-            difference = new_quantity - old_quantity
-
-            if difference != 0:
-                # Обновление баланса с учетом разницы
-                current_balance = StockBalance.objects.get(product=product)
-
-                if difference > 0:  # Увеличение количества проданных товаров
-                    # Проверяем наличие достаточного количества
-                    if current_balance.quantity >= difference:
-                        # Создаем запись о дополнительной продаже
-                        StockMovement.objects.create(
-                            sold_product=product,
-                            operation_type=StockMovement.OperationTypeChoices.SELL,
-                            quantity=difference,
-                            note=f"Обновленно: Дополнительная продажа через доставку #{instance.pk}"
-                        )
-
-                        # Обновляем баланс
-                        StockBalance.objects.filter(product=product).update(
-                            quantity=models.F('quantity') - difference,
-                            last_departure_date=timezone.now()
-                        )
-                        logger.debug('Уменьшен баланс при увеличении доставки для продукта %s на %s',
-                                     product, difference)
-                    else:
-                        logger.warning("Недостаточно товара %s на складе. Запрошено дополнительно: %s, доступно: %s",
-                                       product, difference, current_balance.quantity)
-
-                else:  # difference < 0, уменьшение количества проданных товаров
-                    abs_difference = abs(difference)
-
-                    # Создаем запись о возврате товара как о покупке (поступлении)
-                    StockMovement.objects.create(
-                        sold_product=product,
-                        operation_type=StockMovement.OperationTypeChoices.BUY,
-                        quantity=abs_difference,
-                        note=f"Возврат товара от доставки #{instance.pk}"
-                    )
-
-                    # Обновляем баланс - увеличиваем количество на складе
-                    StockBalance.objects.filter(product=product).update(
-                        quantity=models.F('quantity') + abs_difference,
-                        last_received_date=timezone.now()
-                    )
-                    logger.debug('Увеличен баланс при уменьшении доставки для продукта %s на %s',
-                                 product, abs_difference)
-
-        except Exception as e:
-            logger.error("Ошибка при обновлении баланса: %s", e)
-
-    logger.info("СИГНАЛ DeliveryJournalProducts ЗАВЕРШЕН: ID=%s", instance.pk)
+# TODO: Устаревший сигнал, использовать Order
+# @receiver(post_save, sender=DeliveryJournalProducts)
+# def update_stock_balance_on_delivery(sender, instance, created, **kwargs):
+#     """Обновления остатков по данным с отчетов курьеров(с продаж)"""
+#     logger.info("СИГНАЛ DeliveryJournalProducts ВЫЗВАН: ID=%s, created=%s", instance.pk, created)
+#
+#     product = instance.product
+#
+#     PRODUCT_MAP = {
+#         Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
+#         # "вода с тарой" → "просто тара"
+#     }
+#
+#     mapped_product_type = PRODUCT_MAP.get(product.type_product)
+#     if mapped_product_type:
+#         try:
+#             product = Product.objects.get(type_product=mapped_product_type)
+#             logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
+#         except Product.DoesNotExist:
+#             logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
+#             return
+#
+#     if created:
+#         # Получение кол-во продукта
+#         quantity_sold = instance.quantity
+#
+#         # Проверка наличия достаточного количества
+#         try:
+#             current_balance = StockBalance.objects.get(product=product)
+#             if current_balance.quantity >= quantity_sold:
+#                 # Создание записи движения товара
+#                 StockMovement.objects.create(
+#                     sold_product=product,
+#                     operation_type=StockMovement.OperationTypeChoices.SELL,
+#                     quantity=quantity_sold,
+#                     note=f"Продажа через доставку #{instance.pk}"
+#                 )
+#
+#                 # Обновление баланса
+#                 StockBalance.objects.filter(product=product).update(
+#                     quantity=models.F('quantity') - quantity_sold,
+#                     last_departure_date=timezone.now()
+#                 )
+#                 logger.debug("Уменьшен StockBalance для продукта %s на %s", product, quantity_sold)
+#             else:
+#                 logger.warning("Недостаточно товара %s на складе. Запрошено: %s, доступно: %s",
+#                                product, quantity_sold, current_balance.quantity)
+#         except StockBalance.DoesNotExist:
+#             logger.error("Не найден StockBalance для продукта %s", product)
+#     else:
+#         # Обработка обновления существующей записи
+#         try:
+#             # Получаем предыдущее значение
+#             old_quantity = getattr(instance, '_old_quantity', 0)
+#             new_quantity = instance.quantity
+#
+#             # Рассчитываем разницу
+#             difference = new_quantity - old_quantity
+#
+#             if difference != 0:
+#                 # Обновление баланса с учетом разницы
+#                 current_balance = StockBalance.objects.get(product=product)
+#
+#                 if difference > 0:  # Увеличение количества проданных товаров
+#                     # Проверяем наличие достаточного количества
+#                     if current_balance.quantity >= difference:
+#                         # Создаем запись о дополнительной продаже
+#                         StockMovement.objects.create(
+#                             sold_product=product,
+#                             operation_type=StockMovement.OperationTypeChoices.SELL,
+#                             quantity=difference,
+#                             note=f"Обновленно: Дополнительная продажа через доставку #{instance.pk}"
+#                         )
+#
+#                         # Обновляем баланс
+#                         StockBalance.objects.filter(product=product).update(
+#                             quantity=models.F('quantity') - difference,
+#                             last_departure_date=timezone.now()
+#                         )
+#                         logger.debug('Уменьшен баланс при увеличении доставки для продукта %s на %s',
+#                                      product, difference)
+#                     else:
+#                         logger.warning("Недостаточно товара %s на складе. Запрошено дополнительно: %s, доступно: %s",
+#                                        product, difference, current_balance.quantity)
+#
+#                 else:  # difference < 0, уменьшение количества проданных товаров
+#                     abs_difference = abs(difference)
+#
+#                     # Создаем запись о возврате товара как о покупке (поступлении)
+#                     StockMovement.objects.create(
+#                         sold_product=product,
+#                         operation_type=StockMovement.OperationTypeChoices.BUY,
+#                         quantity=abs_difference,
+#                         note=f"Возврат товара от доставки #{instance.pk}"
+#                     )
+#
+#                     # Обновляем баланс - увеличиваем количество на складе
+#                     StockBalance.objects.filter(product=product).update(
+#                         quantity=models.F('quantity') + abs_difference,
+#                         last_received_date=timezone.now()
+#                     )
+#                     logger.debug('Увеличен баланс при уменьшении доставки для продукта %s на %s',
+#                                  product, abs_difference)
+#
+#         except Exception as e:
+#             logger.error("Ошибка при обновлении баланса: %s", e)
+#
+#     logger.info("СИГНАЛ DeliveryJournalProducts ЗАВЕРШЕН: ID=%s", instance.pk)
 
 
 @receiver(pre_save, sender=SubjectContract)
