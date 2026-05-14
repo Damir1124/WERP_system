@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 staticfiles/
 docs/.obsidian
+tg_bot.log
