@@ -31,28 +31,28 @@ apps/bot_bridge/
 ### Маршруты API
 Все эндпоинты доступны по префиксу `/api/bot/`:
 
-| Метод                                             | Путь                                               | Назначение                                             |
-| ------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
-| GET                                               | `/api/bot/courier/profile/`                        | Профиль курьера                                        |
-| GET                                               | `/api/bot/courier/deliveries/`                     | Список доставок курьера (старая модель)                |
-| GET                                               | `/api/bot/courier/deliveries/today/`               | Доставки на сегодня (старая модель)                    |
-| POST                                              | `/api/bot/courier/deliveries/confirm/`             | Подтверждение доставки (старая модель)                 |
-| POST                                              | `/api/bot/courier/deliveries/update-quantity/`     | Изменение количества товара (старая модель)            |
-| GET                                               | `/api/bot/products/`                               | Каталог продуктов                                      |
-| GET                                               | `/api/bot/clients/`                                | Поиск клиентов                                         |
-| POST                                              | `/api/bot/courier/deliveries/{id}/mark-delivered/` | Пометка доставки как выполненной (старая модель)       |
-| **Новые эндпоинты для моделей P0**                |                                                    |                                                        |
-| GET                                               | `/api/bot/courier/shifts/`                         | Список смен курьера                                    |
-| GET                                               | `/api/bot/courier/trips/`                          | Список рейсов активной смены                           |
-| GET                                               | `/api/bot/courier/trips/{trip_id}/orders/`         | Заказы рейса                                           |
-| POST                                              | `/api/bot/courier/orders/confirm/`                 | Подтверждение заказа (P0)                              |
-| POST                                              | `/api/bot/courier/orders/update-quantity/`         | Изменение количества в заказе (P0)                     |
-| POST                                              | `/api/bot/courier/orders/create/`                  | Создание нового заказа в рейсе                         |
-| **Новые эндпоинты для администратора (этап 3.4)** |                                                    |                                                        |
-| GET                                               | `/api/bot/admin/stats/today/`                      | Финансовая сводка за сегодня + активные смены + заказы |
-| GET                                               | `/api/bot/admin/shifts/`                           | Активные смены курьеров с деталями                     |
-| GET                                               | `/api/bot/admin/stock/alerts/`                     | Остатки склада с quantity < 10 (алерты)                |
-| GET                                               | `/api/bot/admin/orders/recent/`                    | Последние N заказов (по умолчанию 10)                  |
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/api/bot/courier/profile/` | Профиль курьера |
+| GET | `/api/bot/courier/deliveries/` | Список доставок курьера (старая модель) |
+| GET | `/api/bot/courier/deliveries/today/` | Доставки на сегодня (старая модель) |
+| POST | `/api/bot/courier/deliveries/confirm/` | Подтверждение доставки (старая модель) |
+| POST | `/api/bot/courier/deliveries/update-quantity/` | Изменение количества товара (старая модель) |
+| GET | `/api/bot/products/` | Каталог продуктов |
+| GET | `/api/bot/clients/` | Поиск клиентов |
+| POST | `/api/bot/courier/deliveries/{id}/mark-delivered/` | Пометка доставки как выполненной (старая модель) |
+| **Новые эндпоинты для моделей P0** | | |
+| GET | `/api/bot/courier/shifts/` | Список смен курьера |
+| GET | `/api/bot/courier/trips/` | Список рейсов активной смены |
+| GET | `/api/bot/courier/trips/{trip_id}/orders/` | Заказы рейса |
+| POST | `/api/bot/courier/orders/confirm/` | Подтверждение заказа (P0) |
+| POST | `/api/bot/courier/orders/update-quantity/` | Изменение количества в заказе (P0) |
+| POST | `/api/bot/courier/orders/create/` | Создание нового заказа в рейсе |
+| **Новые эндпоинты для администратора (этап 3.4)** | | |
+| GET | `/api/bot/admin/stats/today/` | Финансовая сводка за сегодня + активные смены + заказы |
+| GET | `/api/bot/admin/shifts/` | Активные смены курьеров с деталями |
+| GET | `/api/bot/admin/stock/alerts/` | Остатки склада с quantity < 10 (алерты) |
+| GET | `/api/bot/admin/orders/recent/` | Последние N заказов (по умолчанию 10) |
 
 ## Авторизация
 Курьер аутентифицируется через **Telegram ID**, который передаётся в заголовке `X-Telegram-ID`.

@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
-from apps.logistics.models import Order, OrderItem
+from apps.logistics.models import Order
 from apps.products.models import Product
 from .models import StockBalance, StockMovement
 from django.db import models
@@ -361,67 +361,45 @@ def update_stock_on_order(sender, instance, created, **kwargs):
     if instance.status != Order.Status.DELIVERED:
         return
 
-    # Проходим по всем позициям заказа
-    for item in instance.items.all():
-        product = item.product
-        PRODUCT_MAP = {
-            Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
-        }
+    product = instance.product
+    PRODUCT_MAP = {
+        Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
+    }
 
-        mapped_product_type = PRODUCT_MAP.get(product.type_product)
-        if mapped_product_type:
-            try:
-                product = Product.objects.get(type_product=mapped_product_type)
-                logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
-            except Product.DoesNotExist:
-                logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
-                continue
+    mapped_product_type = PRODUCT_MAP.get(product.type_product)
+    if mapped_product_type:
+        try:
+            product = Product.objects.get(type_product=mapped_product_type)
+            logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
+        except Product.DoesNotExist:
+            logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
+            return
 
-        # Для продуктов типа BOTTLE_20L учитываем операции с тарой
-        if product.type_product == Product.TypeProduct.BOTTLE_20L:
-            # Списание тары по операциям exchange_qty и sell_with_qty
-            quantity_to_deduct = item.exchange_qty + item.sell_with_qty
-            if quantity_to_deduct > 0:
-                try:
-                    stock_balance = StockBalance.objects.get(product=product)
-                    if stock_balance.quantity >= quantity_to_deduct:
-                        StockMovement.objects.create(
-                            sold_product=product,
-                            operation_type=StockMovement.OperationTypeChoices.SELL,
-                            quantity=quantity_to_deduct,
-                            note=f"Заказ #{instance.pk}, позиция #{item.id} (EXCHANGE/SELL_WITH)"
-                        )
-                        stock_balance.quantity -= quantity_to_deduct
-                        stock_balance.last_departure_date = timezone.now()
-                        stock_balance.save()
-                        logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity_to_deduct, product, instance.pk)
-                    else:
-                        logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
-                                       product, instance.pk, quantity_to_deduct, stock_balance.quantity)
-                except StockBalance.DoesNotExist:
-                    logger.error("Не найден StockBalance для продукта %s", product)
-            # Брак тары (defective_qty) не списывается, просто логируем
-            if item.defective_qty > 0:
-                logger.info("Заказ #%s, позиция #%s - возврат брака %s шт., списание тары не производится",
-                            instance.pk, item.id, item.defective_qty)
-        else:
-            # Для остальных типов продуктов списываем просто quantity
-            quantity = item.quantity
-            try:
-                stock_balance = StockBalance.objects.get(product=product)
-                if stock_balance.quantity >= quantity:
-                    StockMovement.objects.create(
-                        sold_product=product,
-                        operation_type=StockMovement.OperationTypeChoices.SELL,
-                        quantity=quantity,
-                        note=f"Заказ #{instance.pk}, позиция #{item.id}"
-                    )
-                    stock_balance.quantity -= quantity
-                    stock_balance.last_departure_date = timezone.now()
-                    stock_balance.save()
-                    logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity, product, instance.pk)
-                else:
-                    logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
-                                   product, instance.pk, quantity, stock_balance.quantity)
-            except StockBalance.DoesNotExist:
-                logger.error("Не найден StockBalance для продукта %s", product)
+    # Определяем операцию с тарой
+    container_op = instance.container_op
+    if container_op in (Order.ContainerOp.EXCHANGE, Order.ContainerOp.SELL_WITH):
+        # Списание тары со склада
+        quantity = instance.quantity
+        try:
+            stock_balance = StockBalance.objects.get(product=product)
+            if stock_balance.quantity >= quantity:
+                StockMovement.objects.create(
+                    sold_product=product,
+                    operation_type=StockMovement.OperationTypeChoices.SELL,
+                    quantity=quantity,
+                    note=f"Заказ #{instance.pk} ({container_op})"
+                )
+                stock_balance.quantity -= quantity
+                stock_balance.last_departure_date = timezone.now()
+                stock_balance.save()
+                logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity, product, instance.pk)
+            else:
+                logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
+                               product, instance.pk, quantity, stock_balance.quantity)
+        except StockBalance.DoesNotExist:
+            logger.error("Не найден StockBalance для продукта %s", product)
+    elif container_op == Order.ContainerOp.DEFECTIVE:
+        # Возврат брака - не списываем тару
+        logger.info("Заказ #%s - возврат брака, списание тары не производится", instance.pk)
+    else:
+        logger.warning("Заказ #%s не имеет container_op или неизвестная операция", instance.pk)

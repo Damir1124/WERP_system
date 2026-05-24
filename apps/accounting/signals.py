@@ -131,8 +131,43 @@ def delete_transactions_on_contract_delete(sender, instance, **kwargs):
     utils.update_finance_record(instance.date)
 
 
-# DeliveryJournal — сигналы удалены, т.к. модель DeliveryJournal устарела (P0 архитектура).
-# Финансовые транзакции теперь создаются через сигнал на Order (см. ниже).
+# DeliveryJournal
+@receiver(pre_save, sender=logistics.DeliveryJournal)
+def update_transactions_on_delivery_update(sender, instance, **kwargs):
+    """Сохранение данных перед обновлением"""
+    if instance.pk:
+        old_instance = sender.objects.get(pk=instance.pk)
+        if old_instance.total_price != instance.total_price or old_instance.card_price != instance.card_price:
+            FinancialTransactions.objects.filter(
+                date=old_instance.date,
+                source=f"Пополнение за: {old_instance.__str__()[:200]}"
+            ).delete()
+            update_transactions_on_delivery(sender, instance, created=True)
+
+
+@receiver(post_save, sender=logistics.DeliveryJournal)
+def update_transactions_on_delivery(sender, instance, created, **kwargs):
+    """Создание или обновление данных"""
+    if created:
+        source = f"Пополнение за: {instance.__str__()[:200]}"
+        FinancialTransactions.objects.create(
+            date=instance.date,
+            transaction_type=FinancialTransactions.TransactionsType.PLUS,
+            amount=instance.total_price or 0,
+            card_amount=instance.card_price or 0,
+            source=source
+        )
+    utils.update_finance_record(instance.date)
+
+
+@receiver(post_delete, sender=logistics.DeliveryJournal)
+def delete_transactions_on_delivery_delete(sender, instance, **kwargs):
+    """Обновление данных после удаления"""
+    FinancialTransactions.objects.filter(
+        date=instance.date,
+        source__startswith=f"Пополнение за: {instance.__str__()[:200]}"
+    ).delete()
+    utils.update_finance_record(instance.date)
 
 
 # SalaryPayment
@@ -240,26 +275,21 @@ def create_transaction_on_order(sender, instance, created, **kwargs):
     if instance.status != Order.Status.DELIVERED:
         return
 
-    # Если заказ не привязан к рейсу — нет смены, нет даты → пропускаем
-    if not instance.trip or not instance.trip.shift:
-        return
-
     # Определяем тип транзакции (PLUS - доход)
     from .models import FinancialTransactions
     transaction_type = FinancialTransactions.TransactionsType.PLUS
-
-    # Определяем сумму через OrderItem (поля price/quantity перенесены туда)
-    total_price = instance.get_total_price()
-    card_amount = total_price if instance.payment_type == Order.PaymentType.CARD else 0
-
+    
+    # Определяем сумму картой
+    card_amount = instance.price if instance.payment_type == Order.PaymentType.CARD else 0
+    
     # Создаем транзакцию
     FinancialTransactions.objects.create(
         date=instance.trip.shift.date,
         transaction_type=transaction_type,
-        amount=total_price,
+        amount=instance.price,
         card_amount=card_amount,
         source=f"Заказ #{instance.pk} — {instance.client}"
     )
-
+    
     # Обновляем сводку по финансам
     utils.update_finance_record(instance.trip.shift.date)

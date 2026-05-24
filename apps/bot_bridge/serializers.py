@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem
+from apps.logistics.models import CourierShift, CourierTrip, Order
 from apps.clients.models import Client
 from apps.products.models import Product
 from apps.workers.models import Worker
@@ -37,53 +37,34 @@ class WorkerSerializer(serializers.ModelSerializer):
 
 # Новые сериализаторы для моделей P0
 
-class OrderItemSerializer(serializers.ModelSerializer):
-    """Сериализатор для позиции заказа (модель OrderItem)"""
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    
-    class Meta:
-        model = OrderItem
-        fields = ['id', 'order', 'product', 'product_name', 'quantity', 'price',
-                  'exchange_qty', 'sell_with_qty', 'defective_qty']
-        read_only_fields = ['price']
-
 class OrderSerializer(serializers.ModelSerializer):
     """Сериализатор для заказа (модель Order)"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
     client_name = serializers.CharField(source='client.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     payment_type_display = serializers.CharField(source='get_payment_type_display', read_only=True)
+    container_op_display = serializers.CharField(source='get_container_op_display', read_only=True)
     assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True, allow_null=True)
-    items = OrderItemSerializer(many=True, read_only=True)
-    total_price = serializers.SerializerMethodField()
-
-    def get_total_price(self, obj):
-        return obj.get_total_price()
-
-    class Meta:
-        model = Order
-        fields = ['id', 'trip', 'client', 'client_name',
-                  'payment_type', 'payment_type_display',
-                  'status', 'status_display',
-                  'assigned_courier', 'assigned_courier_name', 'note', 'created_at', 'delivered_at',
-                  'items', 'total_price']
-        read_only_fields = ['created_at', 'delivered_at']
-
-
-class OrderCreateModelSerializer(serializers.ModelSerializer):
-    """Сериализатор для создания заказа (для курьера) с поддержкой многопозиционной структуры"""
-    items = serializers.ListField(
-        child=serializers.DictField(),
-        required=True,
-        write_only=True,
-        help_text="Список позиций заказа. Каждая позиция: {'product': id, 'quantity': int, 'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}"
-    )
     
     class Meta:
         model = Order
-        fields = ['trip', 'client', 'payment_type', 'note', 'items']
+        fields = ['id', 'trip', 'client', 'client_name', 'product', 'product_name',
+                  'quantity', 'price', 'payment_type', 'payment_type_display',
+                  'status', 'status_display', 'container_op', 'container_op_display',
+                  'assigned_courier', 'assigned_courier_name', 'note', 'created_at', 'delivered_at']
+        read_only_fields = ['price', 'created_at', 'delivered_at']
+
+
+class OrderCreateModelSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания заказа (для курьера)"""
+    class Meta:
+        model = Order
+        fields = ['trip', 'client', 'product', 'quantity', 'payment_type', 'container_op', 'note']
         extra_kwargs = {
             'trip': {'required': True},
             'client': {'required': True},
+            'product': {'required': True},
+            'quantity': {'required': True, 'min_value': 1},
             'payment_type': {'required': True},
         }
     
@@ -104,21 +85,22 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
             f"или имена констант: {list(const_to_value.keys())}"
         )
     
-    def validate_items(self, items):
-        if not items:
-            raise serializers.ValidationError("Заказ должен содержать хотя бы одну позицию")
-        for idx, item in enumerate(items):
-            if 'product' not in item:
-                raise serializers.ValidationError(f"Позиция {idx}: отсутствует поле 'product'")
-            if 'quantity' not in item or item['quantity'] < 1:
-                raise serializers.ValidationError(f"Позиция {idx}: поле 'quantity' должно быть положительным числом")
-            # Проверяем существование продукта
-            from apps.products.models import Product
-            try:
-                Product.objects.get(id=item['product'])
-            except Product.DoesNotExist:
-                raise serializers.ValidationError(f"Позиция {idx}: продукт с id {item['product']} не найден")
-        return items
+    def validate_container_op(self, value):
+        if not value:
+            return value
+        const_to_value = {
+            'EXCHANGE': 'EX',
+            'SELL_WITH': 'SW',
+            'DEFECTIVE': 'DF',
+        }
+        if value in Order.ContainerOp.values:
+            return value
+        if value in const_to_value:
+            return const_to_value[value]
+        raise serializers.ValidationError(
+            f"Недопустимая операция с тарой '{value}'. Допустимые значения: {list(Order.ContainerOp.values)} "
+            f"или имена констант: {list(const_to_value.keys())}"
+        )
     
     def validate(self, data):
         """Проверка, что рейс принадлежит текущему курьеру"""
@@ -131,16 +113,6 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
                     "Рейс не принадлежит текущему курьеру"
                 )
         return data
-    
-    def create(self, validated_data):
-        items_data = validated_data.pop('items')
-        order = Order.objects.create(**validated_data)
-        for item_data in items_data:
-            # item_data['product'] приходит как int (ID) — нужно получить объект
-            product_id = item_data.pop('product')
-            product = Product.objects.get(id=product_id)
-            OrderItem.objects.create(order=order, product=product, **item_data)
-        return order
 
 
 class CourierTripSerializer(serializers.ModelSerializer):

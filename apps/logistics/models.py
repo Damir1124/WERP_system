@@ -61,14 +61,11 @@ class DeliveryLog(models.Model):
         Сравниваем total_quantity журнала с суммой доставленных BOTTLE_20L
         за ту же дату и курьера.
         """
-        # quantity теперь в OrderItem, фильтруем через items
-        # Ленивый импорт, т.к. OrderItem определён ниже в этом же файле
-        from apps.logistics.models import OrderItem as _OrderItem
-        total_sales_bottle_20l = _OrderItem.objects.filter(
-            order__status=Order.Status.DELIVERED,
+        total_sales_bottle_20l = Order.objects.filter(
+            status=Order.Status.DELIVERED,
             product__type_product=Product.TypeProduct.BOTTLE_20L,
-            order__trip__shift__courier=self.courier,
-            order__delivered_at__date=self.date,
+            trip__shift__courier=self.courier,
+            delivered_at__date=self.date,
         ).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
 
         if self.total_quantity != total_sales_bottle_20l:
@@ -169,26 +166,19 @@ class CourierTrip(models.Model):
     def get_trip_summary(self) -> dict:
         """Справка по рейсу: остатки тары в машине в реальном времени"""
         from django.db.models import Sum
-        from apps.logistics.models import OrderItem
-        # quantity/container_op перенесены в OrderItem — агрегируем через items
-        delivered = OrderItem.objects.filter(
-            order__trip=self,
-            order__status=Order.Status.DELIVERED
+        delivered = self.orders.filter(
+            status=Order.Status.DELIVERED
         ).aggregate(total=Sum('quantity'))['total'] or 0
 
-        # exchange_qty > 0 означает обмен тары
-        empty_received = OrderItem.objects.filter(
-            order__trip=self,
-            order__status=Order.Status.DELIVERED,
-            exchange_qty__gt=0
-        ).aggregate(total=Sum('exchange_qty'))['total'] or 0
+        empty_received = self.orders.filter(
+            status=Order.Status.DELIVERED,
+            container_op=Order.ContainerOp.EXCHANGE
+        ).aggregate(total=Sum('quantity'))['total'] or 0
 
-        # defective_qty > 0 означает брак тары
-        defective = OrderItem.objects.filter(
-            order__trip=self,
-            order__status=Order.Status.DELIVERED,
-            defective_qty__gt=0
-        ).aggregate(total=Sum('defective_qty'))['total'] or 0
+        defective = self.orders.filter(
+            status=Order.Status.DELIVERED,
+            container_op=Order.ContainerOp.DEFECTIVE
+        ).aggregate(total=Sum('quantity'))['total'] or 0
 
         full_remain = self.full_loaded - delivered - self.full_returned
         return {
@@ -202,11 +192,16 @@ class CourierTrip(models.Model):
 
 
 class Order(models.Model):
-    """Заказ — строка рейса (многопозиционный)"""
+    """Заказ — строка рейса"""
     class Status(models.TextChoices):
         PENDING   = 'PD', 'Ожидает'
         DELIVERED = 'DL', 'Доставлен'
         CANCELLED = 'CN', 'Отменён'
+
+    class ContainerOp(models.TextChoices):
+        EXCHANGE  = 'EX', 'Обмен (пустая → полная)'
+        SELL_WITH = 'SW', 'Продажа с тарой'
+        DEFECTIVE = 'DF', 'Возврат брака'
 
     class PaymentType(models.TextChoices):
         CASH  = 'CH', 'Наличные'
@@ -224,8 +219,14 @@ class Order(models.Model):
         related_name='assigned_orders',
         verbose_name='Назначенный курьер'
     )
+    product       = models.ForeignKey('products.Product', on_delete=models.CASCADE)
+    quantity      = models.IntegerField(default=1, verbose_name='Количество')
+    price         = models.IntegerField(blank=True, null=True, verbose_name='Сумма')
     payment_type  = models.CharField(choices=PaymentType.choices, default=PaymentType.CASH, max_length=2)
     status        = models.CharField(choices=Status.choices, default=Status.PENDING, max_length=2)
+    container_op  = models.CharField(choices=ContainerOp.choices, null=True, blank=True, max_length=2,
+                                     verbose_name='Операция с тарой',
+                                     help_text='Заполняется курьером при подтверждении доставки')
     note          = models.CharField(max_length=255, null=True, blank=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     delivered_at  = models.DateTimeField(null=True, blank=True)
@@ -236,42 +237,10 @@ class Order(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        items_count = self.items.count()
-        return f'Заказ #{self.id} ({items_count} позиций)'
-
-    def get_total_price(self):
-        """Динамический подсчет стоимости заказа на основе связанных позиций"""
-        from django.db.models import Sum
-        total = self.items.aggregate(total=Sum('price'))['total']
-        return total if total is not None else 0
+        return f'Заказ #{self.id} ({self.product}, {self.quantity} шт.)'
 
     def save(self, *args, **kwargs):
-        """Автоматический расчет цены больше не нужен, цена считается через OrderItem"""
-        super().save(*args, **kwargs)
-
-
-class OrderItem(models.Model):
-    """Позиция заказа (многопозиционная структура)"""
-    order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE, verbose_name='Заказ')
-    product = models.ForeignKey('products.Product', on_delete=models.PROTECT, verbose_name='Продукт')
-    quantity = models.IntegerField(default=1, verbose_name='Количество')
-    price = models.IntegerField(null=True, blank=True, verbose_name='Цена за позицию') # Авто-расчет: product.price * quantity
-    
-    # Специфические поля для учета тары (актуально только для продуктов с type == 'B20L')
-    exchange_qty = models.IntegerField(default=0, verbose_name='Обмен тары (возврат)')
-    sell_with_qty = models.IntegerField(default=0, verbose_name='Продажа с тарой')
-    defective_qty = models.IntegerField(default=0, verbose_name='Брак тары')
-    
-    class Meta:
-        verbose_name = "Позиция заказа"
-        verbose_name_plural = "Позиции заказов"
-        ordering = ['id']
-    
-    def __str__(self):
-        return f'Позиция #{self.id} ({self.product}, {self.quantity} шт.)'
-    
-    def save(self, *args, **kwargs):
-        """Автоматический расчет цены позиции при сохранении"""
+        """Автоматический расчет цены при сохранении"""
         if self.price is None:
             self.price = self.product.price * self.quantity
         super().save(*args, **kwargs)

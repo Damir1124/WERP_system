@@ -34,19 +34,11 @@ urlpatterns = [
     # API для Telegram бота
     path('api/bot/', include('apps.bot_bridge.urls')),
 
-    # API модулей
+    # API для финансов и зарплат
     path('api/accounting/', include('apps.accounting.urls')),
-    path('api/logistics/', include('apps.logistics.urls')),
-    path('api/warehouse/', include('apps.warehouse.urls')),
-    path('api/clients/', include('apps.clients.urls')),
-    path('api/workers/', include('apps.workers.urls')),
-    path('api/products/', include('apps.products.urls')),
 
     # DRF аутентификация (опционально)
     path('api-auth/', include('rest_framework.urls')),
-
-    # Веб-дашборд (P6) - временно отключено, так как приложение еще не создано
-    # path('', include('apps.dashboard.urls')),
 
     # Mini App для курьера — SPA (все пути отдают index.html)
     path('miniapp/courier/', serve_spa('courier'), name='courier_miniapp'),

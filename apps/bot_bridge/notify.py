@@ -70,17 +70,13 @@ def notify_client_order_accepted(order):
     else:
         courier_info = "Курьер будет назначен в ближайшее время\n"
 
-    # Собираем позиции из OrderItem (поля product/quantity перенесены туда)
-    items = order.items.select_related('product').all()
-    if items:
-        items_str = ", ".join(f"{i.product.name} × {i.quantity} шт." for i in items)
-    else:
-        items_str = "Неизвестный товар"
+    product_name = order.product.name if order.product else "Неизвестный товар"
+    quantity = order.quantity
 
     text = (
         f"✅ <b>Курьер принял ваш заказ</b>\n\n"
         f"{courier_info}"
-        f"Заказ: {items_str}\n"
+        f"Заказ: {product_name} × {quantity} шт.\n"
         f"Статус: В пути 🚚\n\n"
         f"Номер заказа: #{order.id}"
     )
@@ -95,18 +91,14 @@ def notify_client_order_delivered(order):
         logger.warning(f"У заказа {order.id} нет клиента или tg_id, уведомление не отправлено")
         return False
 
-    # Собираем позиции из OrderItem
-    items = order.items.select_related('product').all()
-    if items:
-        items_str = ", ".join(f"{i.product.name} × {i.quantity} шт." for i in items)
-    else:
-        items_str = "Неизвестный товар"
-    total_price = order.get_total_price()
+    product_name = order.product.name if order.product else "Неизвестный товар"
+    quantity = order.quantity
+    price = order.price or 0
 
     text = (
         f"🎉 <b>Ваш заказ доставлен!</b>\n\n"
-        f"Заказ: {items_str}\n"
-        f"Сумма: {total_price} сум\n"
+        f"Заказ: {product_name} × {quantity} шт.\n"
+        f"Сумма: {price} сум\n"
         f"Спасибо за покупку!\n\n"
         f"Номер заказа: #{order.id}"
     )
@@ -123,19 +115,14 @@ def notify_courier_new_order(courier_tg_id: int, order):
 
     client_name = order.client.name if order.client else "Неизвестный клиент"
     address = order.client.address if order.client else "Адрес не указан"
-
-    # Собираем позиции из OrderItem
-    items = order.items.select_related('product').all()
-    if items:
-        items_str = ", ".join(f"{i.product.name} × {i.quantity} шт." for i in items)
-    else:
-        items_str = "Неизвестный товар"
+    product_name = order.product.name if order.product else "Неизвестный товар"
+    quantity = order.quantity
 
     text = (
         f"📦 <b>Новый заказ</b>\n\n"
         f"Клиент: {client_name}\n"
         f"Адрес: {address}\n"
-        f"Товар: {items_str}\n\n"
+        f"Товар: {product_name} × {quantity} шт.\n\n"
         f"Заберите заказ из пула."
     )
     return send_telegram_message(courier_tg_id, text)
