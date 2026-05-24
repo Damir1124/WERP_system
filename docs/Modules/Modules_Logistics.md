@@ -27,11 +27,20 @@
 См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:189).
 
 ### `Order` — заказ (строка рейса)
-- Основной источник правды для доставок: содержит `trip`, `client`, `product`, `quantity`, `price`, `payment_type`, `container_op`, `status`.
-- При сохранении автоматически рассчитывает `price` (если не указан).
+- Основной источник правды для доставок: содержит `trip`, `client`, `payment_type`, `status`.
+- **Рефакторинг этапа 3.7**: удалены поля `product`, `quantity`, `price`, `container_op`. Теперь заказ может содержать несколько позиций через модель `OrderItem`.
+- Метод `get_total_price()` вычисляет общую стоимость заказа как сумму `price` всех связанных `OrderItem`.
 - Перевод в статус `DELIVERED` — триггер для всей цепочки обновлений: пересчёт суммы рейса/смены, списание на складе и создание финансовой транзакции.
 
 См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:238) и логику сигналов в [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
+
+### `OrderItem` — позиция заказа (новая модель, этап 3.7)
+- Реализует многопозиционную архитектуру заказов: один заказ может содержать несколько продуктов за один визит.
+- Поля: `order` (ForeignKey), `product`, `quantity`, `price` (цена за позицию), `exchange_qty` (возврат тары), `sell_with_qty` (продажа с тарой), `defective_qty` (брак тары).
+- **Почему так**: Позволяет клиенту заказать одновременно воду 20L, воду 5L и бутыли в одном заказе. Упрощает учёт тары через отдельные поля вместо флагов.
+- Сигнал `recalculate_order_price` срабатывает при сохранении `OrderItem` и обновляет цену позиции на основе `product.price`.
+
+См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:267).
 
 ## Что стало с `DeliveryJournal` / `DeliveryJournalProducts`
 `DeliveryJournal` и `DeliveryJournalProducts` — устаревшая модельная пара, использовавшаяся для ручных отчётов курьеров. В новой архитектуре P0 их роль полностью замещена моделью `Order` (строки рейса) и агрегатами `CourierTrip`/`CourierShift`.
@@ -43,22 +52,30 @@
 
 Центральный принцип: изменение состояния сущности в `logistics` (в первую очередь перевод `Order` в `DELIVERED`) вызывает детерминированную цепочку задач через Django-сигналы. Это даёт возможность модулям работать автономно — каждая подсистема подписана на изменения и отвечает только за свою часть.
 
+**Изменения после этапа 3.7 (рефакторинг на OrderItem):**
+- Цена заказа теперь рассчитывается как сумма `price` всех связанных `OrderItem` через метод `order.get_total_price()`.
+- Сигнал `recalculate_order_price` теперь привязан к модели `OrderItem` и обновляет цену конкретной позиции.
+- Складской сигнал `update_stock_on_order` итерирует по `order.items.all()` и учитывает новые поля количества (`exchange_qty`, `sell_with_qty`, `defective_qty`) для точного учёта тары.
+- Финансовый сигнал `create_transaction_on_order` использует `order.get_total_price()` вместо прямого поля `price`.
+
 Основная цепочка при подтверждении доставки (см. [`apps/logistics/signals.py`](apps/logistics/signals.py:61)):
 
-1) pre_save/post_save: пересчёт цены заказа
-   - Сигнал `recalculate_order_price` обеспечивает, что `Order.price` соответствует `product.price * quantity` при изменениях.
-   - Ссылка на код: [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
+1) pre_save/post_save: пересчёт цены позиции заказа
+   - Сигнал `recalculate_order_price` (привязан к `OrderItem`) обеспечивает, что `OrderItem.price` соответствует `product.price * quantity` при изменениях.
+   - Ссылка на код: [`apps/logistics/signals.py`](apps/logistics/signals.py:22).
 
 2) post_save(Order, status=DELIVERED): обновление сумм смены
-   - `update_shift_totals_on_order` аккумулирует `cash_total`/`card_total` в связанной `CourierShift`.
+   - `update_shift_totals_on_order` аккумулирует `cash_total`/`card_total` в связанной `CourierShift` на основе `order.get_total_price()`.
    - Работа идёт через простое добавление значения и `shift.save(update_fields=[...])` — минимизация перезаписи полей.
 
 3) post_save(Order, status=DELIVERED): обновление склада
    - `warehouse/signals.update_stock_on_order` переводит продаваемый продукт в маппинг (`BOTTLE_20L -> BOTTLE`) и создаёт `StockMovement` + корректирует `StockBalance`.
-   - Код и правила маппинга: [`apps/warehouse/signals.py`](apps/warehouse/signals.py:363).
+   - **Новое**: итерация по всем `OrderItem` заказа, учёт полей `exchange_qty`, `sell_with_qty`, `defective_qty` для точного списания тары.
+   - Код и правила маппинга: [`apps/warehouse/signals.py`](apps/warehouse/signals.py:358).
 
 4) post_save(Order, status=DELIVERED): создание финансовой транзакции
-   - `accounting/signals.create_transaction_on_order` (или аналог) создаёт `FinancialTransactions` (+/-) и вызывает `utils.update_finance_record(date)`.
+   - `accounting/signals.create_transaction_on_order` создаёт `FinancialTransactions` (+/-) на основе `order.get_total_price()` и вызывает `utils.update_finance_record(date)`.
+   - Ссылка на код: [`apps/accounting/signals.py`](apps/accounting/signals.py:272).
 
 Гарантии и практики для надёжности:
 - Использование atomic transactions и transaction.on_commit: критические операции (списание товара, создание транзакции) выполняются внутри транзакций или отложены на `on_commit`, чтобы избежать рассинхронизации при откате.
@@ -66,7 +83,7 @@
 - Логирование: каждая стадия логирует результат и предупреждения (см. `logger` в `apps/warehouse/signals.py` и `apps/logistics/signals.py`).
 - Минимизация рекурсий: сигналы написаны так, чтобы не провоцировать бесконечные циклы (пересчёт в pre_save, агрегация в post_save с защитой по статусам).
 
-Пример (схематично) — что происходит при подтверждении заказа:
+Пример (схематично) — что происходит при подтверждении заказа с несколькими позициями:
 
 ```python
 # В коде: курьер через бот пометил заказ доставленным
@@ -75,13 +92,13 @@ order.delivered_at = timezone.now()
 order.save()
 
 # После commit срабатывают подписанные обработчики:
-# 1) recalculate_order_price -> гарантирует корректную order.price
-# 2) update_shift_totals_on_order -> увеличивает cash/card в shift
-# 3) update_stock_on_order -> создает StockMovement и обновляет StockBalance
-# 4) accounting handler -> создает FinancialTransactions и обновляет агрегаты финансов
+# 1) recalculate_order_price (для каждого OrderItem) -> гарантирует корректные цены позиций
+# 2) update_shift_totals_on_order -> увеличивает cash/card в shift на сумму order.get_total_price()
+# 3) update_stock_on_order -> создает StockMovement для каждого продукта с учётом тары
+# 4) accounting handler -> создает FinancialTransactions на общую сумму заказа
 ```
 
-Ссылки на реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:277), [`apps/logistics/signals.py`](apps/logistics/signals.py:74), [`apps/warehouse/signals.py`](apps/warehouse/signals.py:356), [`apps/accounting/signals.py`](apps/accounting/signals.py:1).
+Ссылки на реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:277), [`apps/logistics/signals.py`](apps/logistics/signals.py:22), [`apps/warehouse/signals.py`](apps/warehouse/signals.py:358), [`apps/accounting/signals.py`](apps/accounting/signals.py:272).
 
 ## Устаревшие модели
 

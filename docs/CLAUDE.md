@@ -173,26 +173,35 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 - `finished_at` DateTimeField (null=True)
 - Метод `get_trip_summary() → dict` — возвращает: full_loaded, delivered, full_returned, full_remain, empty_received, defective_received
 
-**`Order` (Заказ — строка рейса):**
-- `trip` FK → CourierTrip (related_name='orders')
+**`Order` (Заказ — строка рейса, многопозиционный):**
+- `trip` FK → CourierTrip (related_name='orders', null=True — заказ клиента до назначения курьера)
 - `client` FK → Client (SET_NULL, null=True)
-- `product` FK → Product
-- `quantity` IntegerField (default=1)
-- `price` IntegerField (null=True) — авто-расчёт в `save()`: price = product.price × quantity
+- `assigned_courier` FK → Worker (SET_NULL, null=True) — назначенный курьер
 - `payment_type` choices: CASH/CARD/BONUS
 - `status` choices: PENDING/DELIVERED/CANCELLED
-- `container_op` choices: EXCHANGE/SELL_WITH/DEFECTIVE (null=True, заполняется курьером)
 - `note` CharField (null=True)
 - `created_at` DateTimeField (auto_now_add)
 - `delivered_at` DateTimeField (null=True)
+- Метод `get_total_price() → int` — сумма всех `OrderItem.price`
 
-**Логика `container_op`:**
+> ⚠️ Поля `product`, `quantity`, `price`, `container_op` **удалены** из `Order` (миграция 0004). Они перенесены в модель `OrderItem`.
 
-| `container_op` | Действие со складом | Результат в машине |
+**`OrderItem` (Позиция заказа — новая модель P3.7):**
+- `order` FK → Order (related_name='items')
+- `product` FK → Product
+- `quantity` IntegerField (default=1)
+- `price` IntegerField (null=True) — авто-расчёт в `pre_save`: price = product.price × quantity
+- `exchange_qty` IntegerField (default=0) — обмен тары (возврат пустой)
+- `sell_with_qty` IntegerField (default=0) — продажа с тарой
+- `defective_qty` IntegerField (default=0) — брак тары
+
+**Логика учёта тары (через поля `OrderItem`):**
+
+| Поле | Действие со складом | Результат в машине |
 |---|---|---|
-| `EXCHANGE` | Списать 1 BOTTLE (полная ушла, пустая получена) | +1 пустая в машину |
-| `SELL_WITH` | Списать 1 BOTTLE (продана с тарой) | 0 пустых |
-| `DEFECTIVE` | НЕ списывать (брак возвращается) | +1 бракованная в машину |
+| `exchange_qty > 0` | Списать BOTTLE × exchange_qty | +exchange_qty пустых в машину |
+| `sell_with_qty > 0` | Списать BOTTLE × sell_with_qty | 0 пустых |
+| `defective_qty > 0` | НЕ списывать (брак возвращается) | +defective_qty бракованных |
 
 **Устаревшие модели (оставлены в БД для совместимости, не используются в новом коде):**
 - `DeliveryLog` — заменён на `CourierShift` + `CourierTrip`
@@ -200,8 +209,8 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 - `DeliveryJournal` — класс присутствует в коде как заглушка с docstring, таблица не используется
 
 **Сигналы (`logistics/signals.py`):**
-- `post_save(Order)` → `recalculate_order_price`: пересчёт price если не задана вручную
-- `post_save(Order)` → `update_shift_totals_on_order`: обновление cash_total/card_total в CourierShift при status=DELIVERED
+- `pre_save(OrderItem)` → `recalculate_order_price`: пересчёт `price = product.price × quantity` если не задана вручную или изменилось quantity
+- `post_save(Order)` → `update_shift_totals_on_order`: **агрегация** (не инкремент!) cash_total/card_total в CourierShift при status=DELIVERED — пересчитывает через `OrderItem` все DELIVERED заказы смены
 
 ---
 
@@ -984,7 +993,79 @@ frontend/
 - Mini App хостится на HTTPS (требование Telegram)
 
 ---
+#### 3.7 Рефакторинг ядра бэкенда: Переход на структуру OrderItem и перенос логики заказов
 
+**Цель:** Переписать архитектуру базы данных и бизнес-логику с однотоварных заказов на многопозиционные (один заказ = много товаров в рамках одного визита). Отключить старый эндпоинт создания заказа клиентом на уровне API.
+
+##### 1. Изменения в моделях (`apps/logistics/models.py`)
+
+- **`Order`**: Полностью удалить поля `product`, `quantity`, `price`, `container_op`. Вместо них реализовать метод или свойство `get_total_price(self)` для динамического подсчета стоимости заказа на основе связанных позиций (`sum(item.price for item in self.items.all())`).
+    
+- **`OrderItem`** (Новая модель позиций заказа):
+    ```
+    class OrderItem(models.Model):
+        order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE, verbose_name='Заказ')
+        product = models.ForeignKey('products.Product', on_delete=models.PROTECT, verbose_name='Продукт')
+        quantity = models.IntegerField(default=1, verbose_name='Количество')
+        price = models.IntegerField(null=True, blank=True, verbose_name='Цена за позицию') # Авто-расчет: product.price * quantity
+    
+        # Специфические поля для учета тары (актуально только для продуктов с type == 'B20L')
+        exchange_qty = models.IntegerField(default=0, verbose_name='Обмен тары (возврат)')
+        sell_with_qty = models.IntegerField(default=0, verbose_name='Продажа с тарой')
+        defective_qty = models.IntegerField(default=0, verbose_name='Брак тары')
+    ```
+    
+
+##### 2. Рефакторинг цепочки сигналов (Бизнес-логика)
+
+Так как автоматизация в проекте завязана на `post_save` заказа, логику обработчиков необходимо адаптировать под новую структуру данных:
+
+- **`recalculate_order_price`** (`logistics/signals.py`): Перевести на `pre_save` модели **`OrderItem`**. Сигнал должен вычислять `product.price * quantity` и сохранять результат в `item.price` перед записью в БД.
+    
+- **`update_shift_totals_on_order`** (`logistics/signals.py`): Оставить на модели `Order` (срабатывает при изменении статуса заказа на `DELIVERED`), но теперь он берет агрегированную сумму всех позиций через `order.get_total_price()` и прибавляет её к финансовым итогам смены (`shift.cash_total` или `shift.card_total`).
+    
+- **`update_stock_on_order`** (`apps/warehouse/signals.py`): Переписать логику списания. При `Order.status == DELIVERED` сигнал должен запускать цикл по всем связанным `items`. Если у `item.product.type == 'B20L'` (Вода 20л), то склад списывает со склада/машины базовый продукт `BOTTLE` в количестве `exchange_qty + sell_with_qty`, а `defective_qty` приходует как брак. Для остальных типов продуктов списывается просто `quantity`.
+    
+- **`create_transaction_on_order`** (`apps/accounting/signals.py`): Срабатывает при закрытии `Order`, использует финальный `order.get_total_price()` для создания финансовой транзакции `FinancialTransactions(PLUS)`.
+    
+
+##### 3. Изменения в API-слое (`apps/bot_bridge`)
+
+- **`serializers.py`**:
+    
+    - Создать `OrderItemSerializer` для сериализации позиций (включая поля тары).
+        
+    - Обновить `OrderSerializer`, добавив в него вложенный серилизатор позиций: `items = OrderItemSerializer(many=True, read_only=True)`.
+        
+- **`views.py`**:
+    
+    - **Отключение клиента:** Полностью удалить или заблокировать эндпоинт `POST /api/bot/client/order/` на уровне ViewSet/URL.
+        
+    - **Пул заказов:** Обновить эндпоинт создания заказа в пуле (`POST /api/bot/orders/`). Теперь он должен принимать ID клиента и массив `items` (список объектов с `product_id` и `quantity`), программно создавая `Order` и пачку `OrderItem`.
+        
+    - **Закрытие заказа:** Обновить эндпоинт подтверждения доставки (`PATCH /api/bot/orders/<id>/deliver/`). Теперь в теле запроса бэкенд ожидает массив данных по позициям (для каждой позиции передаются финальные `exchange_qty`, `sell_with_qty`, `defective_qty`).
+        
+
+**Файлы для изменения (Исключительно бэкенд):**
+
+- `apps/logistics/models.py` (модификация `Order`, добавление `OrderItem`)
+    
+- `apps/logistics/signals.py` (перерасчет цен и обновление итогов смен)
+    
+- `apps/warehouse/signals.py` (построчный пересчет остатков тары)
+    
+- `apps/accounting/signals.py` (проводка транзакций по агрегированной стоимости)
+    
+- `apps/bot_bridge/serializers.py` (вложенные сериализаторы)
+    
+- `apps/bot_bridge/views.py` (изменение логики POST и PATCH запросов для заказов)
+    
+
+**Миграции:**
+
+- Удалить старые тестовые заказы в БД перед миграцией, так как поля `product` и `quantity` удаляются из таблицы `Order`.
+    
+- Выполнить: `python manage.py makemigrations logistics` и `python manage.py migrate`.
 ### [P4] Подключение URL-маршрутов для всех приложений
 
 > **Цель:** Каждое приложение должно иметь собственный `urls.py` и быть подключено в `WERP_system/urls.py`. Это необходимо для работы Django Admin, DRF API и будущих веб-страниц.
@@ -1234,17 +1315,31 @@ CourierTripAdmin:
 
 OrderInline (TabularInline):
   model:          Order
-  fields:         client, product, quantity, price, payment_type, status, container_op
-  readonly_fields: price, created_at, delivered_at
+  fields:         client, payment_type, status, assigned_courier, note, created_at, delivered_at
+  readonly_fields: created_at, delivered_at
+  extra:          0
+  show_change_link: True
+
+OrderItemInline (TabularInline):
+  model:          OrderItem
+  fields:         product, quantity, price, exchange_qty, sell_with_qty, defective_qty
+  readonly_fields: price
   extra:          1
 
 OrderAdmin:
-  list_display:   id, trip, client, product, quantity, price, payment_type, status, container_op, delivered_at
-  list_filter:    status, payment_type, container_op, trip__shift__courier
-  search_fields:  client__name, client__phone, product__name
-  readonly_fields: price, created_at, delivered_at
+  list_display:   id, trip, client, payment_type, status, total_price_display, assigned_courier, created_at, delivered_at
+  list_filter:    status, payment_type, trip__shift__courier, trip__shift__date
+  search_fields:  client__name, client__phone, note
+  readonly_fields: created_at, delivered_at
   date_hierarchy: created_at
+  inlines:        [OrderItemInline]
   actions:        [mark_as_delivered, mark_as_cancelled]
+
+OrderItemAdmin:
+  list_display:   id, order, product, quantity, price, exchange_qty, sell_with_qty, defective_qty
+  list_filter:    product__type_product, order__status
+  search_fields:  product__name, order__client__name
+  readonly_fields: price
 ```
 
 **`apps/accounting/admin.py` — РАСШИРИТЬ:**

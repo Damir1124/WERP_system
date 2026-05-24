@@ -238,7 +238,7 @@ class CourierCurrentTripView(APIView):
         active_trip = CourierTrip.objects.filter(
             shift=active_shift,
             status=CourierTrip.Status.ACTIVE
-        ).prefetch_related('orders__client', 'orders__product').first()
+        ).prefetch_related('orders__client', 'orders__items__product').first()
 
         if not active_trip:
             return Response({
@@ -250,25 +250,32 @@ class CourierCurrentTripView(APIView):
 
         trip_serializer = CourierTripSerializer(active_trip)
 
-        # Расчётные поля
-        cash_expected = active_trip.orders.filter(
-            status=Order.Status.DELIVERED,
-            payment_type=Order.PaymentType.CASH
-        ).aggregate(total=Sum('price'))['total'] or 0
+        # Расчётные поля через OrderItem (поля quantity/price/product перенесены в OrderItem)
+        from apps.logistics.models import OrderItem
+        from django.db.models import Sum as DSum
 
-        card_expected = active_trip.orders.filter(
-            status=Order.Status.DELIVERED,
-            payment_type=Order.PaymentType.CARD
-        ).aggregate(total=Sum('price'))['total'] or 0
+        cash_expected = OrderItem.objects.filter(
+            order__trip=active_trip,
+            order__status=Order.Status.DELIVERED,
+            order__payment_type=Order.PaymentType.CASH
+        ).aggregate(total=DSum('price'))['total'] or 0
 
+        card_expected = OrderItem.objects.filter(
+            order__trip=active_trip,
+            order__status=Order.Status.DELIVERED,
+            order__payment_type=Order.PaymentType.CARD
+        ).aggregate(total=DSum('price'))['total'] or 0
+
+        # exchange_count — заказы с хотя бы одной позицией exchange_qty > 0
         exchange_count = active_trip.orders.filter(
             status=Order.Status.DELIVERED,
-            container_op=Order.ContainerOp.EXCHANGE
-        ).count()
+            items__exchange_qty__gt=0
+        ).distinct().count()
 
-        delivered_qty = active_trip.orders.filter(
-            status=Order.Status.DELIVERED
-        ).aggregate(total=Sum('quantity'))['total'] or 0
+        delivered_qty = OrderItem.objects.filter(
+            order__trip=active_trip,
+            order__status=Order.Status.DELIVERED
+        ).aggregate(total=DSum('quantity'))['total'] or 0
 
         summary = {
             'full_loaded': active_trip.full_loaded,
@@ -317,7 +324,7 @@ class OrderConfirmationView(APIView):
         data = serializer.validated_data
         order_id = data['order_id']
         confirmed = data['confirmed']
-        container_op = data.get('container_op')
+        container_op = data.get('container_op')  # игнорируем, т.к. поле удалено из модели
         note = data.get('note', '')
 
         order = get_object_or_404(Order, id=order_id)
@@ -329,8 +336,6 @@ class OrderConfirmationView(APIView):
         if confirmed:
             order.status = Order.Status.DELIVERED
             order.delivered_at = timezone.now()
-            if container_op:
-                order.container_op = container_op
             if note:
                 order.note = note
             order.save()
@@ -373,15 +378,26 @@ class OrderQuantityUpdateView(APIView):
         if order.trip and order.trip.shift.courier != request.courier:
             return Response({'error': 'Нет доступа к этому заказу'}, status=status.HTTP_403_FORBIDDEN)
 
-        order.quantity = data['new_quantity']
-        order.price = None  # сбросить, чтобы пересчиталось в save()
-        order.save()
+        # Получаем первую позицию заказа (пока поддерживаем изменение только первой позиции)
+        from apps.logistics.models import OrderItem
+        order_item = order.items.first()
+        if not order_item:
+            return Response({'error': 'В заказе нет позиций'}, status=status.HTTP_400_BAD_REQUEST)
+
+        order_item.quantity = data['new_quantity']
+        order_item.price = None  # сбросить, чтобы пересчиталось в save()
+        order_item.save()
+
+        # Пересчитываем общую стоимость заказа
+        total_price = order.get_total_price()
 
         return Response({
             'status': 'updated',
             'order_id': order.id,
-            'new_quantity': order.quantity,
-            'new_price': order.price,
+            'order_item_id': order_item.id,
+            'new_quantity': order_item.quantity,
+            'new_price': order_item.price,
+            'total_price': total_price,
         })
 
 
@@ -395,13 +411,12 @@ class CreateOrderView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         order = serializer.save()
+        # Сериализуем созданный заказ для ответа
+        order_serializer = OrderSerializer(order, context={'request': request})
         return Response({
             'status': 'created',
             'message': 'Заказ создан',
-            'order_id': order.id,
-            'product': order.product.name,
-            'quantity': order.quantity,
-            'price': order.price,
+            'order': order_serializer.data,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -419,7 +434,7 @@ class CourierPoolView(APIView):
         free_orders = Order.objects.filter(
             status=Order.Status.PENDING,
             assigned_courier__isnull=True,
-        ).select_related('client', 'product').order_by('-created_at')
+        ).select_related('client', 'trip', 'assigned_courier').prefetch_related('items__product').order_by('-created_at')
 
         serializer = OrderSerializer(free_orders, many=True)
         return Response(serializer.data)
@@ -491,31 +506,33 @@ class CourierColleaguesView(APIView):
             delivered_today=Count(
                 'couriershift__trips__orders',
                 filter=Q(couriershift__trips__orders__status=Order.Status.DELIVERED)
-            ),
-            cash_total_today=Sum(
-                'couriershift__trips__orders__price',
-                filter=Q(
-                    couriershift__trips__orders__status=Order.Status.DELIVERED,
-                    couriershift__trips__orders__payment_type=Order.PaymentType.CASH
-                )
-            ),
-            card_total_today=Sum(
-                'couriershift__trips__orders__price',
-                filter=Q(
-                    couriershift__trips__orders__status=Order.Status.DELIVERED,
-                    couriershift__trips__orders__payment_type=Order.PaymentType.CARD
-                )
             )
         ).distinct()
 
+        # price теперь в OrderItem — считаем через отдельные запросы
+        from apps.logistics.models import OrderItem
         data = []
         for c in colleagues:
+            cash_total = OrderItem.objects.filter(
+                order__trip__shift__courier=c,
+                order__trip__shift__date=today,
+                order__status=Order.Status.DELIVERED,
+                order__payment_type=Order.PaymentType.CASH,
+            ).aggregate(total=Sum('price'))['total'] or 0
+
+            card_total = OrderItem.objects.filter(
+                order__trip__shift__courier=c,
+                order__trip__shift__date=today,
+                order__status=Order.Status.DELIVERED,
+                order__payment_type=Order.PaymentType.CARD,
+            ).aggregate(total=Sum('price'))['total'] or 0
+
             data.append({
                 'id': c.id,
                 'full_name': c.full_name,
                 'delivered_today': c.delivered_today or 0,
-                'cash_total': c.cash_total_today or 0,
-                'card_total': c.card_total_today or 0,
+                'cash_total': cash_total,
+                'card_total': card_total,
             })
 
         return Response(data)
@@ -605,14 +622,18 @@ class ClientOrderCreateView(APIView):
             return Response({'error': 'Продукт не найден'}, status=status.HTTP_404_NOT_FOUND)
 
         # Создаём заказ без рейса (trip=None — ждёт назначения курьера)
+        from apps.logistics.models import OrderItem
         order = Order.objects.create(
             trip=None,
             client=client,
-            product=product,
-            quantity=quantity,
             payment_type=payment_type,
             status=Order.Status.PENDING,
             note=note,
+        )
+        item = OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=quantity,
         )
 
         if address and address != client.address:
@@ -624,8 +645,8 @@ class ClientOrderCreateView(APIView):
             'message': 'Заказ создан и ожидает назначения курьера',
             'order_id': order.id,
             'product': product.name,
-            'quantity': order.quantity,
-            'price': order.price,
+            'quantity': item.quantity,
+            'price': item.price,
             'estimated_date': timezone.now().date().isoformat(),
         }, status=status.HTTP_201_CREATED)
 
@@ -673,13 +694,23 @@ class ClientOrderStatusView(APIView):
             c = order.assigned_courier
             courier_info = {'id': c.id, 'full_name': c.full_name}
 
+        # Собираем позиции заказа (поля product/quantity/price перенесены в OrderItem)
+        items_data = [
+            {
+                'product': item.product.name,
+                'quantity': item.quantity,
+                'price': item.price,
+            }
+            for item in order.items.select_related('product').all()
+        ]
+        total_price = order.get_total_price()
+
         return Response({
             'order_id': order.id,
             'status': order.status,
             'status_display': order.get_status_display(),
-            'product': order.product.name,
-            'quantity': order.quantity,
-            'price': order.price,
+            'items': items_data,
+            'total_price': total_price,
             'payment_type': order.payment_type,
             'created_at': order.created_at,
             'delivered_at': order.delivered_at,
@@ -839,27 +870,34 @@ class AdminOrdersRecentView(APIView):
     def get(self, request):
         limit = int(request.query_params.get('limit', 10))
         orders = Order.objects.select_related(
-            'client', 'product', 'assigned_courier', 'trip__shift__courier'
-        ).order_by('-created_at')[:limit]
+            'client', 'assigned_courier', 'trip__shift__courier'
+        ).prefetch_related('items__product').order_by('-created_at')[:limit]
 
-        data = [{
-            'id': o.id,
-            'client_name': o.client.name if o.client else None,
-            'client_phone': o.client.phone if o.client else None,
-            'product_name': o.product.name,
-            'quantity': o.quantity,
-            'price': o.price,
-            'payment_type': o.payment_type,
-            'payment_type_display': o.get_payment_type_display(),
-            'status': o.status,
-            'status_display': o.get_status_display(),
-            'container_op': o.container_op,
-            'container_op_display': o.get_container_op_display(),
-            'assigned_courier_name': o.assigned_courier.full_name if o.assigned_courier else None,
-            'courier_name': o.trip.shift.courier.full_name if o.trip and o.trip.shift else None,
-            'created_at': o.created_at,
-            'delivered_at': o.delivered_at,
-        } for o in orders]
+        data = []
+        for o in orders:
+            items_data = [
+                {
+                    'product_name': item.product.name,
+                    'quantity': item.quantity,
+                    'price': item.price,
+                }
+                for item in o.items.select_related('product').all()
+            ]
+            data.append({
+                'id': o.id,
+                'client_name': o.client.name if o.client else None,
+                'client_phone': o.client.phone if o.client else None,
+                'items': items_data,
+                'total_price': o.get_total_price(),
+                'payment_type': o.payment_type,
+                'payment_type_display': o.get_payment_type_display(),
+                'status': o.status,
+                'status_display': o.get_status_display(),
+                'assigned_courier_name': o.assigned_courier.full_name if o.assigned_courier else None,
+                'courier_name': o.trip.shift.courier.full_name if o.trip and o.trip.shift else None,
+                'created_at': o.created_at,
+                'delivered_at': o.delivered_at,
+            })
         return Response(data)
 
 

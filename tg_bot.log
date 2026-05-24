@@ -238,3 +238,72 @@ connector: <aiohttp.connector.TCPConnector object at 0x0000022B161852B0>
 2026-05-14 19:56:23,715 - __main__ - INFO - Запуск бота в режиме polling...
 2026-05-14 19:56:24,311 - aiogram.dispatcher - INFO - Start polling
 2026-05-14 19:56:24,527 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-14 20:05:26,415 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-14 20:05:26,415 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-14 20:05:26,717 - aiogram.dispatcher - INFO - Start polling
+2026-05-14 20:05:26,814 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-14 20:06:20,558 - aiogram.event - INFO - Update id=389406823 is not handled. Duration 280 ms by bot id=8614741494
+2026-05-18 14:48:05,844 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 14:48:05,845 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 14:48:07,769 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 14:48:07,906 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 19:19:24,688 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 19:19:24,689 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 19:19:25,010 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 19:19:25,109 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 20:49:55,507 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 20:49:55,508 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 20:49:55,879 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 20:49:55,974 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 20:54:49,759 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 20:54:49,759 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 20:54:50,160 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 20:54:50,259 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 20:57:59,478 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 20:57:59,479 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 20:57:59,785 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 20:57:59,881 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 21:01:04,546 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 21:01:04,546 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 21:01:04,837 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 21:01:04,928 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-18 21:06:32,648 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-18 21:06:32,648 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-18 21:06:32,948 - aiogram.dispatcher - INFO - Start polling
+2026-05-18 21:06:33,044 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-19 20:27:27,653 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-19 20:27:27,656 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-19 20:27:27,985 - aiogram.dispatcher - INFO - Start polling
+2026-05-19 20:27:28,091 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-19 20:40:47,581 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-19 20:40:47,582 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-19 20:40:48,039 - aiogram.dispatcher - INFO - Start polling
+2026-05-19 20:40:48,216 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:18:53,118 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:18:53,119 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:18:53,458 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:18:53,553 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:29:11,512 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:29:11,513 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:29:11,842 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:29:11,943 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:31:58,529 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:31:58,529 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:31:58,889 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:31:58,981 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:35:22,438 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:35:22,439 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:35:22,743 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:35:22,840 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:41:17,472 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:41:17,472 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:41:17,809 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:41:17,945 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:46:18,510 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:46:18,510 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:46:19,080 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:46:19,532 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 19:55:46,490 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 19:55:46,491 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 19:55:46,805 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 19:55:46,932 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'

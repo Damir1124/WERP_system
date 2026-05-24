@@ -1,0 +1,485 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ink: #1a1a1a;
+  --ink2: #444;
+  --ink3: #777;
+  --bg: #ffffff;
+  --bg2: #f5f5f3;
+  --bg3: #ebebea;
+  --border: rgba(0,0,0,0.14);
+  --blue: #1450a3;
+  --blue-bg: #e8f0fc;
+  --blue-text: #0d3a7a;
+  --green: #1d7a3a;
+  --green-bg: #e6f5eb;
+  --green-text: #145229;
+  --amber: #a35a00;
+  --amber-bg: #fff3e0;
+  --amber-text: #7a4000;
+  --red: #c0392b;
+  --red-bg: #fdecea;
+  --red-text: #8b1a10;
+  --teal: #0d6e5a;
+  --teal-bg: #e4f6f1;
+  --teal-text: #094d3e;
+}
+body { font-family: var(--font-sans); background: transparent; }
+
+.wrap {
+  display: flex;
+  gap: 12px;
+  padding: 0.75rem 0;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+
+.phone {
+  min-width: 230px;
+  max-width: 245px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg2);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.screen-lbl {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+  padding: 4px 0 2px;
+  letter-spacing: 0.04em;
+}
+
+.topbar {
+  background: var(--blue);
+  padding: 10px 12px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar .t { font-size: 13px; font-weight: 500; color: #fff; flex: 1; }
+.topbar .s { font-size: 10px; color: rgba(255,255,255,0.75); }
+.topbar i { color: rgba(255,255,255,0.85); font-size: 15px; }
+
+.body { padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+
+.sec { font-size: 9px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 2px 0; }
+
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
+.scard {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+.scard .lbl { font-size: 9px; color: var(--ink3); margin-bottom: 1px; }
+.scard .val { font-size: 19px; font-weight: 500; line-height: 1; color: var(--ink); }
+.scard .val span { font-size: 9px; color: var(--ink3); font-weight: 400; }
+.scard.blue .val { color: var(--blue); }
+.scard.green .val { color: var(--green); }
+.scard.amber .val { color: var(--amber); }
+.scard.teal .val { color: var(--teal); }
+
+.mrow {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mrow .lbl { font-size: 11px; color: var(--ink3); display: flex; align-items: center; gap: 4px; }
+.mrow .val { font-size: 13px; font-weight: 500; color: var(--ink); }
+.mrow .val.green { color: var(--green); }
+.mrow .val.blue { color: var(--blue); }
+
+.ocard {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.ocard .cname { font-size: 12px; font-weight: 500; color: var(--ink); }
+.ocard .caddr { font-size: 10px; color: var(--ink3); margin: 1px 0 5px; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
+.tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+.tag.water { background: var(--blue-bg); color: var(--blue-text); }
+.tag.cooler { background: var(--teal-bg); color: var(--teal-text); }
+.tag.acc { background: var(--amber-bg); color: var(--amber-text); }
+.tag.cash { background: var(--green-bg); color: var(--green-text); }
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+}
+.btn.primary { background: var(--blue); color: #fff; }
+.btn.done { background: var(--green-bg); color: var(--green-text); border: 1px solid #b2ddc0; }
+.btn.outline { background: var(--bg); color: var(--ink); border: 1px solid var(--border); margin-top: 5px; }
+
+.div { border: none; border-top: 1px solid var(--border); }
+
+/* confirm screen */
+.prod-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.prod-header {
+  background: var(--bg3);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.prod-header .pname { font-size: 11px; font-weight: 500; color: var(--ink); flex: 1; }
+.prod-header .ptotal { font-size: 11px; color: var(--ink3); }
+
+.prod-body { padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; }
+
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.op-row .op-lbl { font-size: 10px; color: var(--ink2); flex: 1; }
+.op-tag {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-weight: 500;
+  min-width: 42px;
+  text-align: center;
+}
+.op-tag.exch { background: var(--blue-bg); color: var(--blue-text); }
+.op-tag.sell { background: var(--green-bg); color: var(--green-text); }
+.op-tag.defect { background: var(--red-bg); color: var(--red-text); }
+
+.stepper { display: flex; align-items: center; gap: 5px; }
+.stbtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.stval { font-size: 15px; font-weight: 500; color: var(--ink); min-width: 18px; text-align: center; }
+
+.simple-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+.simple-row .lbl { font-size: 10px; color: var(--ink2); }
+.simple-row .stepper { gap: 5px; }
+
+.summary-row {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.summary-row .lbl { font-size: 10px; color: var(--ink3); }
+.summary-row .val { font-size: 13px; font-weight: 500; color: var(--ink); }
+
+.pay-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
+.pay-btn {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 7px 5px;
+  text-align: center;
+  cursor: pointer;
+  background: var(--bg);
+}
+.pay-btn.active { border-color: var(--blue); background: var(--blue-bg); }
+.pay-btn .plbl { font-size: 10px; color: var(--ink3); }
+.pay-btn.active .plbl { color: var(--blue-text); }
+.pay-btn i { font-size: 16px; color: var(--ink3); }
+.pay-btn.active i { color: var(--blue); }
+
+.confirm-btn {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 10px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* pool screen */
+.pool-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.pool-card .cname { font-size: 12px; font-weight: 500; color: var(--ink); }
+.pool-meta { display: flex; align-items: center; gap: 5px; margin: 2px 0 5px; }
+.pool-meta .addr { font-size: 10px; color: var(--ink3); flex: 1; }
+.pool-meta .dist { font-size: 10px; color: var(--ink3); background: var(--bg2); padding: 1px 6px; border-radius: 20px; }
+.take-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 9px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+/* самостоятельный заказ курьера */
+.create-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9px;
+  border: 1px dashed var(--blue);
+  background: var(--blue-bg);
+  color: var(--blue-text);
+  cursor: pointer;
+}
+</style>
+
+<div class="wrap">
+
+  <!-- ЭКРАН 1: Активный рейс -->
+  <div>
+    <p class="screen-lbl">Мой рейс</p>
+    <div class="phone">
+      <div class="topbar">
+        <i class="ti ti-truck" aria-hidden="true"></i>
+        <span class="t">Рейс №3 — смена открыта</span>
+        <span class="s">18 мая</span>
+      </div>
+      <div class="body">
+
+        <div class="stats">
+          <div class="scard blue"><div class="lbl">Загружено</div><div class="val">12 <span>бак</span></div></div>
+          <div class="scard green"><div class="lbl">Доставлено</div><div class="val">7 <span>бак</span></div></div>
+          <div class="scard amber"><div class="lbl">Осталось</div><div class="val">5 <span>бак</span></div></div>
+          <div class="scard teal"><div class="lbl">Пустых в машине</div><div class="val">4 <span>шт</span></div></div>
+        </div>
+
+        <div class="mrow"><span class="lbl"><i class="ti ti-cash" aria-hidden="true"></i> Наличными</span><span class="val green">245 000 сум</span></div>
+        <div class="mrow"><span class="lbl"><i class="ti ti-credit-card" aria-hidden="true"></i> Картой</span><span class="val blue">80 000 сум</span></div>
+
+        <hr class="div">
+        <div class="sec">Заказы рейса</div>
+
+        <!-- заказ с миксом продуктов -->
+        <div class="ocard">
+          <div class="cname">Алишер Каримов</div>
+          <div class="caddr">ул. Навои 12, кв. 5</div>
+          <div class="tags">
+            <span class="tag water">Вода 20л × 4</span>
+            <span class="tag cooler">Кулер × 1</span>
+            <span class="tag cash">Наличные</span>
+          </div>
+          <button class="btn primary">Доставить</button>
+        </div>
+
+        <div class="ocard">
+          <div class="cname">Нилуфар Рашидова</div>
+          <div class="caddr">пр. Амира Темура 45</div>
+          <div class="tags">
+            <span class="tag water">Вода 20л × 2</span>
+            <span class="tag acc">Стакан × 6</span>
+            <span class="tag cash">Карта</span>
+          </div>
+          <button class="btn done">✓ Доставлено</button>
+        </div>
+
+        <hr class="div">
+        <button class="create-btn"><i class="ti ti-plus" aria-hidden="true"></i> Создать заказ на месте</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ЭКРАН 2: Подтверждение — микс продуктов -->
+  <div>
+    <p class="screen-lbl">Подтверждение доставки</p>
+    <div class="phone">
+      <div class="topbar">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        <span class="t">Алишер Каримов</span>
+      </div>
+      <div class="body">
+
+        <div class="sec">Состав заказа</div>
+
+        <!-- Продукт 1: Вода 20л — с логикой обмена/продажи -->
+        <div class="prod-block">
+          <div class="prod-header">
+            <i class="ti ti-droplet" style="font-size:13px; color:var(--blue)" aria-hidden="true"></i>
+            <span class="pname">Вода 20л</span>
+            <span class="ptotal">всего: 4 бак</span>
+          </div>
+          <div class="prod-body">
+            <div class="op-row">
+              <span class="op-lbl">Обмен</span>
+              <span class="op-tag exch">тара ←→</span>
+              <div class="stepper">
+                <div class="stbtn">−</div>
+                <div class="stval" style="color:var(--blue)">2</div>
+                <div class="stbtn">+</div>
+              </div>
+            </div>
+            <hr class="div">
+            <div class="op-row">
+              <span class="op-lbl">С тарой</span>
+              <span class="op-tag sell">продажа</span>
+              <div class="stepper">
+                <div class="stbtn">−</div>
+                <div class="stval" style="color:var(--green)">2</div>
+                <div class="stbtn">+</div>
+              </div>
+            </div>
+            <hr class="div">
+            <div class="op-row">
+              <span class="op-lbl">Брак</span>
+              <span class="op-tag defect">брак</span>
+              <div class="stepper">
+                <div class="stbtn">−</div>
+                <div class="stval" style="color:var(--ink3)">0</div>
+                <div class="stbtn">+</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Продукт 2: Кулер — простой, без обмена -->
+        <div class="prod-block">
+          <div class="prod-header">
+            <i class="ti ti-device-desktop" style="font-size:13px; color:var(--teal)" aria-hidden="true"></i>
+            <span class="pname">Кулер Aqua Pro</span>
+            <span class="ptotal">× 1 шт</span>
+          </div>
+          <div class="prod-body">
+            <div class="simple-row">
+              <span class="lbl">Количество</span>
+              <div class="stepper">
+                <div class="stbtn">−</div>
+                <div class="stval">1</div>
+                <div class="stbtn">+</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">Оплата</div>
+        <div class="pay-grid">
+          <div class="pay-btn active"><i class="ti ti-cash" aria-hidden="true"></i><div class="plbl">Наличные</div></div>
+          <div class="pay-btn"><i class="ti ti-credit-card" aria-hidden="true"></i><div class="plbl">Карта</div></div>
+        </div>
+
+        <div class="summary-row">
+          <span class="lbl">Итого</span>
+          <span class="val">4 бак + 1 кулер</span>
+        </div>
+
+        <button class="confirm-btn"><i class="ti ti-check" aria-hidden="true"></i> Подтвердить доставку</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ЭКРАН 3: Пул + создание заказа курьером -->
+  <div>
+    <p class="screen-lbl">Пул / создать заказ</p>
+    <div class="phone">
+      <div class="topbar">
+        <i class="ti ti-list" aria-hidden="true"></i>
+        <span class="t">Пул заказов</span>
+        <span class="s">4 свободных</span>
+      </div>
+      <div class="body">
+
+        <div class="pool-card">
+          <div class="cname">Бобур Юсупов</div>
+          <div class="pool-meta">
+            <span class="addr">ул. Шота Руставели 7</span>
+            <span class="dist">1.2 км</span>
+          </div>
+          <div class="tags">
+            <span class="tag water">Вода 20л × 3</span>
+          </div>
+          <button class="take-btn">Взять</button>
+        </div>
+
+        <div class="pool-card">
+          <div class="cname">Дилноза Мирзаева</div>
+          <div class="pool-meta">
+            <span class="addr">пр. Мустакиллик 22</span>
+            <span class="dist">2.8 км</span>
+          </div>
+          <div class="tags">
+            <span class="tag water">Вода 20л × 1</span>
+            <span class="tag acc">Аксессуар × 2</span>
+          </div>
+          <button class="take-btn">Взять</button>
+        </div>
+
+        <hr class="div">
+        <div class="sec">Новый заказ от клиента</div>
+
+        <div class="ocard">
+          <div style="font-size:11px; color:var(--ink2); margin-bottom:6px;">Клиент находится рядом и хочет заказать — курьер оформляет сам</div>
+          <div class="tags" style="margin-bottom:6px;">
+            <span class="tag water">Вода 20л</span>
+            <span class="tag cooler">Кулер</span>
+            <span class="tag acc">Аксессуар</span>
+          </div>
+          <button class="create-btn"><i class="ti ti-plus" aria-hidden="true"></i> Оформить заказ</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>

@@ -1,5 +1,7 @@
 # База знаний Osnova 2.0
 
+> Последнее обновление: 2026-05-24 (Mini App курьера — новый дизайн v2, рефакторинг OrderItem)
+
 ## Архитектура и Модули
 * [[Modules_Accounting|Модуль Финансов (Accounting)]] — логика транзакций. **P2: API для курьера реализовано**
 * [[Modules_BotBridge|Мост Telegram (Bot Bridge)]] — API шлюз. **P0: API адаптировано под модели CourierShift, CourierTrip, Order; P3: архитектура бота реализована**
@@ -8,6 +10,7 @@
 * [[Modules_Warehouse|Модуль Склада (Warehouse)]] — остатки и автопарк. **P2: Генератор путевых листов и инвентаризация реализованы**
 * [[Modules_Products|Модуль Продуктов (Products)]] — каталог товаров. **Добавлено поле track_inventory**
 * [[Modules_Workers|Модуль Сотрудников (Workers)]] — курьеры и упаковщики.
+* [[Modules_CourierMiniApp|Mini App Курьера (frontend/courier)]] — React + Vite, дизайн v2, CSS-переменные, экраны рейса/пула/подтверждения. **P3: переписан по макету courier_full_screens_v2**
 
 ## Разбор багов (Post-mortems)
 * [[Bugs_RecursiveSignals|Бесконечный цикл в сигналах post_save]]
@@ -20,6 +23,7 @@
 * [[Concepts_TelegramBotAuth|Авторизация Telegram бота через tg_id]]
 * [[Concepts_TelegramBot|Telegram Bot (aiogram 3.x) в WERP]] — архитектура бота, middleware, роутеры, ролевая авторизация
 * [[Concepts_TelegramMiniApp|Telegram Mini App (TWA)]] — фронтенд для бэкендера, React + Vite + Tailwind, авторизация через initData
+* [[Concepts_OrderItem|Многопозиционные заказы (OrderItem)]] — архитектура заказов с несколькими продуктами, учёт тары через exchange_qty, sell_with_qty, defective_qty
 
 ## Статус выполнения задач P2
 **Задача P2 выполнена полностью:**
@@ -83,6 +87,17 @@
 8. ✅ **CORS → regex** — разрешены все `*.ngrok-free.dev` домены динамически
 9. ✅ **Клиентский Mini App создан с нуля** — Register, Catalog, OrderForm, MyOrders
 10. ✅ **`launch_all_in_one.bat` обновлён** — 9 пунктов меню, сборка фронтенда, миграции, открытие в браузере
+
+**Реализован этап 3.8 (Рефакторинг ядра бэкенда — переход на структуру OrderItem — 2026-05-18):**
+1. ✅ **Создана модель `OrderItem`** — многопозиционная архитектура заказов (один заказ = несколько продуктов за визит)
+2. ✅ **Рефакторинг модели `Order`** — удалены поля `product`, `quantity`, `price`, `container_op`; добавлен метод `get_total_price()`
+3. ✅ **Обновлены сигналы `logistics/signals.py`** — `recalculate_order_price` привязан к `OrderItem`, `update_shift_totals_on_order` использует `get_total_price()`
+4. ✅ **Обновлены сигналы `warehouse/signals.py`** — `update_stock_on_order` итерирует по `order.items.all()`, учитывает поля `exchange_qty`, `sell_with_qty`, `defective_qty`
+5. ✅ **Обновлены сигналы `accounting/signals.py`** — `create_transaction_on_order` использует `order.get_total_price()` вместо `price`
+6. ✅ **Обновлены сериализаторы `bot_bridge`** — добавлен `OrderItemSerializer`, `OrderSerializer` включает `items` и `total_price`, `OrderCreateModelSerializer` поддерживает список позиций
+7. ✅ **Обновлены представления `bot_bridge/views.py`** — `CreateOrderView`, `OrderQuantityUpdateView`, `OrderConfirmationView` адаптированы под новую структуру
+8. ✅ **Созданы миграции** — миграция `0004` удаляет старые поля и добавляет `OrderItem`
+9. ✅ **Проверка системы** — Django system check пройден, тесты запускаются без ошибок
 
 **Осталось реализовать:**
 - WebSocket‑уведомления (живой мониторинг)

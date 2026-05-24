@@ -1,150 +1,245 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
+
+// Иконки продуктов по типу
+function productIcon(typeName = '') {
+  const t = typeName.toLowerCase()
+  if (t.includes('вода') || t.includes('b20l') || t.includes('water')) return '💧'
+  if (t.includes('кулер') || t.includes('cooler')) return '🧊'
+  return '📦'
+}
+
+// Stepper компонент
+function Stepper({ value, onChange, color }) {
+  return (
+    <div className="stepper">
+      <button
+        type="button"
+        className="st-btn"
+        onClick={() => onChange(Math.max(0, value - 1))}
+      >−</button>
+      <span className="st-val" style={color ? { color } : {}}>{value}</span>
+      <button
+        type="button"
+        className="st-btn"
+        onClick={() => onChange(value + 1)}
+      >+</button>
+    </div>
+  )
+}
 
 export default function OrderConfirm() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [form, setForm] = useState({
-    container_op: 'EXCHANGE',
-    payment_type: 'CASH',
-    note: ''
-  })
-  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
+  const [order, setOrder] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  // Состояние позиций: { [itemId]: { exchange_qty, sell_with_qty, defective_qty, quantity } }
+  const [itemStates, setItemStates] = useState({})
+  const [paymentType, setPaymentType] = useState('CH')
+
+  useEffect(() => {
+    loadOrder()
+  }, [id])
+
+  const loadOrder = async () => {
     try {
-      // Используем новый endpoint подтверждения заказа
-      await api.confirmOrder(id, true, form.container_op, form.note)
-      alert('Заказ подтверждён как доставленный!')
-      navigate('/trip')
-    } catch (error) {
-      console.error('Failed to deliver order:', error)
-      alert('Ошибка при подтверждении заказа: ' + error.message)
+      // Получаем данные заказа из текущего рейса
+      const tripData = await api.getCurrentTrip()
+      const orders = tripData?.trip?.orders || []
+      const found = orders.find(o => String(o.id) === String(id))
+      if (found) {
+        setOrder(found)
+        setPaymentType(found.payment_type || 'CH')
+        // Инициализируем состояние позиций
+        const states = {}
+        for (const item of (found.items || [])) {
+          states[item.id] = {
+            quantity: item.quantity,
+            exchange_qty: item.exchange_qty || 0,
+            sell_with_qty: item.sell_with_qty || 0,
+            defective_qty: item.defective_qty || 0,
+          }
+        }
+        setItemStates(states)
+      } else {
+        setError('Заказ не найден в текущем рейсе')
+      }
+    } catch (e) {
+      setError(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
+  const updateItem = (itemId, field, value) => {
+    setItemStates(prev => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], [field]: value }
+    }))
   }
 
-  return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Подтверждение заказа #{id}</h2>
-        <p className="text-gray-600">Укажите детали доставки</p>
+  const isBottle20L = (item) => {
+    const name = (item.product_name || '').toLowerCase()
+    return name.includes('вода') || name.includes('20') || item.product_type === 'B20L'
+  }
+
+  const handleConfirm = async () => {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await api.confirmOrder(parseInt(id), true, null, '')
+      navigate('/trip')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!confirm('Отменить заказ?')) return
+    setSubmitting(true)
+    try {
+      await api.confirmOrder(parseInt(id), false, null, '')
+      navigate('/trip')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return <div className="spinner">Загрузка заказа...</div>
+
+  if (!order) {
+    return (
+      <div style={{ padding: '16px' }}>
+        <div className="error-box">{error || 'Заказ не найден'}</div>
+        <button className="btn outline" style={{ marginTop: '12px' }} onClick={() => navigate('/trip')}>
+          ← Назад
+        </button>
       </div>
+    )
+  }
 
-      <form onSubmit={handleSubmit} className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Действие с тарой
-              </label>
-              <div className="space-y-2">
-                {[
-                  { value: 'EXCHANGE', label: 'ОБМЕН', description: 'Полная ушла, пустая получена (+1 пустая в машину)' },
-                  { value: 'SELL_WITH', label: 'ПРОДАЖА С ТАРОЙ', description: 'Продана с тарой (0 пустых)' },
-                  { value: 'DEFECTIVE', label: 'БРАК', description: 'Брак возвращается (+1 бракованная в машину)' }
-                ].map((option) => (
-                  <div key={option.value} className="flex items-start">
-                    <div className="flex items-center h-5">
-                      <input
-                        id={`container_op_${option.value}`}
-                        name="container_op"
-                        type="radio"
-                        value={option.value}
-                        checked={form.container_op === option.value}
-                        onChange={handleChange}
-                        className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300"
-                      />
-                    </div>
-                    <div className="ml-3 text-sm">
-                      <label htmlFor={`container_op_${option.value}`} className="font-medium text-gray-700">
-                        {option.label}
-                      </label>
-                      <p className="text-gray-500">{option.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+  const items = order.items || []
+  const totalPrice = order.total_price || 0
+
+  return (
+    <div className="page-body">
+      {error && <div className="error-box">{error}</div>}
+
+      <div className="sec-lbl">Состав заказа</div>
+
+      {items.map(item => {
+        const st = itemStates[item.id] || {}
+        const isWater = isBottle20L(item)
+
+        return (
+          <div className="prod-block" key={item.id}>
+            <div className="prod-header">
+              <span style={{ fontSize: '14px' }}>{productIcon(item.product_name)}</span>
+              <span className="ph-name">{item.product_name}</span>
+              <span className="ph-total">× {item.quantity} шт</span>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Тип оплаты
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { value: 'CASH', label: 'Наличные', color: 'bg-yellow-100 text-yellow-800' },
-                  { value: 'CARD', label: 'Карта', color: 'bg-green-100 text-green-800' },
-                  { value: 'BONUS', label: 'Бонусы', color: 'bg-blue-100 text-blue-800' }
-                ].map((option) => (
-                  <div key={option.value} className="relative">
-                    <input
-                      id={`payment_type_${option.value}`}
-                      name="payment_type"
-                      type="radio"
-                      value={option.value}
-                      checked={form.payment_type === option.value}
-                      onChange={handleChange}
-                      className="sr-only"
+            <div className="prod-body">
+              {isWater ? (
+                <>
+                  {/* Обмен тары */}
+                  <div className="op-row">
+                    <span className="op-lbl">Обмен</span>
+                    <span className="op-tag exch">тара ←→</span>
+                    <Stepper
+                      value={st.exchange_qty || 0}
+                      onChange={v => updateItem(item.id, 'exchange_qty', v)}
+                      color="var(--blue)"
                     />
-                    <label
-                      htmlFor={`payment_type_${option.value}`}
-                      className={`cursor-pointer flex items-center justify-center px-3 py-2 border rounded-md text-sm font-medium ${
-                        form.payment_type === option.value
-                          ? `${option.color} border-transparent`
-                          : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
-                      }`}
-                    >
-                      {option.label}
-                    </label>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-2">
-                Примечание (необязательно)
-              </label>
-              <textarea
-                id="note"
-                name="note"
-                rows={3}
-                value={form.note}
-                onChange={handleChange}
-                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                placeholder="Например: клиент попросил оставить у двери..."
-              />
+                  <hr className="div" />
+                  {/* Продажа с тарой */}
+                  <div className="op-row">
+                    <span className="op-lbl">С тарой</span>
+                    <span className="op-tag sell">продажа</span>
+                    <Stepper
+                      value={st.sell_with_qty || 0}
+                      onChange={v => updateItem(item.id, 'sell_with_qty', v)}
+                      color="var(--green)"
+                    />
+                  </div>
+                  <hr className="div" />
+                  {/* Брак */}
+                  <div className="op-row">
+                    <span className="op-lbl">Брак</span>
+                    <span className="op-tag defect">брак</span>
+                    <Stepper
+                      value={st.defective_qty || 0}
+                      onChange={v => updateItem(item.id, 'defective_qty', v)}
+                      color="var(--ink3)"
+                    />
+                  </div>
+                </>
+              ) : (
+                /* Обычный продукт — только количество */
+                <div className="simple-row">
+                  <span className="sr-lbl">Количество</span>
+                  <Stepper
+                    value={st.quantity || item.quantity}
+                    onChange={v => updateItem(item.id, 'quantity', v)}
+                  />
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )
+      })}
 
-        <div className="px-4 py-3 bg-gray-50 text-right sm:px-6">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="mr-3 inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      {/* Оплата */}
+      <div className="sec-lbl">Оплата</div>
+      <div className="pay-grid">
+        {[
+          { code: 'CH', label: 'Наличные', icon: '💵' },
+          { code: 'CD', label: 'Карта',    icon: '💳' },
+          { code: 'BS', label: 'Бонус',    icon: '🎁' },
+        ].map(p => (
+          <div
+            key={p.code}
+            className={`pay-btn${paymentType === p.code ? ' active' : ''}`}
+            onClick={() => setPaymentType(p.code)}
           >
-            Отмена
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-          >
-            {loading ? 'Подтверждение...' : 'Подтвердить доставку'}
-          </button>
-        </div>
-      </form>
+            <span className="pb-icon">{p.icon}</span>
+            <span className="pb-lbl">{p.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Итого */}
+      <div className="summary-row">
+        <span className="sr-lbl">Итого</span>
+        <span className="sr-val">{(totalPrice || 0).toLocaleString('ru-RU')} сум</span>
+      </div>
+
+      {/* Кнопки */}
+      <button
+        className="confirm-btn"
+        onClick={handleConfirm}
+        disabled={submitting}
+      >
+        {submitting ? 'Сохраняем...' : '✓ Подтвердить доставку'}
+      </button>
+
+      <button
+        className="btn outline"
+        onClick={handleCancel}
+        disabled={submitting}
+        style={{ marginTop: '6px' }}
+      >
+        Отменить заказ
+      </button>
     </div>
   )
 }
