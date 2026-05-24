@@ -307,3 +307,7 @@ connector: <aiohttp.connector.TCPConnector object at 0x0000022B161852B0>
 2026-05-24 19:55:46,491 - __main__ - INFO - Запуск бота в режиме polling...
 2026-05-24 19:55:46,805 - aiogram.dispatcher - INFO - Start polling
 2026-05-24 19:55:46,932 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 20:16:39,472 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 20:16:39,473 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 20:16:39,818 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 20:16:39,930 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
