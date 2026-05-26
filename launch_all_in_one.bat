@@ -186,11 +186,21 @@ goto MENU
 :KILL_ALL
 cd /d "%ROOT_DIR%"
 echo.
-echo Полная остановка системы...
+echo Полная остановка системы и закрытие окон...
+
+:: 1. Убиваем фоновые процессы
 taskkill /f /im python.exe /t >nul 2>&1
 taskkill /f /im ngrok.exe /t >nul 2>&1
+
+:: 2. Жестко закрываем открытые скриптом окна по их заголовкам
+taskkill /f /fi "WINDOWTITLE eq Django Server*" >nul 2>&1
+taskkill /f /fi "WINDOWTITLE eq Telegram Bot*" >nul 2>&1
+taskkill /f /fi "Ngrok Tunnel*" >nul 2>&1
+
+:: 3. Останавливаем базу данных в Docker
 docker-compose stop
 echo.
-echo [✓] Все процессы завершены. Окно закроется через 3 сек.
+echo [✓] Все процессы завершены, окна закрыты. 
+echo [✓] Главное окно закроется через 3 сек.
 timeout /t 3 >nul
 exit

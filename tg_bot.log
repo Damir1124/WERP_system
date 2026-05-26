@@ -307,3 +307,338 @@ connector: <aiohttp.connector.TCPConnector object at 0x0000022B161852B0>
 2026-05-24 19:55:46,491 - __main__ - INFO - Запуск бота в режиме polling...
 2026-05-24 19:55:46,805 - aiogram.dispatcher - INFO - Start polling
 2026-05-24 19:55:46,932 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-24 22:27:59,055 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-24 22:27:59,056 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-24 22:27:59,455 - aiogram.dispatcher - INFO - Start polling
+2026-05-24 22:27:59,557 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-25 17:55:53,488 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-25 17:55:53,490 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-25 17:55:53,495 - __main__ - ERROR - Критическая ошибка: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1574, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1190, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1221, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 167, in make_request
+    async with session.post(
+               ^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 1521, in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 788, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 742, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 672, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1251, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1580, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 74, in <module>
+    asyncio.run(main())
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 68, in main
+    await bot.delete_webhook(drop_pending_updates=True)
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 1255, in delete_webhook
+    return await self(call, request_timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 493, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\base.py", line 259, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 176, in make_request
+    raise TelegramNetworkError(method=method, message=f"{type(e).__name__}: {e}") from e
+aiogram.exceptions.TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 17:55:53,540 - asyncio - ERROR - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x0000021F39F0AD80>
+2026-05-25 18:11:32,432 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-25 18:11:32,433 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-25 18:11:32,942 - aiogram.dispatcher - INFO - Start polling
+2026-05-25 18:11:33,109 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-25 18:30:30,038 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2026-05-25 18:30:30,038 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8614741494)
+2026-05-25 18:31:42,037 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2026-05-25 18:31:42,038 - aiogram.dispatcher - WARNING - Sleep for 1.242515 seconds and try again... (tryings = 1, bot id = 8614741494)
+2026-05-25 18:32:36,195 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+2026-05-25 18:32:36,196 - aiogram.dispatcher - WARNING - Sleep for 1.531405 seconds and try again... (tryings = 2, bot id = 8614741494)
+2026-05-25 18:32:58,775 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+2026-05-25 18:32:58,776 - aiogram.dispatcher - WARNING - Sleep for 1.963012 seconds and try again... (tryings = 3, bot id = 8614741494)
+2026-05-25 18:33:40,292 - aiogram.dispatcher - INFO - Connection established (tryings = 4, bot id = 8614741494)
+2026-05-25 18:34:06,467 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [WinError 121] Превышен таймаут семафора
+2026-05-25 18:34:06,467 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8614741494)
+2026-05-25 18:34:41,811 - aiogram.dispatcher - INFO - Connection established (tryings = 1, bot id = 8614741494)
+2026-05-25 19:57:42,786 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2026-05-25 19:57:44,159 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8614741494)
+2026-05-25 19:57:45,208 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:45,208 - aiogram.dispatcher - WARNING - Sleep for 1.157505 seconds and try again... (tryings = 1, bot id = 8614741494)
+2026-05-25 19:57:46,382 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:46,382 - aiogram.dispatcher - WARNING - Sleep for 1.708238 seconds and try again... (tryings = 2, bot id = 8614741494)
+2026-05-25 19:57:48,096 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:48,097 - aiogram.dispatcher - WARNING - Sleep for 2.267039 seconds and try again... (tryings = 3, bot id = 8614741494)
+2026-05-25 19:57:50,368 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:50,369 - aiogram.dispatcher - WARNING - Sleep for 3.029080 seconds and try again... (tryings = 4, bot id = 8614741494)
+2026-05-25 19:57:53,414 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:53,415 - aiogram.dispatcher - WARNING - Sleep for 3.959701 seconds and try again... (tryings = 5, bot id = 8614741494)
+2026-05-25 19:57:57,382 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:57:57,382 - aiogram.dispatcher - WARNING - Sleep for 5.157612 seconds and try again... (tryings = 6, bot id = 8614741494)
+2026-05-25 19:58:02,542 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:02,544 - aiogram.dispatcher - WARNING - Sleep for 5.250981 seconds and try again... (tryings = 7, bot id = 8614741494)
+2026-05-25 19:58:07,804 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:07,804 - aiogram.dispatcher - WARNING - Sleep for 4.993505 seconds and try again... (tryings = 8, bot id = 8614741494)
+2026-05-25 19:58:12,812 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:12,813 - aiogram.dispatcher - WARNING - Sleep for 4.975719 seconds and try again... (tryings = 9, bot id = 8614741494)
+2026-05-25 19:58:17,794 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:17,796 - aiogram.dispatcher - WARNING - Sleep for 5.128623 seconds and try again... (tryings = 10, bot id = 8614741494)
+2026-05-25 19:58:22,928 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:22,928 - aiogram.dispatcher - WARNING - Sleep for 5.122346 seconds and try again... (tryings = 11, bot id = 8614741494)
+2026-05-25 19:58:28,057 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:28,057 - aiogram.dispatcher - WARNING - Sleep for 4.996251 seconds and try again... (tryings = 12, bot id = 8614741494)
+2026-05-25 19:58:33,061 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:33,061 - aiogram.dispatcher - WARNING - Sleep for 4.991098 seconds and try again... (tryings = 13, bot id = 8614741494)
+2026-05-25 19:58:38,058 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:38,058 - aiogram.dispatcher - WARNING - Sleep for 5.116490 seconds and try again... (tryings = 14, bot id = 8614741494)
+2026-05-25 19:58:43,181 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:43,182 - aiogram.dispatcher - WARNING - Sleep for 5.193249 seconds and try again... (tryings = 15, bot id = 8614741494)
+2026-05-25 19:58:48,381 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:48,382 - aiogram.dispatcher - WARNING - Sleep for 4.836751 seconds and try again... (tryings = 16, bot id = 8614741494)
+2026-05-25 19:58:53,225 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:53,226 - aiogram.dispatcher - WARNING - Sleep for 4.999621 seconds and try again... (tryings = 17, bot id = 8614741494)
+2026-05-25 19:58:58,239 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:58:58,241 - aiogram.dispatcher - WARNING - Sleep for 4.894313 seconds and try again... (tryings = 18, bot id = 8614741494)
+2026-05-25 19:59:03,150 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:59:03,150 - aiogram.dispatcher - WARNING - Sleep for 5.240803 seconds and try again... (tryings = 19, bot id = 8614741494)
+2026-05-25 19:59:08,398 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:59:08,399 - aiogram.dispatcher - WARNING - Sleep for 4.955647 seconds and try again... (tryings = 20, bot id = 8614741494)
+2026-05-25 19:59:13,357 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorDNSError: Cannot connect to host api.telegram.org:443 ssl:default [getaddrinfo failed]
+2026-05-25 19:59:13,357 - aiogram.dispatcher - WARNING - Sleep for 5.042586 seconds and try again... (tryings = 21, bot id = 8614741494)
+2026-05-25 19:59:29,207 - aiogram.dispatcher - INFO - Connection established (tryings = 22, bot id = 8614741494)
+2026-05-26 09:45:33,654 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 09:45:33,656 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 09:45:54,868 - __main__ - ERROR - Критическая ошибка: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1310, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 122, in start_connection
+    raise first_exception
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 73, in start_connection
+    sock = await _connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 208, in _connect_sock
+    await loop.sock_connect(sock, address)
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 729, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\windows_events.py", line 803, in _poll
+    value = callback(transferred, key, ov)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\windows_events.py", line 599, in finish_connect
+    ov.getresult()
+OSError: [WinError 121] Превышен таймаут семафора
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 167, in make_request
+    async with session.post(
+               ^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 1521, in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 788, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 742, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 672, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1251, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1623, in _create_direct_connection
+    raise last_exc
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1592, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1333, in _wrap_create_connection
+    raise client_error(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 74, in <module>
+    asyncio.run(main())
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 68, in main
+    await bot.delete_webhook(drop_pending_updates=True)
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 1255, in delete_webhook
+    return await self(call, request_timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 493, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\base.py", line 259, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 176, in make_request
+    raise TelegramNetworkError(method=method, message=f"{type(e).__name__}: {e}") from e
+aiogram.exceptions.TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+2026-05-26 09:45:54,918 - asyncio - ERROR - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x000001AA988CAB40>
+2026-05-26 10:29:04,330 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 10:29:04,331 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 10:29:25,507 - __main__ - ERROR - Критическая ошибка: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1310, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 122, in start_connection
+    raise first_exception
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 73, in start_connection
+    sock = await _connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohappyeyeballs\impl.py", line 208, in _connect_sock
+    await loop.sock_connect(sock, address)
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 729, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\windows_events.py", line 803, in _poll
+    value = callback(transferred, key, ov)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\windows_events.py", line 599, in finish_connect
+    ov.getresult()
+OSError: [WinError 121] Превышен таймаут семафора
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 167, in make_request
+    async with session.post(
+               ^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 1521, in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 788, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\client.py", line 742, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 672, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1251, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1623, in _create_direct_connection
+    raise last_exc
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1592, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiohttp\connector.py", line 1333, in _wrap_create_connection
+    raise client_error(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 74, in <module>
+    asyncio.run(main())
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\tg_bot\__main__.py", line 68, in main
+    await bot.delete_webhook(drop_pending_updates=True)
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 1255, in delete_webhook
+    return await self(call, request_timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\bot.py", line 493, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\base.py", line 259, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Damir\PycharmProjects\WERP_system\.venv\Lib\site-packages\aiogram\client\session\aiohttp.py", line 176, in make_request
+    raise TelegramNetworkError(method=method, message=f"{type(e).__name__}: {e}") from e
+aiogram.exceptions.TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Превышен таймаут семафора]
+2026-05-26 10:29:25,582 - asyncio - ERROR - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x000001EF7619A9C0>
+2026-05-26 16:32:22,496 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 16:32:22,496 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 16:32:22,900 - aiogram.dispatcher - INFO - Start polling
+2026-05-26 16:32:22,999 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-26 16:34:31,532 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 16:34:31,533 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 16:34:31,901 - aiogram.dispatcher - INFO - Start polling
+2026-05-26 16:34:31,999 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-26 17:07:16,471 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 17:07:16,473 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 17:07:16,774 - aiogram.dispatcher - INFO - Start polling
+2026-05-26 17:07:16,877 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-26 17:30:13,484 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 17:30:13,484 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 17:30:13,838 - aiogram.dispatcher - INFO - Start polling
+2026-05-26 17:30:13,939 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'
+2026-05-26 18:20:51,408 - tg_bot.bot - INFO - Бот инициализирован, routers подключены.
+2026-05-26 18:20:51,409 - __main__ - INFO - Запуск бота в режиме polling...
+2026-05-26 18:20:51,713 - aiogram.dispatcher - INFO - Start polling
+2026-05-26 18:20:51,810 - aiogram.dispatcher - INFO - Run polling for bot @ecolife_zamzam_bot id=8614741494 - 'EcoLife'

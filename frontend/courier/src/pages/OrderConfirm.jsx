@@ -85,14 +85,23 @@ export default function OrderConfirm() {
 
   const isBottle20L = (item) => {
     const name = (item.product_name || '').toLowerCase()
-    return name.includes('вода') || name.includes('20') || item.product_type === 'B20L'
+    const type = item.product_type || ''
+    // Проверяем, является ли продукт WATER (тип '19W') или содержит "вода" в названии
+    return type === '19W' || name.includes('вода') || name.includes('water')
   }
 
   const handleConfirm = async () => {
     setSubmitting(true)
     setError(null)
     try {
-      await api.confirmOrder(parseInt(id), true, null, '')
+      // Собираем данные о таре из itemStates
+      const items = Object.entries(itemStates).map(([itemId, state]) => ({
+        item_id: parseInt(itemId),
+        exchange_qty: state.exchange_qty || 0,
+        sell_with_qty: state.sell_with_qty || 0,
+        defective_qty: state.defective_qty || 0,
+      }))
+      await api.confirmOrder(parseInt(id), true, items, '')
       navigate('/trip')
     } catch (e) {
       setError(e.message)
@@ -105,7 +114,8 @@ export default function OrderConfirm() {
     if (!confirm('Отменить заказ?')) return
     setSubmitting(true)
     try {
-      await api.confirmOrder(parseInt(id), false, null, '')
+      // При отмене отправляем пустой массив items
+      await api.confirmOrder(parseInt(id), false, [], '')
       navigate('/trip')
     } catch (e) {
       setError(e.message)

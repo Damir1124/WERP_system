@@ -364,6 +364,8 @@ def update_stock_on_order(sender, instance, created, **kwargs):
     # Проходим по всем позициям заказа
     for item in instance.items.all():
         product = item.product
+        
+        # Для обратной совместимости: если продукт BOTTLE_20L, подменяем на BOTTLE
         PRODUCT_MAP = {
             Product.TypeProduct.BOTTLE_20L: Product.TypeProduct.BOTTLE,
         }
@@ -372,56 +374,45 @@ def update_stock_on_order(sender, instance, created, **kwargs):
         if mapped_product_type:
             try:
                 product = Product.objects.get(type_product=mapped_product_type)
-                logger.info("Продукт подменён: действия будут выполняться с продуктом типа=%s", mapped_product_type)
+                logger.info("Продукт подменён: %s -> %s", product.type_product, mapped_product_type)
             except Product.DoesNotExist:
                 logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
                 continue
 
-        # Для продуктов типа BOTTLE_20L учитываем операции с тарой
-        if product.type_product == Product.TypeProduct.BOTTLE_20L:
-            # Списание тары по операциям exchange_qty и sell_with_qty
-            quantity_to_deduct = item.exchange_qty + item.sell_with_qty
-            if quantity_to_deduct > 0:
-                try:
-                    stock_balance = StockBalance.objects.get(product=product)
-                    if stock_balance.quantity >= quantity_to_deduct:
-                        StockMovement.objects.create(
-                            sold_product=product,
-                            operation_type=StockMovement.OperationTypeChoices.SELL,
-                            quantity=quantity_to_deduct,
-                            note=f"Заказ #{instance.pk}, позиция #{item.id} (EXCHANGE/SELL_WITH)"
-                        )
-                        stock_balance.quantity -= quantity_to_deduct
-                        stock_balance.last_departure_date = timezone.now()
-                        stock_balance.save()
-                        logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity_to_deduct, product, instance.pk)
-                    else:
-                        logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
-                                       product, instance.pk, quantity_to_deduct, stock_balance.quantity)
-                except StockBalance.DoesNotExist:
-                    logger.error("Не найден StockBalance для продукта %s", product)
-            # Брак тары (defective_qty) не списывается, просто логируем
+        # Определяем количество для списания
+        quantity_to_deduct = item.quantity
+        
+        # Для продукта BOTTLE (тара) списываем quantity (это количество проданной тары)
+        # Для продукта WATER списываем quantity (это количество проданной воды)
+        # Для других продуктов также списываем quantity
+        
+        try:
+            stock_balance = StockBalance.objects.get(product=product)
+            if stock_balance.quantity >= quantity_to_deduct:
+                StockMovement.objects.create(
+                    sold_product=product,
+                    operation_type=StockMovement.OperationTypeChoices.SELL,
+                    quantity=quantity_to_deduct,
+                    note=f"Заказ #{instance.pk}, позиция #{item.id} ({product.get_type_product_display()})"
+                )
+                stock_balance.quantity -= quantity_to_deduct
+                stock_balance.last_departure_date = timezone.now()
+                stock_balance.save()
+                logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity_to_deduct, product, instance.pk)
+            else:
+                logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
+                               product, instance.pk, quantity_to_deduct, stock_balance.quantity)
+        except StockBalance.DoesNotExist:
+            logger.error("Не найден StockBalance для продукта %s", product)
+        
+        # Логируем операции с тарой для отладки (если это продукт WATER)
+        if product.type_product == Product.TypeProduct.WATER:
+            if item.exchange_qty > 0:
+                logger.info("Заказ #%s, позиция #%s - обмен %s шт. тары (не списывается со склада)",
+                            instance.pk, item.id, item.exchange_qty)
+            if item.sell_with_qty > 0:
+                logger.info("Заказ #%s, позиция #%s - продажа с тарой %s шт. (тара создана отдельной позицией)",
+                            instance.pk, item.id, item.sell_with_qty)
             if item.defective_qty > 0:
-                logger.info("Заказ #%s, позиция #%s - возврат брака %s шт., списание тары не производится",
+                logger.info("Заказ #%s, позиция #%s - брак %s шт. (не списывается со склада)",
                             instance.pk, item.id, item.defective_qty)
-        else:
-            # Для остальных типов продуктов списываем просто quantity
-            quantity = item.quantity
-            try:
-                stock_balance = StockBalance.objects.get(product=product)
-                if stock_balance.quantity >= quantity:
-                    StockMovement.objects.create(
-                        sold_product=product,
-                        operation_type=StockMovement.OperationTypeChoices.SELL,
-                        quantity=quantity,
-                        note=f"Заказ #{instance.pk}, позиция #{item.id}"
-                    )
-                    stock_balance.quantity -= quantity
-                    stock_balance.last_departure_date = timezone.now()
-                    stock_balance.save()
-                    logger.debug("Списано %s единиц продукта %s по заказу #%s", quantity, product, instance.pk)
-                else:
-                    logger.warning("Недостаточно товара %s на складе для заказа #%s. Запрошено: %s, доступно: %s",
-                                   product, instance.pk, quantity, stock_balance.quantity)
-            except StockBalance.DoesNotExist:
-                logger.error("Не найден StockBalance для продукта %s", product)

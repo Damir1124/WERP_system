@@ -74,13 +74,13 @@ export const api = {
   assignOrder:  (orderId) => apiFetch(`/courier/pool/${orderId}/assign/`, { method: 'POST' }),
 
   // ── Операции с заказами ───────────────────────────────────────────────────
-  confirmOrder: (orderId, confirmed = true, containerOp = null, note = '') =>
+  confirmOrder: (orderId, confirmed = true, items = null, note = '') =>
     apiFetch('/courier/orders/confirm/', {
       method: 'POST',
       body: JSON.stringify({
         order_id: orderId,
         confirmed,
-        container_op: containerOp,
+        items: items,
         note,
       }),
     }),

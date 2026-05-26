@@ -5,8 +5,8 @@ class Product(models.Model):
     class TypeProduct(models.TextChoices):
         COOLERS = "CL", 'Кулеры'
         ACCESSORY = 'AR', "Аксессуары"
-        WATER = 'WE', "Вода"
-        BOTTLE_20L = 'B20L', "Вода c тарой 20L"
+        WATER = '19W', "Вода"
+        BOTTLE_20L = 'B19W', "Вода + тара 19"
         BOTTLE = 'BT', 'Тара'
 
 

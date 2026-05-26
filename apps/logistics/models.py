@@ -272,6 +272,12 @@ class OrderItem(models.Model):
     
     def save(self, *args, **kwargs):
         """Автоматический расчет цены позиции при сохранении"""
+        # Установка exchange_qty по умолчанию для продуктов WATER
+        if self.pk is None and self.exchange_qty == 0:
+            # Проверяем, является ли продукт WATER (тип '19W')
+            if self.product.type_product == '19W':
+                self.exchange_qty = self.quantity
+        
         if self.price is None:
             self.price = self.product.price * self.quantity
         super().save(*args, **kwargs)

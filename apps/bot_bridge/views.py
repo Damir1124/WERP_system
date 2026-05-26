@@ -313,7 +313,7 @@ class OrderListView(APIView):
 
 
 class OrderConfirmationView(APIView):
-    """POST /api/bot/courier/orders/confirm/ — подтверждение доставки"""
+    """POST /api/bot/courier/orders/confirm/ — подтверждение доставки с поддержкой многопозиционных данных о таре"""
     permission_classes = [IsCourier]
 
     def post(self, request):
@@ -324,8 +324,8 @@ class OrderConfirmationView(APIView):
         data = serializer.validated_data
         order_id = data['order_id']
         confirmed = data['confirmed']
-        container_op = data.get('container_op')  # игнорируем, т.к. поле удалено из модели
         note = data.get('note', '')
+        items_data = data.get('items', [])
 
         order = get_object_or_404(Order, id=order_id)
 
@@ -334,6 +334,69 @@ class OrderConfirmationView(APIView):
             return Response({'error': 'Нет доступа к этому заказу'}, status=status.HTTP_403_FORBIDDEN)
 
         if confirmed:
+            # Обновляем данные о таре для каждой позиции
+            updated_items = []
+            for item_data in items_data:
+                item_id = item_data['item_id']
+                try:
+                    order_item = OrderItem.objects.get(id=item_id, order=order)
+                except OrderItem.DoesNotExist:
+                    return Response(
+                        {'error': f'Позиция с ID {item_id} не найдена в заказе #{order.id}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Обновляем поля операций с тарой
+                order_item.exchange_qty = item_data['exchange_qty']
+                order_item.sell_with_qty = item_data['sell_with_qty']
+                order_item.defective_qty = item_data['defective_qty']
+                order_item.save()
+                
+                updated_items.append({
+                    'item_id': item_id,
+                    'product': order_item.product.name,
+                    'exchange_qty': order_item.exchange_qty,
+                    'sell_with_qty': order_item.sell_with_qty,
+                    'defective_qty': order_item.defective_qty,
+                })
+            
+            # Создаём позиции BOTTLE (тара) для продажи с тарой
+            from apps.logistics.models import OrderItem
+            bottle_items_created = []
+            for item_data in items_data:
+                sell_with_qty = item_data.get('sell_with_qty', 0)
+                if sell_with_qty > 0:
+                    # Находим продукт "Тара" (тип BOTTLE)
+                    bottle_product = Product.objects.filter(type_product=Product.TypeProduct.BOTTLE).first()
+                    if not bottle_product:
+                        # Если продукт не существует, создаём его
+                        bottle_product = Product.objects.create(
+                            name='Тара 19л',
+                            type_product=Product.TypeProduct.BOTTLE,
+                            price=0,  # Тара не имеет стоимости отдельно от воды
+                            unit='шт',
+                            description='Пустая тара 19л'
+                        )
+                    
+                    # Создаём позицию заказа для тары
+                    bottle_order_item = OrderItem.objects.create(
+                        order=order,
+                        product=bottle_product,
+                        quantity=sell_with_qty,
+                        price=0,  # Цена 0, так как стоимость уже включена в воду с тарой
+                        exchange_qty=0,
+                        sell_with_qty=0,
+                        defective_qty=0
+                    )
+                    
+                    bottle_items_created.append({
+                        'item_id': bottle_order_item.id,
+                        'product': bottle_order_item.product.name,
+                        'quantity': bottle_order_item.quantity,
+                        'price': bottle_order_item.price,
+                    })
+            
+            # Обновляем статус заказа
             order.status = Order.Status.DELIVERED
             order.delivered_at = timezone.now()
             if note:
@@ -352,6 +415,8 @@ class OrderConfirmationView(APIView):
                 'message': f'Заказ #{order.id} подтверждён',
                 'order_id': order.id,
                 'delivered_at': order.delivered_at,
+                'updated_items': updated_items,
+                'bottle_items_created': bottle_items_created,
             })
         else:
             order.status = Order.Status.CANCELLED
@@ -364,7 +429,7 @@ class OrderConfirmationView(APIView):
 
 
 class OrderQuantityUpdateView(APIView):
-    """POST /api/bot/courier/orders/update-quantity/"""
+    """POST /api/bot/courier/orders/update-quantity/ — изменение количества с поддержкой многопозиционной структуры"""
     permission_classes = [IsCourier]
 
     def post(self, request):
@@ -373,19 +438,33 @@ class OrderQuantityUpdateView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        order = get_object_or_404(Order, id=data['order_id'])
+        item_id = data['item_id']
+        new_quantity = data['new_quantity']
+        container_data = data.get('container_data', {})
 
+        # Получаем позицию заказа
+        order_item = get_object_or_404(OrderItem, id=item_id)
+        order = order_item.order
+
+        # Проверяем принадлежность заказа курьеру
         if order.trip and order.trip.shift.courier != request.courier:
             return Response({'error': 'Нет доступа к этому заказу'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Получаем первую позицию заказа (пока поддерживаем изменение только первой позиции)
-        from apps.logistics.models import OrderItem
-        order_item = order.items.first()
-        if not order_item:
-            return Response({'error': 'В заказе нет позиций'}, status=status.HTTP_400_BAD_REQUEST)
+        # Проверяем, что заказ еще не доставлен
+        if order.status == Order.Status.DELIVERED:
+            return Response({'error': 'Нельзя изменить количество в доставленном заказе'},
+                          status=status.HTTP_400_BAD_REQUEST)
 
-        order_item.quantity = data['new_quantity']
+        # Обновляем количество
+        order_item.quantity = new_quantity
         order_item.price = None  # сбросить, чтобы пересчиталось в save()
+        
+        # Обновляем данные о таре, если они предоставлены
+        if container_data:
+            order_item.exchange_qty = container_data.get('exchange_qty', order_item.exchange_qty)
+            order_item.sell_with_qty = container_data.get('sell_with_qty', order_item.sell_with_qty)
+            order_item.defective_qty = container_data.get('defective_qty', order_item.defective_qty)
+        
         order_item.save()
 
         # Пересчитываем общую стоимость заказа
@@ -395,8 +474,14 @@ class OrderQuantityUpdateView(APIView):
             'status': 'updated',
             'order_id': order.id,
             'order_item_id': order_item.id,
+            'product': order_item.product.name,
             'new_quantity': order_item.quantity,
             'new_price': order_item.price,
+            'container_data': {
+                'exchange_qty': order_item.exchange_qty,
+                'sell_with_qty': order_item.sell_with_qty,
+                'defective_qty': order_item.defective_qty,
+            },
             'total_price': total_price,
         })
 
@@ -545,7 +630,9 @@ class ProductListView(APIView):
     permission_classes = [IsCourier]
 
     def get(self, request):
-        products = Product.objects.all().order_by('type_product', 'name')
+        products = Product.objects.filter(
+            type_product=Product.TypeProduct.WATER
+        ).order_by('name')
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
 
@@ -574,11 +661,8 @@ class ClientProductListView(APIView):
 
     def get(self, request):
         products = Product.objects.filter(
-            type_product__in=[
-                Product.TypeProduct.WATER,
-                Product.TypeProduct.BOTTLE_20L,
-            ]
-        ).order_by('type_product', 'name')
+            type_product=Product.TypeProduct.WATER
+        ).order_by('name')
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
 

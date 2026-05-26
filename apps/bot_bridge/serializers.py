@@ -40,10 +40,11 @@ class WorkerSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     """Сериализатор для позиции заказа (модель OrderItem)"""
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_type = serializers.CharField(source='product.type_product', read_only=True)
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'order', 'product', 'product_name', 'quantity', 'price',
+        fields = ['id', 'order', 'product', 'product_name', 'product_type', 'quantity', 'price',
                   'exchange_qty', 'sell_with_qty', 'defective_qty']
         read_only_fields = ['price']
 
@@ -112,6 +113,14 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"Позиция {idx}: отсутствует поле 'product'")
             if 'quantity' not in item or item['quantity'] < 1:
                 raise serializers.ValidationError(f"Позиция {idx}: поле 'quantity' должно быть положительным числом")
+            
+            # Устанавливаем значения по умолчанию для контейнерных операций
+            # По умолчанию весь quantity считается обменом (exchange_qty)
+            quantity = item['quantity']
+            item.setdefault('exchange_qty', quantity)
+            item.setdefault('sell_with_qty', 0)
+            item.setdefault('defective_qty', 0)
+            
             # Проверяем существование продукта
             from apps.products.models import Product
             try:
@@ -180,32 +189,64 @@ class DeliveryConfirmationSerializer(serializers.Serializer):
 
 
 class OrderConfirmationSerializer(serializers.Serializer):
-    """Сериализатор для подтверждения заказа (новый, для P0)"""
+    """Сериализатор для подтверждения заказа (новый, для P0) с поддержкой многопозиционных данных о таре"""
     order_id = serializers.IntegerField()
     confirmed = serializers.BooleanField(default=True)
-    container_op = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     note = serializers.CharField(required=False, allow_blank=True)
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+        help_text="Массив позиций с данными о таре: [{'item_id': int, 'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}]"
+    )
 
-    def validate_container_op(self, value):
+    def validate_items(self, value):
+        """Валидация массива позиций с данными о таре"""
         if not value:
-            return None
-        # Маппинг имен констант на значения
-        const_to_value = {
-            'EXCHANGE': 'EX',
-            'SELL_WITH': 'SW',
-            'DEFECTIVE': 'DF',
-        }
-        # Если значение уже является допустимым (EX, SW, DF), оставляем как есть
-        if value in Order.ContainerOp.values:
-            return value
-        # Если это имя константы, преобразуем
-        if value in const_to_value:
-            return const_to_value[value]
-        # Иначе ошибка
-        raise serializers.ValidationError(
-            f"Значение '{value}' недопустимо. Допустимые значения: {list(Order.ContainerOp.values)} "
-            f"или имена констант: {list(const_to_value.keys())}"
-        )
+            return []
+        
+        validated_items = []
+        for item in value:
+            if 'item_id' not in item:
+                raise serializers.ValidationError("Каждая позиция должна содержать 'item_id'")
+            
+            # Проверяем, что позиция существует
+            try:
+                order_item = OrderItem.objects.get(id=item['item_id'])
+            except OrderItem.DoesNotExist:
+                raise serializers.ValidationError(f"Позиция с ID {item['item_id']} не найдена")
+            
+            # Проверяем, что позиция принадлежит указанному заказу
+            # (это будет проверено в view)
+            
+            # Валидируем числовые поля
+            validated_item = {
+                'item_id': item['item_id'],
+                'exchange_qty': max(0, item.get('exchange_qty', 0)),
+                'sell_with_qty': max(0, item.get('sell_with_qty', 0)),
+                'defective_qty': max(0, item.get('defective_qty', 0)),
+            }
+            
+            # Проверяем, что сумма не превышает количество в позиции
+            total_container_qty = (
+                validated_item['exchange_qty'] +
+                validated_item['sell_with_qty'] +
+                validated_item['defective_qty']
+            )
+            if total_container_qty > order_item.quantity:
+                raise serializers.ValidationError(
+                    f"Сумма операций с тарой ({total_container_qty}) превышает количество в позиции ({order_item.quantity})"
+                )
+            
+            # Проверяем, что продажа с тарой не превышает обмен
+            if validated_item['sell_with_qty'] > validated_item['exchange_qty']:
+                raise serializers.ValidationError(
+                    f"Продажа с тарой ({validated_item['sell_with_qty']}) не может превышать обмен ({validated_item['exchange_qty']})"
+                )
+            
+            validated_items.append(validated_item)
+        
+        return validated_items
 
 
 class QuantityUpdateSerializer(serializers.Serializer):
@@ -215,9 +256,57 @@ class QuantityUpdateSerializer(serializers.Serializer):
 
 
 class OrderQuantityUpdateSerializer(serializers.Serializer):
-    """Сериализатор для изменения количества в заказе (новый)"""
-    order_id = serializers.IntegerField()
+    """Сериализатор для изменения количества в заказе (новый) с поддержкой многопозиционной структуры"""
+    item_id = serializers.IntegerField(help_text="ID позиции заказа (OrderItem)")
     new_quantity = serializers.IntegerField(min_value=1)
+    container_data = serializers.DictField(
+        required=False,
+        default=dict,
+        help_text="Данные о таре для позиции: {'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}"
+    )
+
+    def validate(self, data):
+        """Валидация данных с проверкой позиции и операций с тарой"""
+        item_id = data.get('item_id')
+        new_quantity = data.get('new_quantity')
+        container_data = data.get('container_data', {})
+        
+        # Проверяем, что позиция существует
+        try:
+            order_item = OrderItem.objects.get(id=item_id)
+        except OrderItem.DoesNotExist:
+            raise serializers.ValidationError(f"Позиция с ID {item_id} не найдена")
+        
+        # Проверяем, что заказ еще не доставлен
+        if order_item.order.status == Order.Status.DELIVERED:
+            raise serializers.ValidationError("Нельзя изменить количество в доставленном заказе")
+        
+        # Валидируем данные о таре
+        exchange_qty = max(0, container_data.get('exchange_qty', 0))
+        sell_with_qty = max(0, container_data.get('sell_with_qty', 0))
+        defective_qty = max(0, container_data.get('defective_qty', 0))
+        
+        # Проверяем, что сумма операций с тарой не превышает новое количество
+        total_container_qty = exchange_qty + sell_with_qty + defective_qty
+        if total_container_qty > new_quantity:
+            raise serializers.ValidationError(
+                f"Сумма операций с тарой ({total_container_qty}) превышает новое количество ({new_quantity})"
+            )
+        
+        # Проверяем, что продажа с тарой не превышает обмен
+        if sell_with_qty > exchange_qty:
+            raise serializers.ValidationError(
+                f"Продажа с тарой ({sell_with_qty}) не может превышать обмен ({exchange_qty})"
+            )
+        
+        # Добавляем валидированные данные о таре
+        data['container_data'] = {
+            'exchange_qty': exchange_qty,
+            'sell_with_qty': sell_with_qty,
+            'defective_qty': defective_qty
+        }
+        
+        return data
 
 
 class OrderCreateSerializer(serializers.Serializer):
