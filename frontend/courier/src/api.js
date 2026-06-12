@@ -85,10 +85,10 @@ export const api = {
       }),
     }),
 
-  updateOrderQuantity: (orderId, newQuantity) =>
+  updateOrderQuantity: (itemId, newQuantity) =>
     apiFetch('/courier/orders/update-quantity/', {
       method: 'POST',
-      body: JSON.stringify({ order_id: orderId, new_quantity: newQuantity }),
+      body: JSON.stringify({ item_id: itemId, new_quantity: newQuantity }),
     }),
 
   createOrder: (data) =>

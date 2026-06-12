@@ -18,7 +18,7 @@ from apps.bot_bridge.serializers import (
     OrderCreateModelSerializer,
 )
 from apps.bot_bridge.permissions import IsCourier, IsAdmin
-from apps.logistics.models import CourierShift, CourierTrip, Order
+from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem
 from apps.products.models import Product
 from apps.clients.models import Client
 from apps.workers.models import Worker
@@ -317,8 +317,13 @@ class OrderConfirmationView(APIView):
     permission_classes = [IsCourier]
 
     def post(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Order confirmation request data: {request.data}")
+        
         serializer = OrderConfirmationSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.error(f"Serializer validation errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
@@ -326,6 +331,9 @@ class OrderConfirmationView(APIView):
         confirmed = data['confirmed']
         note = data.get('note', '')
         items_data = data.get('items', [])
+        logger.info(f"Validated data: order_id={order_id}, confirmed={confirmed}, items count={len(items_data)}")
+        for idx, item in enumerate(items_data):
+            logger.info(f"Item {idx}: {item}")
 
         order = get_object_or_404(Order, id=order_id)
 
@@ -334,8 +342,28 @@ class OrderConfirmationView(APIView):
             return Response({'error': 'Нет доступа к этому заказу'}, status=status.HTTP_403_FORBIDDEN)
 
         if confirmed:
-            # Обновляем данные о таре для каждой позиции
+            # Проверка инвариантов для продуктов BOTTLE_20L
+            from apps.products.models import Product
+            for item_data in items_data:
+                item_id = item_data['item_id']
+                try:
+                    order_item = OrderItem.objects.get(id=item_id, order=order)
+                except OrderItem.DoesNotExist:
+                    return Response(
+                        {'error': f'Позиция с ID {item_id} не найдена в заказе #{order.id}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if order_item.product.type_product in (Product.TypeProduct.BOTTLE_20L, Product.TypeProduct.WATER):
+                    exchange_qty = item_data.get('exchange_qty', 0)
+                    if exchange_qty == 0:
+                        return Response(
+                            {'error': f'Для продукта "{order_item.product.name}" обмен тары не может быть нулевым при подтверждении доставки'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+            
+            # Обновляем данные о таре и количестве для каждой позиции
             updated_items = []
+            bottle_items_created = []
             for item_data in items_data:
                 item_id = item_data['item_id']
                 try:
@@ -346,57 +374,65 @@ class OrderConfirmationView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
+                # Обновляем количество, если передано
+                new_quantity = item_data.get('quantity')
+                if new_quantity is not None:
+                    order_item.quantity = new_quantity
+                    order_item.price = None  # сброс для пересчёта в save()
+                
                 # Обновляем поля операций с тарой
-                order_item.exchange_qty = item_data['exchange_qty']
-                order_item.sell_with_qty = item_data['sell_with_qty']
-                order_item.defective_qty = item_data['defective_qty']
+                exchange_qty = item_data.get('exchange_qty', 0)
+                sell_with_qty = item_data.get('sell_with_qty', 0)
+                defective_qty = item_data.get('defective_qty', 0)
+                logger.info(f"Updating item {item_id}: exchange_qty={exchange_qty}, sell_with_qty={sell_with_qty}, defective_qty={defective_qty}")
+                order_item.exchange_qty = exchange_qty
+                order_item.sell_with_qty = sell_with_qty
+                order_item.defective_qty = defective_qty
                 order_item.save()
+                logger.info(f"Saved item {item_id}: exchange_qty={order_item.exchange_qty}, sell_with_qty={order_item.sell_with_qty}, defective_qty={order_item.defective_qty}")
                 
                 updated_items.append({
                     'item_id': item_id,
                     'product': order_item.product.name,
+                    'quantity': order_item.quantity,
+                    'price': order_item.price,
                     'exchange_qty': order_item.exchange_qty,
                     'sell_with_qty': order_item.sell_with_qty,
                     'defective_qty': order_item.defective_qty,
                 })
-            
-            # Создаём позиции BOTTLE (тара) для продажи с тарой
-            from apps.logistics.models import OrderItem
-            bottle_items_created = []
-            for item_data in items_data:
-                sell_with_qty = item_data.get('sell_with_qty', 0)
-                if sell_with_qty > 0:
-                    # Находим продукт "Тара" (тип BOTTLE)
+                
+                # Если sell_with_qty > 0 — создаём отдельную позицию «Тара» (BOTTLE)
+                if item_data['sell_with_qty'] > 0:
                     bottle_product = Product.objects.filter(type_product=Product.TypeProduct.BOTTLE).first()
                     if not bottle_product:
-                        # Если продукт не существует, создаём его
+                        # Создаём продукт «Тара» если его нет
                         bottle_product = Product.objects.create(
                             name='Тара 19л',
                             type_product=Product.TypeProduct.BOTTLE,
-                            price=0,  # Тара не имеет стоимости отдельно от воды
-                            unit='шт',
-                            description='Пустая тара 19л'
+                            price=0,
+                            track_inventory=True,
                         )
                     
-                    # Создаём позицию заказа для тары
-                    bottle_order_item = OrderItem.objects.create(
+                    bottle_item = OrderItem.objects.create(
                         order=order,
                         product=bottle_product,
-                        quantity=sell_with_qty,
-                        price=0,  # Цена 0, так как стоимость уже включена в воду с тарой
+                        quantity=item_data['sell_with_qty'],
+                        price=bottle_product.price * item_data['sell_with_qty'],  # цена тары
                         exchange_qty=0,
                         sell_with_qty=0,
-                        defective_qty=0
+                        defective_qty=0,
                     )
-                    
                     bottle_items_created.append({
-                        'item_id': bottle_order_item.id,
-                        'product': bottle_order_item.product.name,
-                        'quantity': bottle_order_item.quantity,
-                        'price': bottle_order_item.price,
+                        'item_id': bottle_item.id,
+                        'product': bottle_product.name,
+                        'quantity': bottle_item.quantity,
+                        'price': bottle_item.price,
                     })
             
             # Обновляем статус заказа
+            # Складской сигнал update_stock_on_order списывает exchange_qty + sell_with_qty
+            # для BOTTLE_20L (подменяет на BOTTLE). Созданная BOTTLE OrderItem не списывается
+            # повторно, т.к. её product.type_product == BOTTLE (не подменяется).
             order.status = Order.Status.DELIVERED
             order.delivered_at = timezone.now()
             if note:
@@ -416,7 +452,6 @@ class OrderConfirmationView(APIView):
                 'order_id': order.id,
                 'delivered_at': order.delivered_at,
                 'updated_items': updated_items,
-                'bottle_items_created': bottle_items_created,
             })
         else:
             order.status = Order.Status.CANCELLED

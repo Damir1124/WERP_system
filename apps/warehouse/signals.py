@@ -380,11 +380,14 @@ def update_stock_on_order(sender, instance, created, **kwargs):
                 continue
 
         # Определяем количество для списания
-        quantity_to_deduct = item.quantity
-        
-        # Для продукта BOTTLE (тара) списываем quantity (это количество проданной тары)
-        # Для продукта WATER списываем quantity (это количество проданной воды)
-        # Для других продуктов также списываем quantity
+        # Для BOTTLE_20L (вода с тарой): списываем только exchange_qty (обмен)
+        # sell_with_qty будет списан через отдельную позицию BOTTLE OrderItem
+        # Для остальных продуктов: списываем quantity
+        original_product = item.product
+        if original_product.type_product == Product.TypeProduct.BOTTLE_20L:
+            quantity_to_deduct = item.exchange_qty
+        else:
+            quantity_to_deduct = item.quantity
         
         try:
             stock_balance = StockBalance.objects.get(product=product)

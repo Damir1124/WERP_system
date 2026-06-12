@@ -272,11 +272,19 @@ class OrderItem(models.Model):
     
     def save(self, *args, **kwargs):
         """Автоматический расчет цены позиции при сохранении"""
-        # Установка exchange_qty по умолчанию для продуктов WATER
+        import logging
+        logger = logging.getLogger(__name__)
+        from apps.products.models import Product as _Product
+        # Для продуктов WATER и BOTTLE_20L quantity должно быть суммой контейнерных полей
+        if self.product.type_product in (_Product.TypeProduct.WATER, _Product.TypeProduct.BOTTLE_20L):
+            logger.info(f"OrderItem save: product type {self.product.type_product}, quantity before={self.quantity}, exchange_qty={self.exchange_qty}, sell_with_qty={self.sell_with_qty}, defective_qty={self.defective_qty}")
+            self.quantity = self.exchange_qty + self.sell_with_qty + self.defective_qty
+            logger.info(f"OrderItem save: quantity after={self.quantity}")
+        # Установка exchange_qty по умолчанию для новых записей
         if self.pk is None and self.exchange_qty == 0:
-            # Проверяем, является ли продукт WATER (тип '19W')
-            if self.product.type_product == '19W':
+            if self.product.type_product in (_Product.TypeProduct.WATER, _Product.TypeProduct.BOTTLE_20L):
                 self.exchange_qty = self.quantity
+                logger.info(f"OrderItem save: set exchange_qty to {self.exchange_qty}")
         
         if self.price is None:
             self.price = self.product.price * self.quantity

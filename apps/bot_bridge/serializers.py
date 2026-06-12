@@ -142,13 +142,19 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Creating order with validated_data: {validated_data}")
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
-        for item_data in items_data:
+        logger.info(f"Created order id={order.id}")
+        for idx, item_data in enumerate(items_data):
             # item_data['product'] приходит как int (ID) — нужно получить объект
             product_id = item_data.pop('product')
             product = Product.objects.get(id=product_id)
-            OrderItem.objects.create(order=order, product=product, **item_data)
+            logger.info(f"Creating order item {idx}: product={product_id}, quantity={item_data.get('quantity')}, exchange_qty={item_data.get('exchange_qty')}, sell_with_qty={item_data.get('sell_with_qty')}, defective_qty={item_data.get('defective_qty')}")
+            order_item = OrderItem.objects.create(order=order, product=product, **item_data)
+            logger.info(f"Created order item id={order_item.id}, quantity={order_item.quantity}, exchange_qty={order_item.exchange_qty}")
         return order
 
 
@@ -201,7 +207,7 @@ class OrderConfirmationSerializer(serializers.Serializer):
     )
 
     def validate_items(self, value):
-        """Валидация массива позиций с данными о таре"""
+        """Валидация массива позиций с данными о таре и количестве"""
         if not value:
             return []
         
@@ -216,33 +222,61 @@ class OrderConfirmationSerializer(serializers.Serializer):
             except OrderItem.DoesNotExist:
                 raise serializers.ValidationError(f"Позиция с ID {item['item_id']} не найдена")
             
-            # Проверяем, что позиция принадлежит указанному заказу
-            # (это будет проверено в view)
+            # Определяем тип продукта
+            from apps.products.models import Product
+            is_bottle20l = order_item.product.type_product == Product.TypeProduct.BOTTLE_20L
+            is_water = order_item.product.type_product == Product.TypeProduct.WATER
             
-            # Валидируем числовые поля
+            # Для продуктов BOTTLE_20L и WATER поля тары обязательны, для остальных игнорируем
+            if is_bottle20l or is_water:
+                # Проверяем, что переданы поля тары (опционально, но если не переданы, будут 0)
+                exchange_qty = item.get('exchange_qty', 0)
+                sell_with_qty = item.get('sell_with_qty', 0)
+                defective_qty = item.get('defective_qty', 0)
+                
+                # Инварианты согласно ТЗ
+                if exchange_qty < 0:
+                    raise serializers.ValidationError(f"Позиция {item['item_id']}: exchange_qty не может быть отрицательным")
+                if sell_with_qty < 0:
+                    raise serializers.ValidationError(f"Позиция {item['item_id']}: sell_with_qty не может быть отрицательным")
+                if defective_qty < 0:
+                    raise serializers.ValidationError(f"Позиция {item['item_id']}: defective_qty не может быть отрицательным")
+                
+                # Проверяем, что продажа с тарой не превышает обмен
+                if sell_with_qty > exchange_qty:
+                    raise serializers.ValidationError(
+                        f"Позиция {item['item_id']}: продажа с тарой ({sell_with_qty}) "
+                        f"не может превышать обмен ({exchange_qty})"
+                    )
+                
+                # Для BOTTLE_20L и WATER quantity не передается, а вычисляется как сумма контейнерных операций
+                # Игнорируем переданное quantity, если есть
+                quantity = exchange_qty + sell_with_qty + defective_qty
+                # Проверка exchange_qty != 0 будет выполнена во вью при confirmed=True
+            else:
+                # Для остальных продуктов поля тары игнорируются (устанавливаем в 0)
+                exchange_qty = 0
+                sell_with_qty = 0
+                defective_qty = 0
+                # Количество может быть изменено через quantity
+                new_quantity = item.get('quantity')
+                if new_quantity is not None:
+                    if new_quantity < 1:
+                        raise serializers.ValidationError(f"Позиция {item['item_id']}: количество должно быть >= 1")
+                    quantity = new_quantity
+                else:
+                    quantity = order_item.quantity
+            
             validated_item = {
                 'item_id': item['item_id'],
-                'exchange_qty': max(0, item.get('exchange_qty', 0)),
-                'sell_with_qty': max(0, item.get('sell_with_qty', 0)),
-                'defective_qty': max(0, item.get('defective_qty', 0)),
+                'exchange_qty': exchange_qty,
+                'sell_with_qty': sell_with_qty,
+                'defective_qty': defective_qty,
+                'quantity': quantity if not (is_bottle20l or is_water) else None,
+                'is_bottle20l': is_bottle20l,
+                'is_water': is_water,
+                'product_type': order_item.product.type_product,
             }
-            
-            # Проверяем, что сумма не превышает количество в позиции
-            total_container_qty = (
-                validated_item['exchange_qty'] +
-                validated_item['sell_with_qty'] +
-                validated_item['defective_qty']
-            )
-            if total_container_qty > order_item.quantity:
-                raise serializers.ValidationError(
-                    f"Сумма операций с тарой ({total_container_qty}) превышает количество в позиции ({order_item.quantity})"
-                )
-            
-            # Проверяем, что продажа с тарой не превышает обмен
-            if validated_item['sell_with_qty'] > validated_item['exchange_qty']:
-                raise serializers.ValidationError(
-                    f"Продажа с тарой ({validated_item['sell_with_qty']}) не может превышать обмен ({validated_item['exchange_qty']})"
-                )
             
             validated_items.append(validated_item)
         
