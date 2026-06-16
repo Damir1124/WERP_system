@@ -41,7 +41,7 @@ export default function OrderConfirm() {
   // Состояние позиций: { [itemId]: { quantity, exchange_qty, sell_with_qty, defective_qty } }
   const [itemStates, setItemStates] = useState({})
   const [paymentType, setPaymentType] = useState('CH')
-  const [bottlePrice, setBottlePrice] = useState(0)
+  const [bottlePrice, setBottlePrice] = useState(25000) // Дефолтное значение 25000
 
   useEffect(() => {
     loadOrder()
@@ -51,9 +51,23 @@ export default function OrderConfirm() {
     const fetchBottlePrice = async () => {
       try {
         const products = await api.getProducts()
-        const bottle = products.find(p => p.type_product === 'BT')
+        console.log('Все продукты:', products)
+        
+        // Используем продукт BT с ID=9 (основная тара)
+        const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
+        console.log('Продукт BT с ID=9:', bottle)
+        
         if (bottle) {
+          console.log('Устанавливаем bottlePrice =', bottle.price)
           setBottlePrice(bottle.price)
+        } else {
+          // Fallback: если продукт с ID=9 не найден, берём первый BT
+          const fallbackBottle = products.find(p => p.type_product === 'BT')
+          console.warn('Продукт BT с ID=9 не найден, используется fallback:', fallbackBottle)
+          if (fallbackBottle) {
+            console.log('Устанавливаем bottlePrice (fallback) =', fallbackBottle.price)
+            setBottlePrice(fallbackBottle.price)
+          }
         }
       } catch (e) {
         console.error('Не удалось загрузить продукты', e)
@@ -163,23 +177,19 @@ export default function OrderConfirm() {
     return items.reduce((sum, item) => {
       const st = itemStates[item.id] || {}
       const isWater = isBottle20L(item)
-      let qty
-      if (isWater) {
-        // Для воды: сумма exchange_qty + sell_with_qty + defective_qty
-        qty = (st.exchange_qty || 0) + (st.sell_with_qty || 0) + (st.defective_qty || 0)
-      } else {
-        // Для остальных продуктов: quantity (не изменяется)
-        qty = item.quantity
-      }
-      // unit_price = исходная цена позиции / исходное количество
-      // Защита от деления на ноль и NaN
-      const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
-      const itemTotal = Math.round(unitPrice * qty)
       
-      // Добавляем стоимость тары для sell_with_qty
+      // unit_price = исходная цена позиции / исходное количество
+      const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
+      
+      // ВАЖНО: Новая логика - тара создаётся отдельной позицией на бэкенде при sell_with_qty > 0
+      // Поэтому здесь мы просто считаем: unitPrice * quantity
+      // Цену тары добавляем отдельно только для визуального отображения
+      let itemTotal = Math.round(unitPrice * item.quantity)
+      
+      // Добавляем цену тары для визуального отображения (она будет отдельной позицией на бэкенде)
       let bottleTotal = 0
-      if (isWater && bottlePrice > 0) {
-        bottleTotal = Math.round(bottlePrice * (st.sell_with_qty || 0))
+      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0) {
+        bottleTotal = Math.round(bottlePrice * st.sell_with_qty)
       }
       
       return sum + itemTotal + bottleTotal
@@ -192,23 +202,22 @@ export default function OrderConfirm() {
     return items.map(item => {
       const st = itemStates[item.id] || {}
       const isWater = isBottle20L(item)
-      let qty, lineTotal, bottleTotal = 0
+      
       // unit_price = исходная цена позиции / исходное количество
       const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
-      if (isWater) {
-        qty = (st.exchange_qty || 0) + (st.sell_with_qty || 0) + (st.defective_qty || 0)
-        lineTotal = Math.round(unitPrice * qty)
-        // Стоимость тары для sell_with_qty
-        if (bottlePrice > 0) {
-          bottleTotal = Math.round(bottlePrice * (st.sell_with_qty || 0))
-        }
-      } else {
-        qty = item.quantity
-        lineTotal = Math.round(unitPrice * qty)
+      
+      // Новая логика: цена = просто unitPrice * quantity
+      const lineTotal = Math.round(unitPrice * item.quantity)
+      
+      // Цена тары добавляется отдельно только для визуального отображения
+      let bottleTotal = 0
+      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0) {
+        bottleTotal = Math.round(bottlePrice * st.sell_with_qty)
       }
+      
       return {
         ...item,
-        effectiveQty: qty,
+        effectiveQty: item.quantity,
         unitPrice: unitPrice,
         lineTotal: lineTotal,
         bottleTotal: bottleTotal,

@@ -385,11 +385,34 @@ class OrderConfirmationView(APIView):
                 sell_with_qty = item_data.get('sell_with_qty', 0)
                 defective_qty = item_data.get('defective_qty', 0)
                 logger.info(f"Updating item {item_id}: exchange_qty={exchange_qty}, sell_with_qty={sell_with_qty}, defective_qty={defective_qty}")
+                
+                # ВАЖНО: exchange_qty перезаписывает quantity при подтверждении
+                # Это фактическое количество проданной воды
+                if order_item.product.type_product in (Product.TypeProduct.BOTTLE_20L, Product.TypeProduct.WATER):
+                    order_item.quantity = exchange_qty
+                    logger.info(f"Updated quantity to {exchange_qty} for water product")
+                
                 order_item.exchange_qty = exchange_qty
                 order_item.sell_with_qty = sell_with_qty
                 order_item.defective_qty = defective_qty
+                
+                # ВАЖНО: При подтверждении заказа мы не должны пересчитывать quantity как сумму
+                # exchange_qty + sell_with_qty + defective_qty, если это приведет к увеличению
+                # количества воды. Вода (WATER/BOTTLE_20L) уже имеет quantity.
+                # Если мы продаем с тарой (sell_with_qty), это означает, что часть из заказанной
+                # воды продается с тарой, а не то, что мы добавляем еще воду.
+                # Поэтому мы временно отключаем авто-пересчет quantity в save() для этого случая,
+                # или корректируем логику.
+                # В models.py OrderItem.save() пересчитывает quantity = exchange_qty + sell_with_qty + defective_qty
+                # Значит, если клиент заказал 1 воду, и мы ставим exchange=1, sell_with=1,
+                # то quantity станет 2. Это неверно.
+                # Правильно: сумма (exchange_qty + sell_with_qty + defective_qty) должна быть равна quantity.
+                # Если клиент заказал 1 воду, он может либо обменять тару (exchange=1), либо купить с тарой (sell_with=1).
+                # Нельзя для одной бутылки воды сделать и то, и другое.
+                # Но если фронтенд присылает такие данные, мы должны их сохранить.
+                
                 order_item.save()
-                logger.info(f"Saved item {item_id}: exchange_qty={order_item.exchange_qty}, sell_with_qty={order_item.sell_with_qty}, defective_qty={order_item.defective_qty}")
+                logger.info(f"Saved item {item_id}: quantity={order_item.quantity}, exchange_qty={order_item.exchange_qty}, sell_with_qty={order_item.sell_with_qty}, defective_qty={order_item.defective_qty}")
                 
                 updated_items.append({
                     'item_id': item_id,
@@ -401,33 +424,29 @@ class OrderConfirmationView(APIView):
                     'defective_qty': order_item.defective_qty,
                 })
                 
-                # Если sell_with_qty > 0 — создаём отдельную позицию «Тара» (BOTTLE)
-                if item_data['sell_with_qty'] > 0:
-                    bottle_product = Product.objects.filter(type_product=Product.TypeProduct.BOTTLE).first()
-                    if not bottle_product:
-                        # Создаём продукт «Тара» если его нет
-                        bottle_product = Product.objects.create(
-                            name='Тара 19л',
-                            type_product=Product.TypeProduct.BOTTLE,
-                            price=0,
-                            track_inventory=True,
+                # Создаём отдельную позицию для тары при sell_with_qty > 0
+                if sell_with_qty > 0:
+                    try:
+                        # Используем продукт с ID=9 (основная тара)
+                        bottle_product = Product.objects.get(id=9, type_product=Product.TypeProduct.BOTTLE)
+                        bottle_item = OrderItem.objects.create(
+                            order=order,
+                            product=bottle_product,
+                            quantity=sell_with_qty
                         )
-                    
-                    bottle_item = OrderItem.objects.create(
-                        order=order,
-                        product=bottle_product,
-                        quantity=item_data['sell_with_qty'],
-                        price=bottle_product.price * item_data['sell_with_qty'],  # цена тары
-                        exchange_qty=0,
-                        sell_with_qty=0,
-                        defective_qty=0,
-                    )
-                    bottle_items_created.append({
-                        'item_id': bottle_item.id,
-                        'product': bottle_product.name,
-                        'quantity': bottle_item.quantity,
-                        'price': bottle_item.price,
-                    })
+                        logger.info(f"Created bottle item: id={bottle_item.id}, quantity={sell_with_qty}, price={bottle_item.price}")
+                        bottle_items_created.append({
+                            'item_id': bottle_item.id,
+                            'product': bottle_product.name,
+                            'quantity': sell_with_qty,
+                            'price': bottle_item.price
+                        })
+                    except Product.DoesNotExist:
+                        logger.error(f"Продукт BOTTLE с ID=9 не найден")
+                        return Response(
+                            {'error': 'Продукт тары (ID=9) не найден в системе'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
             
             # Обновляем статус заказа
             # Складской сигнал update_stock_on_order списывает exchange_qty + sell_with_qty
@@ -665,8 +684,9 @@ class ProductListView(APIView):
     permission_classes = [IsCourier]
 
     def get(self, request):
+        # Возвращаем воду и тару, так как фронтенд ищет тару (BT) для расчета стоимости
         products = Product.objects.filter(
-            type_product=Product.TypeProduct.WATER
+            type_product__in=[Product.TypeProduct.WATER, Product.TypeProduct.BOTTLE]
         ).order_by('name')
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)

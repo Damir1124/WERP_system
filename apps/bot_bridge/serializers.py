@@ -249,9 +249,9 @@ class OrderConfirmationSerializer(serializers.Serializer):
                         f"не может превышать обмен ({exchange_qty})"
                     )
                 
-                # Для BOTTLE_20L и WATER quantity не передается, а вычисляется как сумма контейнерных операций
-                # Игнорируем переданное quantity, если есть
-                quantity = exchange_qty + sell_with_qty + defective_qty
+                # ВАЖНО: quantity - это плановое количество, оно НЕ пересчитывается!
+                # exchange_qty, sell_with_qty, defective_qty - это детализация операций с тарой,
+                # но они НЕ влияют на quantity (плановое количество воды в заказе).
                 # Проверка exchange_qty != 0 будет выполнена во вью при confirmed=True
             else:
                 # Для остальных продуктов поля тары игнорируются (устанавливаем в 0)
@@ -272,11 +272,16 @@ class OrderConfirmationSerializer(serializers.Serializer):
                 'exchange_qty': exchange_qty,
                 'sell_with_qty': sell_with_qty,
                 'defective_qty': defective_qty,
-                'quantity': quantity if not (is_bottle20l or is_water) else None,
                 'is_bottle20l': is_bottle20l,
                 'is_water': is_water,
                 'product_type': order_item.product.type_product,
             }
+            
+            # Для не-водных продуктов можем передать quantity если оно изменилось
+            if not (is_bottle20l or is_water):
+                new_quantity = item.get('quantity')
+                if new_quantity is not None and new_quantity >= 1:
+                    validated_item['quantity'] = new_quantity
             
             validated_items.append(validated_item)
         

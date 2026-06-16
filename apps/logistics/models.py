@@ -275,17 +275,35 @@ class OrderItem(models.Model):
         import logging
         logger = logging.getLogger(__name__)
         from apps.products.models import Product as _Product
-        # Для продуктов WATER и BOTTLE_20L quantity должно быть суммой контейнерных полей
-        if self.product.type_product in (_Product.TypeProduct.WATER, _Product.TypeProduct.BOTTLE_20L):
-            logger.info(f"OrderItem save: product type {self.product.type_product}, quantity before={self.quantity}, exchange_qty={self.exchange_qty}, sell_with_qty={self.sell_with_qty}, defective_qty={self.defective_qty}")
-            self.quantity = self.exchange_qty + self.sell_with_qty + self.defective_qty
-            logger.info(f"OrderItem save: quantity after={self.quantity}")
+        
         # Установка exchange_qty по умолчанию для новых записей
+        # При создании OrderItem для продуктов типа WATER/BOTTLE_20L устанавливаем exchange_qty = quantity
+        # Это стартовое значение, которое курьер увидит при подтверждении и сможет изменить
         if self.pk is None and self.exchange_qty == 0:
             if self.product.type_product in (_Product.TypeProduct.WATER, _Product.TypeProduct.BOTTLE_20L):
                 self.exchange_qty = self.quantity
-                logger.info(f"OrderItem save: set exchange_qty to {self.exchange_qty}")
+                logger.info(f"OrderItem save: set exchange_qty to {self.exchange_qty} for new item")
+
+        # ВАЖНО: Мы больше не пересчитываем quantity как сумму контейнерных полей!
+        # quantity - это заказанное количество воды.
+        # exchange_qty, sell_with_qty, defective_qty - это детализация того, что произошло с тарой
+        # для этого количества воды.
+        # Сумма (exchange_qty + sell_with_qty + defective_qty) должна быть равна quantity,
+        # но мы не должны менять quantity, если клиент просто распределил тару.
+        # Если мы пересчитываем quantity, то при подтверждении заказа (когда мы обновляем
+        # exchange_qty и sell_with_qty) quantity будет удваиваться или обнуляться.
         
+        if self.product.type_product in (_Product.TypeProduct.WATER, _Product.TypeProduct.BOTTLE_20L):
+            logger.info(f"OrderItem save: product type {self.product.type_product}, quantity={self.quantity}, exchange_qty={self.exchange_qty}, sell_with_qty={self.sell_with_qty}, defective_qty={self.defective_qty}")
+        
+        # Пересчитываем цену только если она не задана (при создании)
+        # При обновлении (например, при подтверждении заказа) мы сбрасываем price в None,
+        # чтобы он пересчитался.
         if self.price is None:
+            # ВАЖНО: Цена тары теперь учитывается через отдельный OrderItem (создаётся в views.py при sell_with_qty > 0)
+            # Поэтому здесь мы просто считаем: product.price * quantity
+            # Никаких дополнительных расчётов с тарой не нужно
             self.price = self.product.price * self.quantity
+            logger.info(f"OrderItem save: product={self.product.name}, quantity={self.quantity}, price={self.price}")
+
         super().save(*args, **kwargs)
