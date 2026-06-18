@@ -47,34 +47,22 @@ export default function OrderConfirm() {
     loadOrder()
   }, [id])
 
-  useEffect(() => {
-    const fetchBottlePrice = async () => {
-      try {
-        const products = await api.getProducts()
-        console.log('Все продукты:', products)
-        
-        // Используем продукт BT с ID=9 (основная тара)
-        const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
-        console.log('Продукт BT с ID=9:', bottle)
-        
-        if (bottle) {
-          console.log('Устанавливаем bottlePrice =', bottle.price)
-          setBottlePrice(bottle.price)
-        } else {
-          // Fallback: если продукт с ID=9 не найден, берём первый BT
-          const fallbackBottle = products.find(p => p.type_product === 'BT')
-          console.warn('Продукт BT с ID=9 не найден, используется fallback:', fallbackBottle)
-          if (fallbackBottle) {
-            console.log('Устанавливаем bottlePrice (fallback) =', fallbackBottle.price)
-            setBottlePrice(fallbackBottle.price)
-          }
-        }
-      } catch (e) {
-        console.error('Не удалось загрузить продукты', e)
-      }
-    }
-    fetchBottlePrice()
-  }, [])
+  // ВРЕМЕННО ОТКЛЮЧЕНО: загрузка цены из API
+  // Используем фиксированное значение 25000
+  // useEffect(() => {
+  //   const fetchBottlePrice = async () => {
+  //     try {
+  //       const products = await api.getProducts()
+  //       const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
+  //       if (bottle) {
+  //         setBottlePrice(bottle.price)
+  //       }
+  //     } catch (e) {
+  //       console.error('Не удалось загрузить продукты', e)
+  //     }
+  //   }
+  //   fetchBottlePrice()
+  // }, [])
 
   const loadOrder = async () => {
     try {
