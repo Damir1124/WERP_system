@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
+import OrderCard from '../components/OrderCard/OrderCard.jsx'
 
 export default function Trip() {
   const navigate = useNavigate()
@@ -136,31 +137,34 @@ export default function Trip() {
 
       {orders.map(order => {
         const delivered = order.status === 'DL'
-        const items = order.items || []
-        const payLabel = order.payment_type === 'CD' ? 'Карта' : order.payment_type === 'BS' ? 'Бонус' : 'Наличные'
-        const payClass = order.payment_type === 'CD' ? 'card' : 'cash'
+        
+        // Преобразуем данные заказа в формат OrderCard
+        const transformedOrder = {
+          id: order.id,
+          created_at: order.created_at,
+          address: order.client_address || 'Адрес не указан',
+          latitude: order.latitude || null,
+          longitude: order.longitude || null,
+          payment_type: order.payment_type,
+          payment_type_label: order.payment_type === 'CD' ? 'Карта' : order.payment_type === 'BS' ? 'Бонус' : 'Наличные',
+          items: order.items || [],
+          client: {
+            name: order.client_name || 'Клиент не указан',
+            phone: order.client_phone || null,
+          },
+          created_by: order.created_by || null,
+        }
 
+        // Все заказы показываем через OrderCard
+        // Для недоставленных - кнопка "Подтвердить доставку"
+        // Для доставленных - без кнопки (isTripOrder=false)
         return (
-          <div className="ocard" key={order.id}>
-            <div className="oc-name">{order.client_name || 'Клиент не указан'}</div>
-            <div className="oc-addr">{order.client_address || ''}</div>
-            <div className="tags">
-              {items.map((item, i) => (
-                <span key={i} className="tag water">{item.product_name} × {item.quantity}</span>
-              ))}
-              <span className={`tag ${payClass}`}>{payLabel}</span>
-            </div>
-            {delivered ? (
-              <button className="btn done" disabled>✓ Доставлено</button>
-            ) : (
-              <button
-                className="btn primary"
-                onClick={() => navigate(`/order/${order.id}/confirm`)}
-              >
-                Доставить
-              </button>
-            )}
-          </div>
+          <OrderCard
+            key={order.id}
+            order={transformedOrder}
+            isTripOrder={!delivered}
+            onConfirm={!delivered ? () => navigate(`/order/${order.id}/confirm`) : undefined}
+          />
         )
       })}
 

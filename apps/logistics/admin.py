@@ -4,6 +4,8 @@ from .models import (
     DeliveryLog, DeliveryLogMove,
     CourierShift, CourierTrip, Order, OrderItem,
 )
+from .forms import OrderForm, OrderItemFormSet
+from apps.products.models import Product
 
 
 # ─── Устаревшие модели (оставлены для совместимости) ──────────────────────────
@@ -113,6 +115,9 @@ class CourierTripAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
+    form = OrderForm
+    change_form_template = 'admin/logistics/order_change_form.html'
+    
     list_display = (
         'id', 'trip', 'client', 'payment_type', 'status',
         'total_price_display', 'assigned_courier', 'created_at', 'delivered_at',
@@ -138,6 +143,67 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.action(description='Отметить как отменённые')
     def mark_as_cancelled(self, request, queryset):
         queryset.update(status=Order.Status.CANCELLED)
+    
+    def get_inline_instances(self, request, obj=None):
+        """Переопределяем для использования formset вместо стандартных inline"""
+        # Возвращаем пустой список, т.к. мы используем кастомный шаблон
+        # с formset, а не стандартные inline формы
+        if request.path.endswith('/add/') or (obj and request.path.endswith('/change/')):
+            return []
+        return super().get_inline_instances(request, obj)
+    
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Добавляем formset и список продуктов в контекст"""
+        extra_context = extra_context or {}
+        
+        # Добавляем список всех продуктов для селекта
+        extra_context['products'] = Product.objects.all().order_by('type_product', 'name')
+        
+        # Получаем объект заказа
+        obj = self.get_object(request, object_id)
+        
+        if request.method == 'POST':
+            formset = OrderItemFormSet(request.POST, instance=obj)
+        else:
+            formset = OrderItemFormSet(instance=obj)
+        
+        extra_context['inline_admin_formsets'] = [{'formset': formset}]
+        
+        return super().change_view(request, object_id, form_url, extra_context)
+    
+    def add_view(self, request, form_url='', extra_context=None):
+        """Добавляем formset и список продуктов в контекст для создания"""
+        extra_context = extra_context or {}
+        
+        # Добавляем список всех продуктов для селекта
+        extra_context['products'] = Product.objects.all().order_by('type_product', 'name')
+        
+        if request.method == 'POST':
+            form = self.get_form(request)(request.POST)
+            if form.is_valid():
+                obj = form.save(commit=False)
+                formset = OrderItemFormSet(request.POST, instance=obj)
+            else:
+                formset = OrderItemFormSet(request.POST)
+        else:
+            formset = OrderItemFormSet()
+        
+        extra_context['inline_admin_formsets'] = [{'formset': formset}]
+        
+        return super().add_view(request, form_url, extra_context)
+    
+    def save_model(self, request, obj, form, change):
+        """Сохраняем заказ и связанные позиции"""
+        super().save_model(request, obj, form, change)
+    
+    def save_related(self, request, form, formsets, change):
+        """Сохраняем связанные позиции заказа"""
+        super().save_related(request, form, formsets, change)
+        
+        # Сохраняем formset с позициями заказа
+        formset = OrderItemFormSet(request.POST, instance=form.instance)
+        if formset.is_valid():
+            formset.save()
 
 
 @admin.register(OrderItem)

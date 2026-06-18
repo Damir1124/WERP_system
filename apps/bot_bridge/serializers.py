@@ -50,22 +50,37 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     """Сериализатор для заказа (модель Order)"""
-    client_name = serializers.CharField(source='client.name', read_only=True)
+    client_name = serializers.CharField(source='client.name', read_only=True, allow_null=True)
+    client_address = serializers.CharField(source='client.address', read_only=True, allow_null=True)
+    client_phone = serializers.CharField(source='client.phone', read_only=True, allow_null=True)
+    latitude = serializers.DecimalField(source='client.latitude', max_digits=9, decimal_places=6, read_only=True, allow_null=True)
+    longitude = serializers.DecimalField(source='client.longitude', max_digits=9, decimal_places=6, read_only=True, allow_null=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     payment_type_display = serializers.CharField(source='get_payment_type_display', read_only=True)
     assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True, allow_null=True)
+    created_by = serializers.SerializerMethodField()
     items = OrderItemSerializer(many=True, read_only=True)
     total_price = serializers.SerializerMethodField()
 
     def get_total_price(self, obj):
         return obj.get_total_price()
+    
+    def get_created_by(self, obj):
+        """Возвращает имя создателя заказа (курьер или система)"""
+        if obj.assigned_courier:
+            return obj.assigned_courier.full_name
+        # Если заказ создан клиентом через Mini App
+        if obj.client:
+            return f"Клиент {obj.client.name}"
+        return "Система"
 
     class Meta:
         model = Order
-        fields = ['id', 'trip', 'client', 'client_name',
+        fields = ['id', 'trip', 'client', 'client_name', 'client_address', 'client_phone',
+                  'latitude', 'longitude',
                   'payment_type', 'payment_type_display',
                   'status', 'status_display',
-                  'assigned_courier', 'assigned_courier_name', 'note', 'created_at', 'delivered_at',
+                  'assigned_courier', 'assigned_courier_name', 'created_by', 'note', 'created_at', 'delivered_at',
                   'items', 'total_price']
         read_only_fields = ['created_at', 'delivered_at']
 
@@ -79,12 +94,17 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         help_text="Список позиций заказа. Каждая позиция: {'product': id, 'quantity': int, 'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}"
     )
     
+    # Поля для создания/поиска клиента
+    client_phone = serializers.CharField(required=False, write_only=True, help_text="Номер телефона клиента")
+    client_address = serializers.CharField(required=False, write_only=True, help_text="Адрес доставки")
+    client_name = serializers.CharField(required=False, allow_blank=True, write_only=True, help_text="ФИО клиента")
+    
     class Meta:
         model = Order
-        fields = ['trip', 'client', 'payment_type', 'note', 'items']
+        fields = ['trip', 'client', 'client_phone', 'client_address', 'client_name', 'payment_type', 'note', 'items']
         extra_kwargs = {
             'trip': {'required': True},
-            'client': {'required': True},
+            'client': {'required': False},  # Теперь опционально, т.к. можем создать по телефону
             'payment_type': {'required': True},
         }
     
@@ -145,9 +165,58 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Creating order with validated_data: {validated_data}")
+        
         items_data = validated_data.pop('items')
+        
+        # Обработка данных клиента
+        client_phone = validated_data.pop('client_phone', None)
+        client_address = validated_data.pop('client_address', None)
+        client_name = validated_data.pop('client_name', None)
+        
+        # Если указан телефон, ищем или создаем клиента
+        if client_phone:
+            from apps.clients.models import Client
+            # Нормализация телефона - убираем все лишнее
+            phone = client_phone.replace(' ', '').replace('-', '').replace('+', '')
+            
+            # Приводим к формату 998XXXXXXXXX (12 символов)
+            if len(phone) == 9:
+                # Если только 9 цифр, добавляем код страны
+                phone = '998' + phone
+            elif phone.startswith('998') and len(phone) == 12:
+                # Уже в правильном формате
+                pass
+            elif phone.startswith('8') and len(phone) == 10:
+                # Формат 8XXXXXXXXX -> 998XXXXXXXXX
+                phone = '998' + phone[1:]
+            
+            # Обрезаем до 12 символов если длиннее
+            phone = phone[:12]
+            
+            logger.info(f"Normalized phone: {client_phone} -> {phone}")
+            
+            # Поиск или создание клиента
+            client, created = Client.objects.get_or_create(
+                phone=phone,
+                defaults={
+                    'address': client_address or '',
+                    'name': client_name or f'Клиент {phone}',
+                }
+            )
+            
+            # Если клиент существует, обновляем адрес
+            if not created and client_address:
+                client.address = client_address
+                if client_name:
+                    client.name = client_name
+                client.save()
+            
+            validated_data['client'] = client
+            logger.info(f"Client {'created' if created else 'found'}: id={client.id}, phone={client.phone}")
+        
         order = Order.objects.create(**validated_data)
         logger.info(f"Created order id={order.id}")
+        
         for idx, item_data in enumerate(items_data):
             # item_data['product'] приходит как int (ID) — нужно получить объект
             product_id = item_data.pop('product')
@@ -155,6 +224,7 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
             logger.info(f"Creating order item {idx}: product={product_id}, quantity={item_data.get('quantity')}, exchange_qty={item_data.get('exchange_qty')}, sell_with_qty={item_data.get('sell_with_qty')}, defective_qty={item_data.get('defective_qty')}")
             order_item = OrderItem.objects.create(order=order, product=product, **item_data)
             logger.info(f"Created order item id={order_item.id}, quantity={order_item.quantity}, exchange_qty={order_item.exchange_qty}")
+        
         return order
 
 

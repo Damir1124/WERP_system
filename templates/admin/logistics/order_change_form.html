@@ -1,0 +1,410 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Стили для улучшенной формы заказа */
+    .order-form-section {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .order-form-section h2 {
+        color: #417690;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #417690;
+    }
+    
+    .form-row {
+        margin-bottom: 15px;
+    }
+    
+    .form-row label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-row .helptext {
+        display: block;
+        font-size: 12px;
+        color: #666;
+        margin-top: 3px;
+    }
+    
+    /* Стили для секции продуктов */
+    .products-section {
+        background: #fff;
+        border: 2px solid #417690;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .products-section h2 {
+        color: #417690;
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    
+    .product-item {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 15px;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    .product-item:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .product-item.to-delete {
+        opacity: 0.5;
+        background: #ffe6e6;
+    }
+    
+    .product-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .product-item-number {
+        font-weight: bold;
+        color: #417690;
+        font-size: 14px;
+    }
+    
+    .product-item-fields {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 15px;
+        align-items: start;
+    }
+    
+    .delete-product-btn {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background 0.3s ease;
+    }
+    
+    .delete-product-btn:hover {
+        background: #c82333;
+    }
+    
+    .add-product-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        display: inline-block;
+        margin-top: 10px;
+    }
+    
+    .add-product-btn:hover {
+        background: #218838;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    /* Скрываем стандартные inline формы Django */
+    .inline-group {
+        display: none;
+    }
+    
+    /* Информационные блоки */
+    .info-box {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 15px;
+        color: #0c5460;
+    }
+    
+    .info-box strong {
+        display: block;
+        margin-bottom: 5px;
+    }
+    
+    /* Адаптивность */
+    @media (max-width: 768px) {
+        .product-item-fields {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+
+<!-- Секция информации о клиенте -->
+<div class="order-form-section">
+    <h2>📞 Информация о клиенте</h2>
+    
+    <div class="info-box">
+        <strong>💡 Подсказка:</strong>
+        Введите номер телефона клиента. Если клиент уже есть в базе, его данные подгрузятся автоматически.
+        Если клиента нет - он будет создан автоматически при сохранении заказа.
+    </div>
+    
+    <div class="form-row">
+        {{ adminform.form.client_phone.label_tag }}
+        {{ adminform.form.client_phone }}
+        {{ adminform.form.client_phone.errors }}
+        <span class="helptext">{{ adminform.form.client_phone.help_text }}</span>
+    </div>
+    
+    <div class="form-row">
+        {{ adminform.form.client_address.label_tag }}
+        {{ adminform.form.client_address }}
+        {{ adminform.form.client_address.errors }}
+        <span class="helptext">{{ adminform.form.client_address.help_text }}</span>
+    </div>
+    
+    <div class="form-row">
+        {{ adminform.form.client_name.label_tag }}
+        {{ adminform.form.client_name }}
+        {{ adminform.form.client_name.errors }}
+        <span class="helptext">{{ adminform.form.client_name.help_text }}</span>
+    </div>
+</div>
+
+<!-- Секция продуктов -->
+<div class="products-section">
+    <h2>🛒 Продукты в заказе</h2>
+    
+    <div id="products-container">
+        <!-- Продукты будут добавляться сюда через JavaScript -->
+    </div>
+    
+    <button type="button" class="add-product-btn" id="add-product-btn">
+        ➕ Добавить продукт
+    </button>
+    
+    <!-- Скрытый formset management form -->
+    {{ inline_admin_formsets.0.formset.management_form }}
+</div>
+
+<!-- Секция дополнительных параметров -->
+<div class="order-form-section">
+    <h2>⚙️ Параметры заказа</h2>
+    
+    <div class="form-row">
+        {{ adminform.form.payment_type.label_tag }}
+        {{ adminform.form.payment_type }}
+        {{ adminform.form.payment_type.errors }}
+    </div>
+    
+    <div class="form-row">
+        {{ adminform.form.assigned_courier.label_tag }}
+        {{ adminform.form.assigned_courier }}
+        {{ adminform.form.assigned_courier.errors }}
+    </div>
+    
+    <div class="form-row">
+        {{ adminform.form.note.label_tag }}
+        {{ adminform.form.note }}
+        {{ adminform.form.note.errors }}
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+    
+    // Получаем formset данные
+    const formsetPrefix = '{{ inline_admin_formsets.0.formset.prefix }}';
+    const totalFormsInput = document.getElementById(`id_${formsetPrefix}-TOTAL_FORMS`);
+    const maxFormsInput = document.getElementById(`id_${formsetPrefix}-MAX_NUM_FORMS`);
+    const minFormsInput = document.getElementById(`id_${formsetPrefix}-MIN_NUM_FORMS`);
+    
+    let formCount = parseInt(totalFormsInput.value) || 0;
+    const container = document.getElementById('products-container');
+    
+    // Функция для создания HTML формы продукта
+    function createProductForm(index, data = {}) {
+        const formHtml = `
+            <div class="product-item" data-form-index="${index}">
+                <div class="product-item-header">
+                    <span class="product-item-number">Продукт #${index + 1}</span>
+                    <button type="button" class="delete-product-btn" data-index="${index}">
+                        🗑️ Удалить
+                    </button>
+                </div>
+                <div class="product-item-fields">
+                    <div class="form-row">
+                        <label for="id_${formsetPrefix}-${index}-product">Продукт:</label>
+                        <select name="${formsetPrefix}-${index}-product" 
+                                id="id_${formsetPrefix}-${index}-product" 
+                                class="vTextField product-select" 
+                                style="width: 100%;" 
+                                required>
+                            <option value="">---------</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}" data-price="{{ product.price }}">
+                                {{ product.name }} ({{ product.get_type_product_display }}) - {{ product.price }} сум
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="id_${formsetPrefix}-${index}-quantity">Количество:</label>
+                        <input type="number" 
+                               name="${formsetPrefix}-${index}-quantity" 
+                               id="id_${formsetPrefix}-${index}-quantity" 
+                               class="vIntegerField" 
+                               min="1" 
+                               value="${data.quantity || 1}" 
+                               style="width: 100%;" 
+                               required>
+                    </div>
+                </div>
+                <input type="hidden" name="${formsetPrefix}-${index}-id" id="id_${formsetPrefix}-${index}-id" value="${data.id || ''}">
+                <input type="hidden" name="${formsetPrefix}-${index}-order" id="id_${formsetPrefix}-${index}-order" value="${data.order || ''}">
+                <input type="hidden" name="${formsetPrefix}-${index}-DELETE" id="id_${formsetPrefix}-${index}-DELETE" value="0">
+            </div>
+        `;
+        return formHtml;
+    }
+    
+    // Функция для добавления новой формы продукта
+    function addProductForm() {
+        const newFormHtml = createProductForm(formCount);
+        container.insertAdjacentHTML('beforeend', newFormHtml);
+        
+        // Добавляем обработчик удаления
+        const deleteBtn = container.querySelector(`[data-index="${formCount}"]`);
+        deleteBtn.addEventListener('click', function() {
+            deleteProductForm(this.dataset.index);
+        });
+        
+        formCount++;
+        totalFormsInput.value = formCount;
+        updateProductNumbers();
+    }
+    
+    // Функция для удаления формы продукта
+    function deleteProductForm(index) {
+        const formItem = container.querySelector(`[data-form-index="${index}"]`);
+        const deleteInput = document.getElementById(`id_${formsetPrefix}-${index}-DELETE`);
+        
+        if (deleteInput) {
+            deleteInput.value = '1';
+            formItem.classList.add('to-delete');
+            formItem.style.display = 'none';
+        } else {
+            formItem.remove();
+            formCount--;
+            totalFormsInput.value = formCount;
+        }
+        
+        updateProductNumbers();
+    }
+    
+    // Обновление нумерации продуктов
+    function updateProductNumbers() {
+        const visibleForms = container.querySelectorAll('.product-item:not(.to-delete)');
+        visibleForms.forEach((form, index) => {
+            const numberSpan = form.querySelector('.product-item-number');
+            if (numberSpan) {
+                numberSpan.textContent = `Продукт #${index + 1}`;
+            }
+        });
+    }
+    
+    // Инициализация существующих форм (при редактировании)
+    function initExistingForms() {
+        {% for form in inline_admin_formsets.0.formset %}
+        {% if form.instance.pk %}
+        const existingFormHtml = createProductForm({{ forloop.counter0 }}, {
+            id: '{{ form.instance.pk }}',
+            order: '{{ form.instance.order.pk }}',
+            quantity: {{ form.instance.quantity }}
+        });
+        container.insertAdjacentHTML('beforeend', existingFormHtml);
+        
+        // Устанавливаем выбранный продукт
+        const productSelect = document.getElementById('id_${formsetPrefix}-{{ forloop.counter0 }}-product');
+        if (productSelect) {
+            productSelect.value = '{{ form.instance.product.pk }}';
+        }
+        
+        // Добавляем обработчик удаления
+        const deleteBtn = container.querySelector(`[data-index="{{ forloop.counter0 }}"]`);
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function() {
+                deleteProductForm(this.dataset.index);
+            });
+        }
+        {% endif %}
+        {% endfor %}
+    }
+    
+    // Автозаполнение данных клиента по телефону
+    const phoneInput = document.getElementById('id_client_phone');
+    if (phoneInput) {
+        phoneInput.addEventListener('blur', function() {
+            const phone = this.value.trim();
+            if (phone) {
+                // Здесь можно добавить AJAX запрос для поиска клиента
+                // Пока оставляем простую валидацию
+                console.log('Поиск клиента по телефону:', phone);
+            }
+        });
+    }
+    
+    // Обработчик кнопки добавления продукта
+    document.getElementById('add-product-btn').addEventListener('click', addProductForm);
+    
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        initExistingForms();
+        
+        // Если это новый заказ, добавляем одну пустую форму
+        if (formCount === 0) {
+            addProductForm();
+        }
+        
+        updateProductNumbers();
+    });
+    
+    // Валидация перед отправкой формы
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const visibleForms = container.querySelectorAll('.product-item:not(.to-delete)');
+            if (visibleForms.length === 0) {
+                e.preventDefault();
+                alert('Добавьте хотя бы один продукт в заказ!');
+                return false;
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}
