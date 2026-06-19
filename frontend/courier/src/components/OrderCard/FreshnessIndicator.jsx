@@ -4,11 +4,19 @@ import { ORDER_FRESHNESS_CONFIG } from '../../config/orderFreshness.js'
 /**
  * Индикатор свежести заказа (цветная точка)
  * Обновляется каждые 60 секунд
+ *
+ * @param {string} createdAt - Дата создания заказа
+ * @param {boolean} isDelivered - Если true, таймер не запускается
  */
-export default function FreshnessIndicator({ createdAt }) {
+export default function FreshnessIndicator({ createdAt, isDelivered = false }) {
   const [color, setColor] = useState('#22c55e')
 
   useEffect(() => {
+    // Если заказ доставлен, не запускаем таймер
+    if (isDelivered) {
+      return
+    }
+
     const updateColor = () => {
       const now = new Date()
       const created = new Date(createdAt)
@@ -29,8 +37,9 @@ export default function FreshnessIndicator({ createdAt }) {
     // Обновление каждые 60 секунд
     const interval = setInterval(updateColor, 60000)
 
+    // Cleanup: останавливаем таймер при размонтировании
     return () => clearInterval(interval)
-  }, [createdAt])
+  }, [createdAt, isDelivered])
 
   const isRed = color === '#ef4444'
 

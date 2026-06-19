@@ -4,19 +4,21 @@ import './OrderCard.css'
 
 /**
  * Компонент карточки заказа с двумя состояниями: свёрнутое и развёрнутое
- * 
+ *
  * @param {Object} order - Данные заказа
  * @param {boolean} isPoolOrder - Показывать кнопку "Взять заказ"
  * @param {boolean} isTripOrder - Показывать кнопку "Подтвердить доставку"
+ * @param {boolean} isDelivered - Заказ доставлен (визуальное состояние)
  * @param {Function} onAccept - Callback для взятия заказа
  * @param {Function} onConfirm - Callback для подтверждения доставки
  */
-export default function OrderCard({ 
-  order, 
-  isPoolOrder = false, 
+export default function OrderCard({
+  order,
+  isPoolOrder = false,
   isTripOrder = false,
+  isDelivered = false,
   onAccept,
-  onConfirm 
+  onConfirm
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -68,10 +70,14 @@ export default function OrderCard({
   }
 
   return (
-    <div className={`order-card ${expanded ? 'expanded' : ''}`}>
+    <div className={`order-card ${expanded ? 'expanded' : ''} ${isDelivered ? 'order-card--delivered' : ''}`}>
       {/* Свёрнутое состояние - всегда видимо */}
       <div className="order-card-header" onClick={handleToggle}>
-        <FreshnessIndicator createdAt={order.created_at} />
+        {isDelivered ? (
+          <div className="delivered-checkmark">✅</div>
+        ) : (
+          <FreshnessIndicator createdAt={order.created_at} />
+        )}
         
         <div className="order-id">#{order.id}</div>
         
@@ -89,8 +95,8 @@ export default function OrderCard({
       </div>
 
       {/* Развёрнутое состояние */}
-      {expanded && (
-        <div className="order-card-body">
+      <div className={`order-card-body ${expanded ? 'expanded' : 'collapsed'}`}>
+        <div className="order-card-body-content">
           {/* Адрес с геолокацией */}
           <div className="detail-section">
             <div className="detail-label">Адрес</div>
@@ -107,60 +113,71 @@ export default function OrderCard({
             )}
           </div>
 
-          {/* Телефон клиента */}
+          {/* Телефон клиента с кнопкой звонка */}
           {order.client?.phone && (
-            <div className="detail-section">
-              <div className="detail-label">Телефон</div>
-              <a href={`tel:${order.client.phone}`} className="phone-link">
-                {order.client.phone}
+            <div className="detail-section detail-row">
+              <div className="detail-col">
+                <div className="detail-label">Телефон</div>
+                <div className="detail-value">{order.client.phone}</div>
+              </div>
+              <a href={`tel:${order.client.phone}`} className="call-button">
+                📞 Позвонить
               </a>
             </div>
           )}
 
-          {/* Список товаров */}
+          {/* Список товаров в одну строку */}
           <div className="detail-section">
             <div className="detail-label">Товары</div>
-            <div className="items-list">
+            <div className="detail-value items-inline">
               {order.items?.map((item, index) => (
-                <div key={index} className={`item-row ${item.product_type === 'WT' ? 'highlight' : ''}`}>
-                  {item.product_type === 'WT' && <span className="water-icon">💧</span>}
-                  <span className="item-name">{item.product_name}</span>
-                  <span className="item-quantity">× {item.quantity}</span>
-                </div>
+                <span key={index}>
+                  {item.product_name} × {item.quantity}
+                  {index < order.items.length - 1 && ' | '}
+                </span>
               ))}
             </div>
           </div>
 
-          {/* Дата создания */}
-          <div className="detail-section">
-            <div className="detail-label">Создан</div>
-            <div className="detail-value">{formatDate(order.created_at)}</div>
+          {/* Дата создания и кто создал в одну строку */}
+          <div className="detail-section detail-row">
+            <div className="detail-col">
+              <div className="detail-label">Создан</div>
+              <div className="detail-value">{formatDate(order.created_at)}</div>
+            </div>
+            {order.created_by && (
+              <div className="detail-col">
+                <div className="detail-label">Создал</div>
+                <div className="detail-value">{order.created_by}</div>
+              </div>
+            )}
           </div>
 
-          {/* Кто создал */}
-          {order.created_by && (
-            <div className="detail-section">
-              <div className="detail-label">Создал</div>
-              <div className="detail-value">{order.created_by}</div>
+          {/* Статус доставки или кнопки действий */}
+          {isDelivered ? (
+            <div className="delivered-status">
+              <div className="delivered-icon">✅</div>
+              <div className="delivered-text">
+                Доставлен — {order.delivered_at ? formatDate(order.delivered_at) : 'дата неизвестна'}
+              </div>
+            </div>
+          ) : (
+            <div className="order-card-actions">
+              {isPoolOrder && onAccept && (
+                <button className="action-btn primary" onClick={onAccept}>
+                  Взять заказ
+                </button>
+              )}
+              
+              {isTripOrder && onConfirm && (
+                <button className="action-btn primary" onClick={onConfirm}>
+                  Доставить
+                </button>
+              )}
             </div>
           )}
-
-          {/* Кнопки действий */}
-          <div className="order-card-actions">
-            {isPoolOrder && onAccept && (
-              <button className="action-btn primary" onClick={onAccept}>
-                Взять заказ
-              </button>
-            )}
-            
-            {isTripOrder && onConfirm && (
-              <button className="action-btn primary" onClick={onConfirm}>
-                Доставить
-              </button>
-            )}
-          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

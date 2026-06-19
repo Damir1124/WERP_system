@@ -138,23 +138,34 @@
 
 /* ── Тело карточки (развёрнутое состояние) ──────────────────────────────── */
 .order-card-body {
-  padding: 10px 12px 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: slideDown 250ms ease;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-top: 1px solid transparent;
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
+.order-card-body.expanded {
+  max-height: 2000px; /* Большое значение для любого контента */
+  border-top-color: var(--border);
+}
+
+.order-card-body.collapsed {
+  max-height: 0;
+}
+
+.order-card-body-content {
+  padding: 8px 12px 10px; /* Уменьшен padding */
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* Уменьшен gap с 8px до 6px */
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 250ms ease 50ms, transform 250ms ease 50ms;
+}
+
+.order-card-body.expanded .order-card-body-content {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* ── Секция деталей ─────────────────────────────────────────────────────── */
@@ -211,38 +222,58 @@
   text-decoration: underline;
 }
 
-/* ── Список товаров ─────────────────────────────────────────────────────── */
-.items-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.item-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* ── Список товаров в одну строку ───────────────────────────────────────── */
+.items-inline {
   font-size: 12px;
   color: var(--ink);
-  padding: 2px 0;
+  line-height: 1.4;
 }
 
-.item-row.highlight {
-  color: var(--blue-text);
-  font-weight: 500;
+.items-inline span {
+  white-space: nowrap;
 }
 
-.water-icon {
-  font-size: 14px;
+/* ── Строка с двумя колонками (Создан / Создал) ─────────────────────────── */
+.detail-section.detail-row {
+  flex-direction: row !important; /* Переопределяем column из .detail-section */
+  justify-content: space-between; /* "Создал" справа */
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.item-name {
-  flex: 1;
+.detail-col {
+  flex: 0 0 auto; /* Не растягиваем, адаптивная ширина */
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-.item-quantity {
-  color: var(--ink3);
+/* ── Кнопка звонка ──────────────────────────────────────────────────────── */
+.call-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--green);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
   font-size: 12px;
+  font-weight: 600;
+  transition: all 150ms ease;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.call-button:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
+.call-button:active {
+  transform: translateY(0);
 }
 
 /* ── Кнопки действий ────────────────────────────────────────────────────── */
@@ -284,4 +315,57 @@
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Состояние "Доставлен"
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Тусклая карточка ───────────────────────────────────────────────────── */
+.order-card--delivered {
+  opacity: 0.7;
+  filter: saturate(0.3);
+}
+
+/* ── Левая граница для доставленных ─────────────────────────────────────── */
+.order-card {
+  border-left: 2px solid #3b82f6; /* Синяя для активных */
+}
+
+.order-card--delivered {
+  border-left: 2px solid #22c55e33; /* Тускло-зелёная для доставленных */
+}
+
+/* ── Иконка галочки вместо индикатора свежести ──────────────────────────── */
+.delivered-checkmark {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ── Статус доставки в развёрнутом состоянии ────────────────────────────── */
+.delivered-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(34, 197, 94, 0.08);
+  border-radius: 8px;
+  margin-top: 6px;
+}
+
+.delivered-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.delivered-text {
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.3;
 }

@@ -250,7 +250,10 @@ class CourierCurrentTripView(APIView):
 
         trip_serializer = CourierTripSerializer(active_trip)
 
-        # Расчётные поля через OrderItem (поля quantity/price/product перенесены в OrderItem)
+        # Используем метод get_trip_summary() для корректного расчёта тары
+        summary = active_trip.get_trip_summary()
+        
+        # Добавляем финансовые данные (cash/card) к summary
         from apps.logistics.models import OrderItem
         from django.db.models import Sum as DSum
 
@@ -266,26 +269,12 @@ class CourierCurrentTripView(APIView):
             order__payment_type=Order.PaymentType.CARD
         ).aggregate(total=DSum('price'))['total'] or 0
 
-        # exchange_count — заказы с хотя бы одной позицией exchange_qty > 0
-        exchange_count = active_trip.orders.filter(
-            status=Order.Status.DELIVERED,
-            items__exchange_qty__gt=0
-        ).distinct().count()
-
-        delivered_qty = OrderItem.objects.filter(
-            order__trip=active_trip,
-            order__status=Order.Status.DELIVERED
-        ).aggregate(total=DSum('quantity'))['total'] or 0
-
-        summary = {
-            'full_loaded': active_trip.full_loaded,
-            'delivered': delivered_qty,
-            'full_returned': active_trip.full_returned,
-            'full_remain': active_trip.full_loaded - delivered_qty - active_trip.full_returned,
-            'empty_expected': exchange_count,
-            'cash_expected': cash_expected,
-            'card_expected': card_expected,
-        }
+        # Добавляем финансовые поля к summary
+        summary['cash_expected'] = cash_expected
+        summary['card_expected'] = card_expected
+        
+        # Переименовываем empty_received в empty_expected для совместимости с фронтендом
+        summary['empty_expected'] = summary.pop('empty_received', 0)
 
         return Response({
             'active_shift': True,

@@ -142,6 +142,7 @@ export default function Trip() {
         const transformedOrder = {
           id: order.id,
           created_at: order.created_at,
+          delivered_at: order.delivered_at || null,
           address: order.client_address || 'Адрес не указан',
           latitude: order.latitude || null,
           longitude: order.longitude || null,
@@ -157,11 +158,12 @@ export default function Trip() {
 
         // Все заказы показываем через OrderCard
         // Для недоставленных - кнопка "Подтвердить доставку"
-        // Для доставленных - без кнопки (isTripOrder=false)
+        // Для доставленных - визуальное состояние "доставлен"
         return (
           <OrderCard
             key={order.id}
             order={transformedOrder}
+            isDelivered={delivered}
             isTripOrder={!delivered}
             onConfirm={!delivered ? () => navigate(`/order/${order.id}/confirm`) : undefined}
           />

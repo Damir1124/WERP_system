@@ -167,30 +167,61 @@ class CourierTrip(models.Model):
         return f'Рейс #{self.id} смены {self.shift.id} ({self.status})'
 
     def get_trip_summary(self) -> dict:
-        """Справка по рейсу: остатки тары в машине в реальном времени"""
+        """Справка по рейсу: остатки тары в машине в реальном времени.
+        
+        Логика расчёта:
+        - delivered: сумма quantity всех позиций типа WATER из доставленных заказов
+          (quantity при подтверждении перезаписывается на exchange_qty)
+        - full_remain: full_loaded - delivered (остаток полных баклажек в машине)
+        - empty_received: сумма (exchange_qty - sell_with_qty) по всем доставленным заказам
+          * exchange_qty — курьер забрал пустую тару взамен полной
+          * sell_with_qty — клиент купил тару, пустой НЕ вернул (вычитаем)
+          * Для sell_with_qty создаётся отдельная позиция BOTTLE, но мы всё равно вычитаем
+        - defective_qty НЕ считается — брак пока ни на что не влияет
+        
+        Примеры:
+        
+        Пример 1:
+          Рейс загружен: full_loaded=50
+          Заказ 1: exchange=1, sell_with=1 → quantity=1 (перезаписан), empty=0 (1-1)
+          Результат: delivered=1, full_remain=49, empty_received=0
+        
+        Пример 2 (после примера 1):
+          Заказ 2: exchange=2, sell_with=0 → quantity=2, empty=2 (2-0)
+          Результат: delivered=3, full_remain=47, empty_received=2
+        """
         from django.db.models import Sum
         from apps.logistics.models import OrderItem
-        # quantity/container_op перенесены в OrderItem — агрегируем через items
-        delivered = OrderItem.objects.filter(
+        from apps.products.models import Product
+        
+        # Получаем все позиции из доставленных заказов этого рейса
+        delivered_items = OrderItem.objects.filter(
+            order__trip=self,
+            order__status=Order.Status.DELIVERED,
+            product__type_product=Product.TypeProduct.WATER  # только тип WATER считается как баклажка
+        )
+        
+        # Доставлено баклажек (сумма quantity всех WATER-позиций доставленных заказов)
+        # quantity при подтверждении перезаписывается на exchange_qty (см. bot_bridge/views.py:381)
+        delivered = delivered_items.aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Осталось полных в машине
+        full_remain = self.full_loaded - delivered
+        
+        # Пустых в машине = сумма (exchange_qty - sell_with_qty) по всем доставленным заказам
+        # Формула: empty_received = Σ(exchange_qty - sell_with_qty)
+        delivered_order_items = OrderItem.objects.filter(
             order__trip=self,
             order__status=Order.Status.DELIVERED
-        ).aggregate(total=Sum('quantity'))['total'] or 0
-
-        # exchange_qty > 0 означает обмен тары
-        empty_received = OrderItem.objects.filter(
-            order__trip=self,
-            order__status=Order.Status.DELIVERED,
-            exchange_qty__gt=0
-        ).aggregate(total=Sum('exchange_qty'))['total'] or 0
-
-        # defective_qty > 0 означает брак тары
-        defective = OrderItem.objects.filter(
-            order__trip=self,
-            order__status=Order.Status.DELIVERED,
-            defective_qty__gt=0
-        ).aggregate(total=Sum('defective_qty'))['total'] or 0
-
-        full_remain = self.full_loaded - delivered - self.full_returned
+        )
+        
+        empty_received = 0
+        for item in delivered_order_items:
+            empty_received += (item.exchange_qty - item.sell_with_qty)
+        
+        # defective_qty > 0 означает брак тары (для справки, но не влияет на расчёты)
+        defective = delivered_order_items.aggregate(total=Sum('defective_qty'))['total'] or 0
+        
         return {
             'full_loaded': self.full_loaded,
             'delivered': delivered,
