@@ -57,40 +57,47 @@ export default function Pool() {
 
   return (
     <>
-      <div className="page-body">
-        {error && <div className="error-box">{error}</div>}
+      <div className="page-container">
+        {/* Фиксированная шапка */}
+        <div className="page-header-fixed">
+          {error && <div className="error-box">{error}</div>}
+          <div className="sec-lbl">Пул заказов</div>
+        </div>
 
-        {orders.length === 0 ? (
-          <div className="empty-state">
-            <div className="es-icon">📭</div>
-            <p>Свободных заказов нет</p>
-            <p style={{ fontSize: '12px', marginTop: '4px' }}>Все заказы разобраны</p>
-          </div>
-        ) : (
-          orders.map(order => (
-            <OrderCard
-              key={order.id}
-              order={transformOrder(order)}
-              isPoolOrder={true}
-              onAccept={() => handleAssign(order.id)}
-            />
-          ))
-        )}
+        {/* Скроллящийся контент */}
+        <div className="page-content-scroll">
+          {orders.length === 0 ? (
+            <div className="empty-state">
+              <div className="es-icon">📭</div>
+              <p>Свободных заказов нет</p>
+              <p style={{ fontSize: '12px', marginTop: '4px' }}>Все заказы разобраны</p>
+            </div>
+          ) : (
+            orders.map(order => (
+              <OrderCard
+                key={order.id}
+                order={transformOrder(order)}
+                isPoolOrder={true}
+                onAccept={() => handleAssign(order.id)}
+              />
+            ))
+          )}
 
-        <hr className="div" />
-        <div className="sec-lbl">Новый заказ от клиента</div>
-        <div className="ocard">
-          <div style={{ fontSize: '12px', color: 'var(--ink2)', marginBottom: '8px' }}>
-            Клиент рядом и хочет заказать — оформите заказ сами
+          <hr className="div" />
+          <div className="sec-lbl">Новый заказ от клиента</div>
+          <div className="ocard">
+            <div style={{ fontSize: '12px', color: 'var(--ink2)', marginBottom: '8px' }}>
+              Клиент рядом и хочет заказать — оформите заказ сами
+            </div>
+            <div className="tags" style={{ marginBottom: '8px' }}>
+              <span className="tag water">Вода 20л</span>
+              <span className="tag cooler">Кулер</span>
+              <span className="tag acc">Аксессуар</span>
+            </div>
+            <button className="create-btn" onClick={() => setShowCreate(true)}>
+              + Оформить заказ
+            </button>
           </div>
-          <div className="tags" style={{ marginBottom: '8px' }}>
-            <span className="tag water">Вода 20л</span>
-            <span className="tag cooler">Кулер</span>
-            <span className="tag acc">Аксессуар</span>
-          </div>
-          <button className="create-btn" onClick={() => setShowCreate(true)}>
-            + Оформить заказ
-          </button>
         </div>
       </div>
 

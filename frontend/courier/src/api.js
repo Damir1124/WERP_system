@@ -55,16 +55,22 @@ export const api = {
   getProfile: () => apiFetch('/courier/profile/'),
 
   // ── Смены ─────────────────────────────────────────────────────────────────
+  getCurrentShift: () => apiFetch('/shifts/current/'),
+  getShiftHistory: (dateFrom, dateTo) => apiFetch(`/shifts/history/?date_from=${dateFrom}&date_to=${dateTo}`),
   getShifts:  () => apiFetch('/courier/shifts/'),
-  openShift:  () => apiFetch('/courier/shifts/', { method: 'POST' }),
+  openShift:  () => apiFetch('/shifts/', { method: 'POST' }),
   closeShift: (shiftId) => apiFetch(`/courier/shifts/${shiftId}/close/`, { method: 'POST' }),
 
   // ── Рейсы ─────────────────────────────────────────────────────────────────
   getTrips:   () => apiFetch('/courier/trips/'),
-  openTrip:   (fullLoaded = 0) => apiFetch('/courier/trips/', {
+  openTrip:   (fullLoaded = 0, shiftId = null) => apiFetch('/trips/', {
     method: 'POST',
-    body: JSON.stringify({ full_loaded: fullLoaded }),
+    body: JSON.stringify({
+      full_loaded: fullLoaded,
+      ...(shiftId && { shift_id: shiftId })
+    }),
   }),
+  closeTrip:  (tripId) => apiFetch(`/courier/trips/${tripId}/close/`, { method: 'POST' }),
 
   // ── Текущий рейс ──────────────────────────────────────────────────────────
   getCurrentTrip: () => apiFetch('/courier/trip/current/'),

@@ -165,6 +165,148 @@ class CourierShiftCloseView(APIView):
         return Response({'message': f'Смена #{shift.id} закрыта', 'shift_id': shift.id})
 
 
+class ShiftCurrentView(APIView):
+    """GET /api/bot/shifts/current/ — текущая смена со статистикой и рейсами"""
+    permission_classes = [IsCourier]
+
+    def get(self, request):
+        courier = request.courier
+        
+        # Найти активную смену
+        shift = CourierShift.objects.filter(
+            courier=courier,
+            status=CourierShift.Status.OPEN
+        ).first()
+        
+        if not shift:
+            return Response({'shift': None})
+        
+        # Получить все рейсы смены
+        trips = shift.trips.all().order_by('started_at')
+        
+        # Статистика смены
+        # 1. Количество доставленных заказов
+        orders_count = Order.objects.filter(
+            trip__shift=shift,
+            status=Order.Status.DELIVERED
+        ).count()
+        
+        # 2. Количество доставленной воды (только type_product='WT')
+        water_delivered = OrderItem.objects.filter(
+            order__trip__shift=shift,
+            order__status=Order.Status.DELIVERED,
+            product__type_product=Product.TypeProduct.WATER
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Формируем данные по рейсам
+        trips_data = []
+        for trip in trips:
+            summary = trip.get_trip_summary()
+            trips_data.append({
+                'id': trip.id,
+                'status': trip.status,
+                'full_loaded': trip.full_loaded,
+                'summary': summary
+            })
+        
+        return Response({
+            'shift': {
+                'id': shift.id,
+                'date': shift.date,
+                'status': shift.status,
+                'cash_total': shift.cash_total,
+                'card_total': shift.card_total,
+            },
+            'shift_stats': {
+                'orders_count': orders_count,
+                'water_delivered': water_delivered,
+            },
+            'trips': trips_data
+        })
+
+
+class ShiftHistoryView(APIView):
+    """GET /api/bot/shifts/history/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD — история смен"""
+    permission_classes = [IsCourier]
+
+    def get(self, request):
+        courier = request.courier
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        
+        # Фильтр по датам
+        shifts_query = CourierShift.objects.filter(courier=courier)
+        
+        if date_from:
+            shifts_query = shifts_query.filter(date__gte=date_from)
+        if date_to:
+            shifts_query = shifts_query.filter(date__lte=date_to)
+        
+        shifts = shifts_query.order_by('-date')
+        
+        # Формируем данные
+        result = []
+        for shift in shifts:
+            # Статистика смены
+            orders_count = Order.objects.filter(
+                trip__shift=shift,
+                status=Order.Status.DELIVERED
+            ).count()
+            
+            water_delivered = OrderItem.objects.filter(
+                order__trip__shift=shift,
+                order__status=Order.Status.DELIVERED,
+                product__type_product=Product.TypeProduct.WATER
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            
+            # Рейсы смены
+            trips_data = []
+            for trip in shift.trips.all().order_by('started_at'):
+                summary = trip.get_trip_summary()
+                
+                # Заказы рейса
+                orders_data = []
+                for order in trip.orders.all():
+                    items_data = []
+                    for item in order.items.all():
+                        items_data.append({
+                            'product_name': item.product.name,
+                            'quantity': item.quantity,
+                        })
+                    
+                    orders_data.append({
+                        'id': order.id,
+                        'status': order.status,
+                        'client_name': order.client.name if order.client else 'Клиент не указан',
+                        'payment_type': order.payment_type,
+                        'total_price': order.get_total_price(),
+                        'items': items_data,
+                    })
+                
+                trips_data.append({
+                    'id': trip.id,
+                    'status': trip.status,
+                    'full_loaded': trip.full_loaded,
+                    'summary': summary,
+                    'orders': orders_data,
+                })
+            
+            result.append({
+                'id': shift.id,
+                'date': shift.date,
+                'status': shift.status,
+                'cash_total': shift.cash_total,
+                'card_total': shift.card_total,
+                'stats': {
+                    'orders_count': orders_count,
+                    'water_delivered': water_delivered,
+                },
+                'trips': trips_data,
+            })
+        
+        return Response(result)
+
+
 # ─── Рейсы ────────────────────────────────────────────────────────────────────
 
 class CourierTripListView(APIView):
@@ -217,8 +359,22 @@ class CourierTripListView(APIView):
             full_loaded=full_loaded,
             status=CourierTrip.Status.ACTIVE
         )
+        
+        # Переносим незавершённые заказы курьера в новый рейс
+        orphan_orders = Order.objects.filter(
+            trip=None,
+            assigned_courier=courier,
+            status=Order.Status.PENDING
+        )
+        transferred_count = orphan_orders.count()
+        orphan_orders.update(trip=trip)
+        
         serializer = CourierTripSerializer(trip)
-        return Response({'message': 'Рейс открыт', 'trip': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response({
+            'message': 'Рейс открыт',
+            'trip': serializer.data,
+            'transferred_orders': transferred_count
+        }, status=status.HTTP_201_CREATED)
 
 
 class CourierCurrentTripView(APIView):
@@ -283,6 +439,51 @@ class CourierCurrentTripView(APIView):
             'trip': trip_serializer.data,
             'summary': summary,
         })
+
+
+class TripCloseView(APIView):
+    """POST /api/bot/courier/trips/<int:pk>/close/ — закрыть рейс"""
+    permission_classes = [IsCourier]
+
+    def post(self, request, pk):
+        courier = request.courier
+        
+        # Получаем рейс
+        trip = get_object_or_404(CourierTrip, pk=pk)
+        
+        # Проверяем, что рейс принадлежит текущему курьеру
+        if trip.shift.courier.tg_id != courier.tg_id:
+            return Response(
+                {'error': 'Этот рейс принадлежит другому курьеру'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Проверяем, что рейс активен
+        if trip.status != CourierTrip.Status.ACTIVE:
+            return Response(
+                {'error': 'Рейс уже закрыт'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Находим все незавершённые заказы в этом рейсе
+        pending_orders = trip.orders.filter(status=Order.Status.PENDING)
+        pending_count = pending_orders.count()
+        
+        # Открепляем незавершённые заказы от рейса (они вернутся в пул)
+        if pending_count > 0:
+            pending_orders.update(trip=None)
+        
+        # Закрываем рейс
+        trip.status = CourierTrip.Status.DONE
+        trip.finished_at = timezone.now()
+        trip.save()
+        
+        return Response({
+            'success': True,
+            'finished_at': trip.finished_at.isoformat(),
+            'pending_transferred': pending_count,
+            'message': f'Рейс закрыт. {pending_count} незавершённых заказов возвращены в пул.'
+        }, status=status.HTTP_200_OK)
 
 
 # ─── Заказы ───────────────────────────────────────────────────────────────────

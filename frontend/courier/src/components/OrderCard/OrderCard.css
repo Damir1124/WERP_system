@@ -145,7 +145,7 @@
 }
 
 .order-card-body.expanded {
-  max-height: 2000px; /* Большое значение для любого контента */
+  max-height: 5000px; /* Очень большое значение для полного раскрытия любого контента */
   border-top-color: var(--border);
 }
 

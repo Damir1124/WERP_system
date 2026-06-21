@@ -14,11 +14,16 @@ urlpatterns = [
     path('courier/profile/', views.CourierProfileView.as_view(), name='courier_profile'),
 
     # ── Курьер: смены ────────────────────────────────────────────────────────
+    path('shifts/current/', views.ShiftCurrentView.as_view(), name='shift_current'),
+    path('shifts/history/', views.ShiftHistoryView.as_view(), name='shift_history'),
+    path('shifts/', views.CourierShiftListView.as_view(), name='shifts'),
     path('courier/shifts/', views.CourierShiftListView.as_view(), name='courier_shifts'),
     path('courier/shifts/<int:shift_id>/close/', views.CourierShiftCloseView.as_view(), name='courier_shift_close'),
 
     # ── Курьер: рейсы ────────────────────────────────────────────────────────
+    path('trips/', views.CourierTripListView.as_view(), name='trips'),
     path('courier/trips/', views.CourierTripListView.as_view(), name='courier_trips'),
+    path('courier/trips/<int:pk>/close/', views.TripCloseView.as_view(), name='trip_close'),
     path('courier/trips/<int:trip_id>/orders/', views.OrderListView.as_view(), name='trip_orders'),
 
     # ── Курьер: текущий рейс ─────────────────────────────────────────────────

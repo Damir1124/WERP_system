@@ -65,6 +65,41 @@ html, body, #root {
   gap: 8px;
 }
 
+/* ── Page with fixed header and scrollable content ──────────────────────── */
+.page-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-header-fixed {
+  flex-shrink: 0;
+  padding: 10px 10px 0;
+  background: var(--bg2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.page-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 10px 80px;
+  min-height: 0; /* Позволяет контенту расширяться за пределы flex-контейнера */
+}
+
+.page-content-scroll > * {
+  margin-bottom: 8px;
+}
+
+.page-content-scroll > *:last-child {
+  margin-bottom: 0;
+}
+
 /* ── Bottom nav ──────────────────────────────────────────────────────────── */
 .bottom-nav {
   position: fixed;

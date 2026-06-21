@@ -93,49 +93,79 @@ export default function Trip() {
   const fmt = (n) => (n || 0).toLocaleString('ru-RU')
 
   return (
-    <div className="page-body">
-      {error && <div className="error-box">{error}</div>}
+    <div className="page-container">
+      {/* Фиксированная шапка со статистикой */}
+      <div className="page-header-fixed">
+        {error && <div className="error-box">{error}</div>}
 
-      {/* Счётчики */}
-      <div className="stats-grid">
-        <div className="scard blue">
-          <div className="sc-lbl">Загружено</div>
-          <div className="sc-val">{summary.full_loaded ?? 0} <span>бак</span></div>
+        {/* Счётчики */}
+        <div className="stats-grid">
+          <div className="scard blue">
+            <div className="sc-lbl">Загружено</div>
+            <div className="sc-val">{summary.full_loaded ?? 0} <span>бак</span></div>
+          </div>
+          <div className="scard green">
+            <div className="sc-lbl">Доставлено</div>
+            <div className="sc-val">{summary.delivered ?? 0} <span>бак</span></div>
+          </div>
+          <div className="scard amber">
+            <div className="sc-lbl">Осталось</div>
+            <div className="sc-val">{summary.full_remain ?? 0} <span>бак</span></div>
+          </div>
+          <div className="scard teal">
+            <div className="sc-lbl">Пустых в машине</div>
+            <div className="sc-val">{summary.empty_expected ?? 0} <span>шт</span></div>
+          </div>
         </div>
-        <div className="scard green">
-          <div className="sc-lbl">Доставлено</div>
-          <div className="sc-val">{summary.delivered ?? 0} <span>бак</span></div>
+
+        {/* Деньги */}
+        <div className="mrow">
+          <span className="mr-lbl">💵 Наличными</span>
+          <span className="mr-val green">{fmt(summary.cash_expected)} сум</span>
         </div>
-        <div className="scard amber">
-          <div className="sc-lbl">Осталось</div>
-          <div className="sc-val">{summary.full_remain ?? 0} <span>бак</span></div>
+        <div className="mrow">
+          <span className="mr-lbl">💳 Картой</span>
+          <span className="mr-val blue">{fmt(summary.card_expected)} сум</span>
         </div>
-        <div className="scard teal">
-          <div className="sc-lbl">Пустых в машине</div>
-          <div className="sc-val">{summary.empty_expected ?? 0} <span>шт</span></div>
-        </div>
+
+        {/* Кнопка завершения рейса */}
+        <button
+          className="btn primary"
+          style={{ marginTop: '12px', width: '100%' }}
+          onClick={() => {
+            navigate('/trip/close', {
+              state: {
+                summary: {
+                  full_loaded: summary.full_loaded ?? 0,
+                  delivered: summary.delivered ?? 0,
+                  full_remain: summary.full_remain ?? 0,
+                  empty_received: summary.empty_expected ?? 0,  // API возвращает empty_expected
+                },
+                financials: {
+                  cash_expected: summary.cash_expected ?? 0,
+                  card_expected: summary.card_expected ?? 0,
+                },
+                tripId: trip?.id,
+              }
+            })
+          }}
+        >
+          🏁 Завершить рейс
+        </button>
+
+        <hr className="div" />
+        <div className="sec-lbl">Заказы рейса</div>
       </div>
 
-      {/* Деньги */}
-      <div className="mrow">
-        <span className="mr-lbl">💵 Наличными</span>
-        <span className="mr-val green">{fmt(summary.cash_expected)} сум</span>
-      </div>
-      <div className="mrow">
-        <span className="mr-lbl">💳 Картой</span>
-        <span className="mr-val blue">{fmt(summary.card_expected)} сум</span>
-      </div>
+      {/* Скроллящийся список заказов */}
+      <div className="page-content-scroll">
+        {orders.length === 0 && (
+          <div className="empty-state" style={{ padding: '20px' }}>
+            <p>Заказов пока нет</p>
+          </div>
+        )}
 
-      <hr className="div" />
-      <div className="sec-lbl">Заказы рейса</div>
-
-      {orders.length === 0 && (
-        <div className="empty-state" style={{ padding: '20px' }}>
-          <p>Заказов пока нет</p>
-        </div>
-      )}
-
-      {orders.map(order => {
+        {orders.map(order => {
         const delivered = order.status === 'DL'
         
         // Преобразуем данные заказа в формат OrderCard
@@ -168,12 +198,8 @@ export default function Trip() {
             onConfirm={!delivered ? () => navigate(`/order/${order.id}/confirm`) : undefined}
           />
         )
-      })}
-
-      <hr className="div" />
-      <button className="create-btn" onClick={() => navigate('/pool')}>
-        + Создать заказ на месте
-      </button>
+        })}
+      </div>
     </div>
   )
 }
