@@ -9,6 +9,12 @@ class Worker(models.Model):
         COURIER = "courier", "Курьер"
         OTHER = "other", "Прочие"
     full_name = models.CharField(max_length=255, verbose_name="ФИО")
+    phone = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name='Телефон',
+        help_text='Номер телефона сотрудника'
+    )
     worker_type = models.CharField(
         max_length=10,
         choices=WorkerType.choices,

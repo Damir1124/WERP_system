@@ -87,7 +87,7 @@ export default function Pool() {
           <div className="sec-lbl">Новый заказ от клиента</div>
           <div className="ocard">
             <div style={{ fontSize: '12px', color: 'var(--ink2)', marginBottom: '8px' }}>
-              Клиент рядом и хочет заказать — оформите заказ сами
+              Оформите заказ
             </div>
             <div className="tags" style={{ marginBottom: '8px' }}>
               <span className="tag water">Вода 20л</span>

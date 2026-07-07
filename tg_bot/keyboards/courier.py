@@ -12,19 +12,14 @@ from tg_bot.config import MINI_APP_URL
 
 
 def get_courier_main_keyboard() -> ReplyKeyboardMarkup:
-    """Главное меню курьера с кнопкой открытия Mini App."""
+    """Главное меню курьера согласно спецификации."""
     builder = ReplyKeyboardBuilder()
-    # Главная кнопка — открыть рабочий стол (Mini App)
-    builder.add(KeyboardButton(
-        text="🖥 Открыть рабочий стол",
-        web_app=WebAppInfo(url=f"{MINI_APP_URL}/courier/")
-    ))
     builder.add(KeyboardButton(text="📦 Пул заказов"))
     builder.add(KeyboardButton(text="🚚 Мой рейс"))
-    builder.add(KeyboardButton(text="📋 Смены"))
+    builder.add(KeyboardButton(text="📋 Смены и рейсы"))
     builder.add(KeyboardButton(text="👥 Коллеги"))
     builder.add(KeyboardButton(text="🆘 Помощь"))
-    builder.adjust(1, 2, 2, 1)
+    builder.adjust(2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 

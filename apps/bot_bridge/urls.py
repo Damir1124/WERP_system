@@ -44,6 +44,10 @@ urlpatterns = [
     # ── Курьер: продукты и клиенты ───────────────────────────────────────────
     path('products/', views.ProductListView.as_view(), name='product_list'),
     path('clients/', views.ClientInfoView.as_view(), name='client_info'),
+    path('clients/search/', views.ClientSearchView.as_view(), name='client_search'),
+    
+    # ── Курьер: создание заказа (новый endpoint) ─────────────────────────────
+    path('courier/orders/create-new/', views.CourierCreateOrderView.as_view(), name='courier_create_order'),
 
     # ── Клиент: Mini App ─────────────────────────────────────────────────────
     path('client/products/', views.ClientProductListView.as_view(), name='client_products'),

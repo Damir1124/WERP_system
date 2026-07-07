@@ -69,6 +69,6 @@ class AuthMiddleware(BaseMiddleware):
             'is_authenticated': role != 'unknown'
         }
 
-        logger.debug(f"Пользователь tg_id={tg_id} идентифицирован как {role}")
+        logger.info(f"✅ Пользователь tg_id={tg_id} идентифицирован как роль='{role}', имя='{name}'")
 
         return await handler(event, data)

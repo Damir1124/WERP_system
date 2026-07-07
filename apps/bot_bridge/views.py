@@ -1273,3 +1273,210 @@ class ClientOrderView(APIView):
     permission_classes = []
     def post(self, request):
         return Response({'error': 'Deprecated. Use /client/order/'}, status=status.HTTP_410_GONE)
+
+
+# ============================================================================
+# НОВЫЕ ENDPOINTS ДЛЯ ИНТЕРФЕЙСА ПУЛА ЗАКАЗОВ (Feature_CourierPoolInterface)
+# ============================================================================
+
+class CourierColleaguesView(APIView):
+    """
+    GET /api/bot/courier/colleagues/
+    Возвращает список всех курьеров на смене с их статистикой.
+    """
+    permission_classes = [IsCourier]
+    
+    def get(self, request):
+        today = timezone.now().date()
+        
+        # Получаем все открытые смены за сегодня
+        active_shifts = CourierShift.objects.filter(
+            date=today,
+            status=CourierShift.Status.OPEN
+        ).select_related('courier')
+        
+        colleagues_data = []
+        
+        for shift in active_shifts:
+            # Получаем текущий активный рейс курьера
+            current_trip = shift.trips.filter(status=CourierTrip.Status.ACTIVE).first()
+            
+            trip_data = None
+            if current_trip:
+                # Считаем статистику рейса
+                delivered_orders = current_trip.orders.filter(status=Order.Status.DELIVERED)
+                pending_orders = current_trip.orders.filter(status=Order.Status.PENDING)
+                
+                # Считаем сколько воды доставлено
+                delivered_qty = OrderItem.objects.filter(
+                    order__in=delivered_orders,
+                    product__type_product=Product.TypeProduct.BOTTLE_20L
+                ).aggregate(total=Sum('quantity'))['total'] or 0
+                
+                # Считаем сколько всего нужно воды (взятые заказы)
+                total_needed = OrderItem.objects.filter(
+                    order__trip=current_trip,
+                    product__type_product=Product.TypeProduct.BOTTLE_20L
+                ).aggregate(total=Sum('quantity'))['total'] or 0
+                
+                # Остаток в машине
+                full_remain = current_trip.full_loaded - delivered_qty - current_trip.full_returned
+                
+                trip_data = {
+                    'id': current_trip.id,
+                    'full_remain': full_remain,
+                    'total_needed': total_needed,
+                    'delivered_count': delivered_orders.count(),
+                    'pending_count': pending_orders.count()
+                }
+            
+            colleagues_data.append({
+                'courier_id': shift.courier.id,
+                'courier_name': shift.courier.full_name,
+                'phone': shift.courier.phone or '',
+                'current_trip': trip_data
+            })
+        
+        return Response(colleagues_data)
+
+
+class ClientSearchView(APIView):
+    """
+    GET /api/bot/clients/search/?phone=+998901234567
+    Поиск клиента по номеру телефона.
+    """
+    permission_classes = [IsCourier]
+    
+    def get(self, request):
+        phone = request.query_params.get('phone')
+        
+        if not phone:
+            return Response({'error': 'Параметр phone обязателен'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            client = Client.objects.get(phone=phone)
+            return Response(ClientSerializer(client).data)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class CourierCreateOrderView(APIView):
+    """
+    POST /api/bot/courier/orders/create/
+    Создание заказа курьером (из пула заказов).
+    
+    Body:
+    {
+        "phone": "+998901234567",
+        "address": "ул. Навои, 15",
+        "latitude": 39.654321,  // опционально
+        "longitude": 66.975432,  // опционально
+        "items": [
+            {"product_id": 2, "quantity": 5},
+            {"product_id": 8, "quantity": 1}
+        ],
+        "payment_type": "CASH"
+    }
+    """
+    permission_classes = [IsCourier]
+    
+    def post(self, request):
+        from apps.bot_bridge.phone_validator import validate_uzbek_phone, extract_last_4_digits
+        
+        # Получаем курьера
+        tg_id = request.headers.get('X-Telegram-ID')
+        try:
+            courier = Worker.objects.get(tg_id=tg_id, worker_type=Worker.WorkerType.COURIER)
+        except Worker.DoesNotExist:
+            return Response({'error': 'Курьер не найден'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Проверяем активный рейс (опционально)
+        active_shift = CourierShift.objects.filter(
+            courier=courier,
+            status=CourierShift.Status.OPEN
+        ).first()
+        
+        active_trip = None
+        if active_shift:
+            active_trip = active_shift.trips.filter(status=CourierTrip.Status.ACTIVE).first()
+        
+        # Валидация телефона
+        phone = request.data.get('phone')
+        if not phone:
+            return Response({'error': 'Поле phone обязательно'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            validated_phone = validate_uzbek_phone(phone)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Получаем или создаём клиента
+        address = request.data.get('address', '')
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        
+        client, created = Client.objects.get_or_create(
+            phone=validated_phone,
+            defaults={
+                'name': extract_last_4_digits(validated_phone),
+                'address': address,
+                'latitude': latitude,
+                'longitude': longitude
+            }
+        )
+        
+        # Если клиент существует, обновляем адрес
+        if not created:
+            client.address = address
+            if latitude:
+                client.latitude = latitude
+            if longitude:
+                client.longitude = longitude
+            client.save(update_fields=['address', 'latitude', 'longitude'])
+        
+        # Создаём заказ
+        payment_type_raw = request.data.get('payment_type', 'CASH')
+        items_data = request.data.get('items', [])
+        
+        # Маппинг типов оплаты: CASH -> CH, CARD -> CD, BONUS -> BS
+        payment_type_map = {
+            'CASH': Order.PaymentType.CASH,
+            'CARD': Order.PaymentType.CARD,
+            'BONUS': Order.PaymentType.BONUS,
+        }
+        payment_type = payment_type_map.get(payment_type_raw, Order.PaymentType.CASH)
+        
+        if not items_data:
+            return Response({'error': 'Добавьте хотя бы один товар'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        order = Order.objects.create(
+            client=client,
+            trip=active_trip,
+            assigned_courier=courier,
+            payment_type=payment_type,
+            status=Order.Status.PENDING
+        )
+        
+        # Создаём позиции заказа
+        for item_data in items_data:
+            product_id = item_data.get('product_id')
+            quantity = item_data.get('quantity', 1)
+            
+            if not product_id:
+                order.delete()
+                return Response({'error': 'Укажите product_id для каждого товара'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                order.delete()
+                return Response({'error': f'Продукт с id={product_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
+            
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=quantity
+            )
+        
+        # Возвращаем созданный заказ
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)

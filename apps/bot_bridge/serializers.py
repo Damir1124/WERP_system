@@ -61,9 +61,18 @@ class OrderSerializer(serializers.ModelSerializer):
     created_by = serializers.SerializerMethodField()
     items = OrderItemSerializer(many=True, read_only=True)
     total_price = serializers.SerializerMethodField()
+    minutes_ago = serializers.SerializerMethodField()
 
     def get_total_price(self, obj):
         return obj.get_total_price()
+    
+    def get_minutes_ago(self, obj):
+        """Возвращает количество минут с момента создания заказа"""
+        from django.utils import timezone
+        if obj.created_at:
+            delta = timezone.now() - obj.created_at
+            return int(delta.total_seconds() / 60)
+        return 0
     
     def get_created_by(self, obj):
         """Возвращает имя создателя заказа (курьер или система)"""
@@ -81,7 +90,7 @@ class OrderSerializer(serializers.ModelSerializer):
                   'payment_type', 'payment_type_display',
                   'status', 'status_display',
                   'assigned_courier', 'assigned_courier_name', 'created_by', 'note', 'created_at', 'delivered_at',
-                  'items', 'total_price']
+                  'items', 'total_price', 'minutes_ago']
         read_only_fields = ['created_at', 'delivered_at']
 
 

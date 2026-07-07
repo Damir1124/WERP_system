@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from tg_bot.config import BOT_TOKEN, LOG_LEVEL, MINI_APP_URL
 from tg_bot.middlewares.auth import AuthMiddleware
 from tg_bot.routers import courier, client, admin
+from tg_bot.routers import courier_create_order
 
 # Настройка логирования
 logging.basicConfig(level=LOG_LEVEL)
@@ -82,20 +83,26 @@ async def unknown_any_message(message: Message):
 # Каждый роутер фильтрует только своих пользователей через фильтр user['role'].
 
 # Фильтры по роли (применяются к роутерам через middleware data['user'])
-courier.router.message.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'courier'))
-courier.router.callback_query.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'courier'))
+# Используем lambda с правильной сигнатурой: (message, **kwargs)
+# ВАЖНО: Админ имеет доступ ко всем роутерам (admin, courier, client)
+courier.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
+courier.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
 
-client.router.message.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'client'))
-client.router.callback_query.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'client'))
+courier_create_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
+courier_create_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
 
-admin.router.message.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'admin'))
-admin.router.callback_query.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'admin'))
+client.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'client')
+client.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'client')
 
-unknown_router.message.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'unknown'))
-unknown_router.callback_query.filter(F.func(lambda _, data: data.get('user', {}).get('role') == 'unknown'))
+admin.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'admin')
+admin.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'admin')
+
+unknown_router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'unknown')
+unknown_router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'unknown')
 
 dp.include_router(admin.router)
 dp.include_router(courier.router)
+dp.include_router(courier_create_order.router)
 dp.include_router(client.router)
 dp.include_router(unknown_router)
 
