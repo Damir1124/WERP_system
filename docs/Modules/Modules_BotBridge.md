@@ -48,6 +48,8 @@ apps/bot_bridge/
 | POST                                              | `/api/bot/courier/orders/confirm/`                 | Подтверждение заказа (P0)                              |
 | POST                                              | `/api/bot/courier/orders/update-quantity/`         | Изменение количества в заказе (P0)                     |
 | POST                                              | `/api/bot/courier/orders/create/`                  | Создание нового заказа в рейсе                         |
+| GET                                               | `/api/bot/clients/addresses/<phone>/`              | Получить до 3 адресов клиента (многоадресность)       |
+| POST                                              | `/api/bot/clients/addresses/save/`                 | Создать/обновить адрес клиента (лимит 3)              |
 | **Новые эндпоинты для администратора (этап 3.4)** |                                                    |                                                        |
 | GET                                               | `/api/bot/admin/stats/today/`                      | Финансовая сводка за сегодня + активные смены + заказы |
 | GET                                               | `/api/bot/admin/shifts/`                           | Активные смены курьеров с деталями                     |
@@ -95,6 +97,7 @@ API адаптировано для работы с моделями `CourierShi
 Сериализатор для заказа (модель `Order`). Включает читаемые поля:
 - `product_name`, `client_name`
 - `status_display`, `payment_type_display`, `container_op_display`
+- `delivery_address_text`, `delivery_latitude`, `delivery_longitude` — адрес доставки из `ClientAddress` (многоадресность, 2026-07). Для обратной совместимости продублированы под старыми именами `client_address` / `latitude` / `longitude` (через `source='delivery_address...'`).
 - Все основные поля модели
 
 #### `CourierTripSerializer`

@@ -101,6 +101,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ── Бейдж оплаты ───────────────────────────────────────────────────────── */
@@ -284,6 +287,12 @@
   margin-top: 6px;
 }
 
+/* Для заказов рейса кнопки "Доставить" и "Вернуть в пул" в одну строку */
+.order-card-actions.trip-actions {
+  flex-direction: row;
+  align-items: stretch;
+}
+
 .action-btn {
   width: 100%;
   padding: 9px 16px;
@@ -299,6 +308,21 @@
   gap: 6px;
 }
 
+/* В строке основная кнопка занимает всё свободное место */
+.order-card-actions.trip-actions .action-btn.primary {
+  flex: 1;
+  width: auto;
+}
+
+/* Квадратная кнопка (например, "Вернуть в пул") */
+.action-btn.square {
+  width: 44px;
+  flex-shrink: 0;
+  padding: 9px 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .action-btn.primary {
   background: var(--blue);
   color: #fff;
@@ -310,6 +334,20 @@
 
 .action-btn.primary:active {
   transform: scale(0.98);
+}
+
+/* Кнопка возврата в пул — красная */
+.action-btn.return-btn {
+  background: var(--accent-red);
+  color: #fff;
+}
+
+.action-btn.return-btn:hover {
+  background: #dc2626;
+}
+
+.action-btn.return-btn:active {
+  transform: scale(0.96);
 }
 
 .action-btn:disabled {

@@ -2,7 +2,7 @@ from django.db import models
 from django.db.models import Sum
 from apps.workers.models import Worker
 from apps.products.models import Product
-from apps.clients.models import Client
+from apps.clients.models import Client, ClientAddress
 
 
 class DeliveryLog(models.Model):
@@ -247,6 +247,25 @@ class Order(models.Model):
     trip          = models.ForeignKey(CourierTrip, on_delete=models.CASCADE, related_name='orders',
                                       null=True, blank=True, verbose_name='Рейс')
     client        = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True)
+    delivery_address = models.ForeignKey(
+        'clients.ClientAddress',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        verbose_name='Адрес доставки'
+    )
+    # Снимок адреса на момент создания заказа (история доставки не зависит от ClientAddress).
+    # ClientAddress может быть удалён при добавлении 4-го адреса — снимок сохраняет факт доставки.
+    delivery_address_text = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Адрес доставки (снимок)'
+    )
+    delivery_latitude = models.DecimalField(
+        max_digits=10, decimal_places=6, null=True, blank=True, verbose_name='Широта (снимок)'
+    )
+    delivery_longitude = models.DecimalField(
+        max_digits=10, decimal_places=6, null=True, blank=True, verbose_name='Долгота (снимок)'
+    )
     assigned_courier = models.ForeignKey(
         'workers.Worker',
         null=True,
@@ -254,6 +273,14 @@ class Order(models.Model):
         on_delete=models.SET_NULL,
         related_name='assigned_orders',
         verbose_name='Назначенный курьер'
+    )
+    created_by_worker = models.ForeignKey(
+        'workers.Worker',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='created_orders',
+        verbose_name='Создал заказ'
     )
     payment_type  = models.CharField(choices=PaymentType.choices, default=PaymentType.CASH, max_length=2)
     status        = models.CharField(choices=Status.choices, default=Status.PENDING, max_length=2)

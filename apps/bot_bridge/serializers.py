@@ -51,10 +51,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     """Сериализатор для заказа (модель Order)"""
     client_name = serializers.CharField(source='client.name', read_only=True, allow_null=True)
-    client_address = serializers.CharField(source='client.address', read_only=True, allow_null=True)
+    client_address = serializers.CharField(source='delivery_address_text', read_only=True, allow_null=True)
     client_phone = serializers.CharField(source='client.phone', read_only=True, allow_null=True)
-    latitude = serializers.DecimalField(source='client.latitude', max_digits=9, decimal_places=6, read_only=True, allow_null=True)
-    longitude = serializers.DecimalField(source='client.longitude', max_digits=9, decimal_places=6, read_only=True, allow_null=True)
+    latitude = serializers.DecimalField(source='delivery_latitude', max_digits=10, decimal_places=6, read_only=True, allow_null=True)
+    longitude = serializers.DecimalField(source='delivery_longitude', max_digits=10, decimal_places=6, read_only=True, allow_null=True)
+    delivery_address_text = serializers.CharField(read_only=True, allow_null=True)
+    delivery_latitude = serializers.DecimalField(max_digits=10, decimal_places=6, read_only=True, allow_null=True)
+    delivery_longitude = serializers.DecimalField(max_digits=10, decimal_places=6, read_only=True, allow_null=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     payment_type_display = serializers.CharField(source='get_payment_type_display', read_only=True)
     assigned_courier_name = serializers.CharField(source='assigned_courier.full_name', read_only=True, allow_null=True)
@@ -76,17 +79,25 @@ class OrderSerializer(serializers.ModelSerializer):
     
     def get_created_by(self, obj):
         """Возвращает имя создателя заказа (курьер или система)"""
+        # Если есть поле created_by_worker, используем его
+        if obj.created_by_worker:
+            return obj.created_by_worker.full_name
+        # Если заказ в рейсе, значит его создал курьер этого рейса
+        if obj.trip and obj.trip.shift and obj.trip.shift.courier:
+            return obj.trip.shift.courier.full_name
+        # Если заказ создан клиентом через Mini App (нет рейса)
+        if not obj.trip and obj.client:
+            return f"Клиент {obj.client.name}"
+        # Если есть назначенный курьер (но нет рейса)
         if obj.assigned_courier:
             return obj.assigned_courier.full_name
-        # Если заказ создан клиентом через Mini App
-        if obj.client:
-            return f"Клиент {obj.client.name}"
         return "Система"
 
     class Meta:
         model = Order
         fields = ['id', 'trip', 'client', 'client_name', 'client_address', 'client_phone',
                   'latitude', 'longitude',
+                  'delivery_address_text', 'delivery_latitude', 'delivery_longitude',
                   'payment_type', 'payment_type_display',
                   'status', 'status_display',
                   'assigned_courier', 'assigned_courier_name', 'created_by', 'note', 'created_at', 'delivered_at',
@@ -100,20 +111,24 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         child=serializers.DictField(),
         required=True,
         write_only=True,
-        help_text="Список позиций заказа. Каждая позиция: {'product': id, 'quantity': int, 'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}"
+        help_text="Список позиций заказа. Каждая позиция: {'product_id': id, 'quantity': int}"
     )
     
     # Поля для создания/поиска клиента
+    client_id = serializers.IntegerField(required=False, write_only=True, help_text="ID клиента (если найден)")
     client_phone = serializers.CharField(required=False, write_only=True, help_text="Номер телефона клиента")
-    client_address = serializers.CharField(required=False, write_only=True, help_text="Адрес доставки")
+    client_address = serializers.CharField(required=False, allow_blank=True, write_only=True, help_text="Адрес доставки")
     client_name = serializers.CharField(required=False, allow_blank=True, write_only=True, help_text="ФИО клиента")
+    client_lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True, write_only=True, help_text="Широта")
+    client_lon = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True, write_only=True, help_text="Долгота")
     
     class Meta:
         model = Order
-        fields = ['trip', 'client', 'client_phone', 'client_address', 'client_name', 'payment_type', 'note', 'items']
+        fields = ['trip', 'client', 'client_id', 'client_phone', 'client_address', 'client_name',
+                  'client_lat', 'client_lon', 'payment_type', 'note', 'items']
         extra_kwargs = {
-            'trip': {'required': True},
-            'client': {'required': False},  # Теперь опционально, т.к. можем создать по телефону
+            'trip': {'required': False},  # Рейс опционален (может быть создан без рейса)
+            'client': {'required': False},  # Опционально, т.к. можем создать по телефону
             'payment_type': {'required': True},
         }
     
@@ -138,13 +153,20 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         if not items:
             raise serializers.ValidationError("Заказ должен содержать хотя бы одну позицию")
         for idx, item in enumerate(items):
-            if 'product' not in item:
-                raise serializers.ValidationError(f"Позиция {idx}: отсутствует поле 'product'")
+            # Поддержка обоих форматов: 'product' и 'product_id'
+            product_id = item.get('product_id') or item.get('product')
+            if not product_id:
+                raise serializers.ValidationError(f"Позиция {idx}: отсутствует поле 'product_id' или 'product'")
+            
+            # Нормализуем к 'product'
+            item['product'] = product_id
+            if 'product_id' in item:
+                del item['product_id']
+            
             if 'quantity' not in item or item['quantity'] < 1:
                 raise serializers.ValidationError(f"Позиция {idx}: поле 'quantity' должно быть положительным числом")
             
             # Устанавливаем значения по умолчанию для контейнерных операций
-            # По умолчанию весь quantity считается обменом (exchange_qty)
             quantity = item['quantity']
             item.setdefault('exchange_qty', quantity)
             item.setdefault('sell_with_qty', 0)
@@ -178,61 +200,147 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop('items')
         
         # Обработка данных клиента
+        client_id = validated_data.pop('client_id', None)
         client_phone = validated_data.pop('client_phone', None)
         client_address = validated_data.pop('client_address', None)
         client_name = validated_data.pop('client_name', None)
+        client_lat = validated_data.pop('client_lat', None)
+        client_lon = validated_data.pop('client_lon', None)
         
-        # Если указан телефон, ищем или создаем клиента
-        if client_phone:
-            from apps.clients.models import Client
-            # Нормализация телефона - убираем все лишнее
+        client = None
+        from apps.clients.models import Client
+        
+        # Логика клиента
+        if client_id:
+            # Клиент найден на фронте
+            try:
+                client = Client.objects.get(id=client_id)
+                logger.info(f"Client found by ID: {client_id}")
+                # НЕ обновляем client.address - используем ClientAddress
+                    
+            except Client.DoesNotExist:
+                logger.error(f"Client with ID {client_id} not found")
+                raise serializers.ValidationError(f"Клиент с ID {client_id} не найден")
+                
+            validated_data['client'] = client
+            
+        elif client_phone:
+            # Новый клиент или поиск по телефону
+            # Нормализация телефона
             phone = client_phone.replace(' ', '').replace('-', '').replace('+', '')
             
             # Приводим к формату 998XXXXXXXXX (12 символов)
             if len(phone) == 9:
-                # Если только 9 цифр, добавляем код страны
                 phone = '998' + phone
             elif phone.startswith('998') and len(phone) == 12:
-                # Уже в правильном формате
                 pass
             elif phone.startswith('8') and len(phone) == 10:
-                # Формат 8XXXXXXXXX -> 998XXXXXXXXX
                 phone = '998' + phone[1:]
             
-            # Обрезаем до 12 символов если длиннее
             phone = phone[:12]
-            
             logger.info(f"Normalized phone: {client_phone} -> {phone}")
             
             # Поиск или создание клиента
             client, created = Client.objects.get_or_create(
                 phone=phone,
                 defaults={
-                    'address': client_address or '',
-                    'name': client_name or f'Клиент {phone}',
+                    'name': client_name or f'Клиент {phone[-4:]}',
+                    'address': '',  # Оставляем пустым - адреса в ClientAddress
                 }
             )
             
-            # Если клиент существует, обновляем адрес
-            if not created and client_address:
-                client.address = client_address
-                if client_name:
-                    client.name = client_name
-                client.save()
+            # НЕ обновляем client.address, latitude, longitude
+            # Адреса управляются через ClientAddress API
             
             validated_data['client'] = client
             logger.info(f"Client {'created' if created else 'found'}: id={client.id}, phone={client.phone}")
         
-        order = Order.objects.create(**validated_data)
-        logger.info(f"Created order id={order.id}")
+        # --- Привязка адреса доставки (ClientAddress) ---
+        from apps.clients.models import ClientAddress
+        from django.utils import timezone
+
+        delivery_address = None
+        address_text = (client_address or '').strip()
+        if client and (address_text or client_lat or client_lon):
+            # Ищем существующий подходящий адрес (по тексту, затем по координатам)
+            existing = None
+            if address_text:
+                existing = client.addresses.filter(address_text=address_text).first()
+            if not existing and client_lat and client_lon:
+                existing = client.addresses.filter(
+                    latitude=client_lat, longitude=client_lon
+                ).first()
+            if existing:
+                delivery_address = existing
+                changed = False
+                if address_text and existing.address_text != address_text:
+                    existing.address_text = address_text
+                    changed = True
+                if client_lat and existing.latitude != client_lat:
+                    existing.latitude = client_lat
+                    changed = True
+                if client_lon and existing.longitude != client_lon:
+                    existing.longitude = client_lon
+                    changed = True
+                if changed or not existing.last_used_at:
+                    existing.last_used_at = timezone.now()
+                    existing.save()
+            else:
+                delivery_address = ClientAddress.objects.create(
+                    client=client,
+                    address_text=address_text,
+                    latitude=client_lat,
+                    longitude=client_lon,
+                    last_used_at=timezone.now(),
+                )
+                # Ограничиваем количество адресов клиента тремя (не трогая привязанные к заказам)
+                extra = client.addresses.count()
+                if extra > 3:
+                    old_ids = list(
+                        client.addresses
+                        .exclude(id=delivery_address.id)  # не удаляем только что созданный/привязанный
+                        .filter(orders__isnull=True)
+                        .order_by('last_used_at', 'created_at')
+                        .values_list('id', flat=True)[:extra - 3]
+                    )
+                    if old_ids:
+                        ClientAddress.objects.filter(id__in=old_ids).delete()
+
+        validated_data['delivery_address'] = delivery_address
+
+        # --- Снимок адреса прямо в заказ (история доставки не зависит от ClientAddress) ---
+        if delivery_address:
+            validated_data['delivery_address_text'] = delivery_address.address_text
+            validated_data['delivery_latitude'] = delivery_address.latitude
+            validated_data['delivery_longitude'] = delivery_address.longitude
+        else:
+            # Адрес не привязан к ClientAddress — сохраняем хотя бы сырые данные из запроса
+            validated_data['delivery_address_text'] = address_text
+            validated_data['delivery_latitude'] = client_lat
+            validated_data['delivery_longitude'] = client_lon
+
+        # НЕ назначаем курьера автоматически - заказ должен попасть в пул
+        # Курьер возьмёт его из пула вручную
         
+        # Получаем курьера из контекста
+        request = self.context.get('request')
+        courier = request.courier if request and hasattr(request, 'courier') else None
+        
+        # Добавляем создателя заказа
+        if courier:
+            validated_data['created_by_worker'] = courier
+        
+        # Создаём заказ
+        order = Order.objects.create(**validated_data)
+        logger.info(f"Created order id={order.id}, created_by={courier.full_name if courier else 'Unknown'}")
+        
+        # Создаём позиции заказа
         for idx, item_data in enumerate(items_data):
-            # item_data['product'] приходит как int (ID) — нужно получить объект
             product_id = item_data.pop('product')
             product = Product.objects.get(id=product_id)
-            logger.info(f"Creating order item {idx}: product={product_id}, quantity={item_data.get('quantity')}, exchange_qty={item_data.get('exchange_qty')}, sell_with_qty={item_data.get('sell_with_qty')}, defective_qty={item_data.get('defective_qty')}")
+            logger.info(f"Creating order item {idx}: product={product_id}, quantity={item_data.get('quantity')}")
             order_item = OrderItem.objects.create(order=order, product=product, **item_data)
-            logger.info(f"Created order item id={order_item.id}, quantity={order_item.quantity}, exchange_qty={order_item.exchange_qty}")
+            logger.info(f"Created order item id={order_item.id}, quantity={order_item.quantity}")
         
         return order
 

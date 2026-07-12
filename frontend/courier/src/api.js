@@ -78,6 +78,7 @@ export const api = {
   // ── Пул заказов ───────────────────────────────────────────────────────────
   getPool:      () => apiFetch('/courier/pool/'),
   assignOrder:  (orderId) => apiFetch(`/courier/pool/${orderId}/assign/`, { method: 'POST' }),
+  returnOrderToPool: (orderId) => apiFetch(`/courier/pool/${orderId}/return/`, { method: 'POST' }),
 
   // ── Операции с заказами ───────────────────────────────────────────────────
   confirmOrder: (orderId, confirmed = true, items = null, note = '') =>
@@ -112,4 +113,18 @@ export const api = {
   getProducts:   () => apiFetch('/products/'),
   searchClients: (phone = '', address = '') =>
     apiFetch(`/clients/?phone=${encodeURIComponent(phone)}&address=${encodeURIComponent(address)}`),
+  
+  // ── Поиск клиента по телефону (новый эндпоинт) ───────────────────────────
+  searchClientByPhone: (phone) =>
+    apiFetch(`/clients/search/?q=${encodeURIComponent(phone)}`),
+  
+  // ── Работа с адресами клиента ─────────────────────────────────────────────
+  getClientAddresses: (phone) =>
+    apiFetch(`/clients/addresses/${encodeURIComponent(phone)}/`),
+  
+  saveClientAddress: (data) =>
+    apiFetch('/clients/addresses/save/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 }

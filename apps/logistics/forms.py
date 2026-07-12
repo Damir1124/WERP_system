@@ -1,7 +1,8 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.utils import timezone
 from .models import Order, OrderItem
-from apps.clients.models import Client
+from apps.clients.models import Client, ClientAddress
 from apps.products.models import Product
 
 
@@ -71,7 +72,10 @@ class OrderForm(forms.ModelForm):
         # Если редактируем существующий заказ
         if self.instance.pk and self.instance.client:
             self.fields['client_phone'].initial = self.instance.client.phone
-            self.fields['client_address'].initial = self.instance.client.address
+            self.fields['client_address'].initial = (
+                self.instance.delivery_address.address_text
+                if self.instance.delivery_address else ''
+            )
             self.fields['client_name'].initial = self.instance.client.name
         
         # Настройка лейблов и порядка полей
@@ -115,18 +119,30 @@ class OrderForm(forms.ModelForm):
         client, created = Client.objects.get_or_create(
             phone=phone,
             defaults={
-                'address': address,
                 'name': name if name else f'Клиент {phone}',
             }
         )
         
-        # Если клиент существует, обновляем адрес (может измениться)
-        if not created:
-            client.address = address
-            if name:  # Обновляем имя только если оно указано
-                client.name = name
+        # Если клиент существует, обновляем имя (адрес теперь в ClientAddress)
+        if not created and name:
+            client.name = name
             client.save()
-        
+
+        # Адрес доставки сохраняем в ClientAddress и привязываем к заказу
+        if address:
+            delivery_address, _ = ClientAddress.objects.get_or_create(
+                client=client,
+                address_text=address,
+                defaults={'last_used_at': timezone.now()},
+            )
+            delivery_address.last_used_at = timezone.now()
+            delivery_address.save()
+            order.delivery_address = delivery_address
+            # Снимок адреса прямо в заказ (история доставки не зависит от ClientAddress)
+            order.delivery_address_text = delivery_address.address_text
+            order.delivery_latitude = delivery_address.latitude
+            order.delivery_longitude = delivery_address.longitude
+
         order.client = client
         
         if commit:

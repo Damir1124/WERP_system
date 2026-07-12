@@ -41,28 +41,28 @@ export default function OrderConfirm() {
   // Состояние позиций: { [itemId]: { quantity, exchange_qty, sell_with_qty, defective_qty } }
   const [itemStates, setItemStates] = useState({})
   const [paymentType, setPaymentType] = useState('CH')
-  const [bottlePrice, setBottlePrice] = useState(25000) // Дефолтное значение 25000
+  const [bottlePrice, setBottlePrice] = useState(25000) // Дефолт 25000, перезаписывается из API
 
   useEffect(() => {
     loadOrder()
   }, [id])
 
-  // ВРЕМЕННО ОТКЛЮЧЕНО: загрузка цены из API
-  // Используем фиксированное значение 25000
-  // useEffect(() => {
-  //   const fetchBottlePrice = async () => {
-  //     try {
-  //       const products = await api.getProducts()
-  //       const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
-  //       if (bottle) {
-  //         setBottlePrice(bottle.price)
-  //       }
-  //     } catch (e) {
-  //       console.error('Не удалось загрузить продукты', e)
-  //     }
-  //   }
-  //   fetchBottlePrice()
-  // }, [])
+  // Загрузка реальной цены тары из API (продукт id=9, тип BT).
+  // Заменяет захардкоженные 25000, чтобы превью совпадало с ценой в БД.
+  useEffect(() => {
+    const fetchBottlePrice = async () => {
+      try {
+        const products = await api.getProducts()
+        const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
+        if (bottle) {
+          setBottlePrice(bottle.price)
+        }
+      } catch (e) {
+        console.error('Не удалось загрузить продукты', e)
+      }
+    }
+    fetchBottlePrice()
+  }, [])
 
   const loadOrder = async () => {
     try {
@@ -159,6 +159,14 @@ export default function OrderConfirm() {
 
   const hasErrors = Object.keys(validationErrors).length > 0
 
+  // Есть ли уже отдельная позиция тары в заказе (её создаёт бэкенд при подтверждении,
+  // Product id=9, type=BT). Если да — цена тары уже учтена в itemTotal этой позиции,
+  // и добавлять bottleTotal для воды НЕЛЬЗЯ (иначе двойной счёт).
+  const taraItemExists = useMemo(
+    () => (order?.items || []).some(i => i.product_type === 'BT'),
+    [order]
+  )
+
   // Динамический расчёт общей стоимости на основе itemStates
   const totalPrice = useMemo(() => {
     const items = order?.items || []
@@ -169,20 +177,26 @@ export default function OrderConfirm() {
       // unit_price = исходная цена позиции / исходное количество
       const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
       
-      // ВАЖНО: Новая логика - тара создаётся отдельной позицией на бэкенде при sell_with_qty > 0
-      // Поэтому здесь мы просто считаем: unitPrice * quantity
-      // Цену тары добавляем отдельно только для визуального отображения
-      let itemTotal = Math.round(unitPrice * item.quantity)
+      // Для воды фактическое количество = exchange_qty (бэкенд при подтверждении
+      // ставит quantity = exchange_qty, см. bot_bridge/views.py). Для не-воды —
+      // текущее quantity из state.
+      const effectiveQty = isWater ? (st.exchange_qty || 0) : (st.quantity || item.quantity)
       
-      // Добавляем цену тары для визуального отображения (она будет отдельной позицией на бэкенде)
+      // ВАЖНО: Новая логика - тара создаётся отдельной позицией на бэкенде при sell_with_qty > 0
+      // Поэтому здесь мы просто считаем: unitPrice * effectiveQty
+      // Цену тары добавляем отдельно только для визуального отображения
+      let itemTotal = Math.round(unitPrice * effectiveQty)
+      
+      // Добавляем цену тары для визуального отображения ТОЛЬКО если отдельной позиции
+      // тары ещё нет в заказе (иначе бэкенд уже учтёт её, и будет двойной счёт)
       let bottleTotal = 0
-      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0) {
+      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0 && !taraItemExists) {
         bottleTotal = Math.round(bottlePrice * st.sell_with_qty)
       }
       
       return sum + itemTotal + bottleTotal
     }, 0)
-  }, [order, itemStates, bottlePrice])
+  }, [order, itemStates, bottlePrice, taraItemExists])
 
   // Детализация по позициям для отображения
   const itemsWithPrices = useMemo(() => {
@@ -194,25 +208,30 @@ export default function OrderConfirm() {
       // unit_price = исходная цена позиции / исходное количество
       const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
       
-      // Новая логика: цена = просто unitPrice * quantity
-      const lineTotal = Math.round(unitPrice * item.quantity)
+      // Для воды фактическое количество = exchange_qty (бэкенд при подтверждении
+      // ставит quantity = exchange_qty). Для не-воды — текущее quantity из state.
+      const effectiveQty = isWater ? (st.exchange_qty || 0) : (st.quantity || item.quantity)
+      
+      // Новая логика: цена = unitPrice * effectiveQty
+      const lineTotal = Math.round(unitPrice * effectiveQty)
       
       // Цена тары добавляется отдельно только для визуального отображения
+      // и только если отдельной позиции тары ещё нет в заказе (нет двойного счёта)
       let bottleTotal = 0
-      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0) {
+      if (isWater && bottlePrice > 0 && st.sell_with_qty > 0 && !taraItemExists) {
         bottleTotal = Math.round(bottlePrice * st.sell_with_qty)
       }
       
       return {
         ...item,
-        effectiveQty: item.quantity,
+        effectiveQty: effectiveQty,
         unitPrice: unitPrice,
         lineTotal: lineTotal,
         bottleTotal: bottleTotal,
         totalWithBottle: lineTotal + bottleTotal,
       }
     })
-  }, [order, itemStates, bottlePrice])
+  }, [order, itemStates, bottlePrice, taraItemExists])
 
   const handleConfirm = async () => {
     if (hasErrors) {
@@ -222,7 +241,7 @@ export default function OrderConfirm() {
     setSubmitting(true)
     setError(null)
     try {
-      // Собираем данные: для воды — только container fields, для остальных — только container fields (все нули)
+      // Собираем данные: для воды — container fields, для остальных — quantity
       const items = Object.entries(itemStates).map(([itemId, state]) => {
         const item = order?.items?.find(i => i.id === parseInt(itemId))
         const isWater = item ? isBottle20L(item) : false
@@ -232,8 +251,10 @@ export default function OrderConfirm() {
           sell_with_qty: state.sell_with_qty || 0,
           defective_qty: state.defective_qty || 0,
         }
-        // Для не-воды quantity не передаём (сервер использует исходное количество)
-        // Поля тары для не-воды игнорируются сервером (можно оставить нули)
+        // Для не-воды передаём quantity (может быть изменено курьером)
+        if (!isWater) {
+          payload.quantity = state.quantity || 0
+        }
         return payload
       })
       await api.confirmOrder(parseInt(id), true, items, '')
@@ -290,7 +311,7 @@ export default function OrderConfirm() {
               <span style={{ fontSize: '14px' }}>{productIcon(item.product_name)}</span>
               <span className="ph-name">
                 {item.product_name}
-                {!isWater && ` × ${item.quantity}`}
+                {!isWater && ` × ${item.effectiveQty}`}
               </span>
               <span className="ph-total">{fmt(item.totalWithBottle)} сум</span>
             </div>
@@ -345,10 +366,15 @@ export default function OrderConfirm() {
                   </div>
                 </>
               ) : (
-                /* Обычный продукт — количество не редактируется, только информация */
-                <div className="simple-row">
-                  <span className="sr-lbl">Количество заказано</span>
-                  <span className="sr-val">{item.quantity} шт.</span>
+                /* Обычный продукт — количество редактируется */
+                <div className="op-row">
+                  <span className="op-lbl">Количество</span>
+                  <span className="op-tag">шт.</span>
+                  <Stepper
+                    value={st.quantity || 0}
+                    onChange={(val) => updateItem(item.id, 'quantity', val)}
+                    color="var(--ink2)"
+                  />
                 </div>
               )}
             </div>

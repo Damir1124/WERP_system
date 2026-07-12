@@ -1,30 +1,34 @@
 import { useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { initTelegram } from './tg.js'
 import Pool from './pages/Pool.jsx'
 import Trip from './pages/Trip.jsx'
 import TripClose from './pages/TripClose.jsx'
 import OrderConfirm from './pages/OrderConfirm.jsx'
+import OrderCreate from './pages/OrderCreate.jsx'
 import Shift from './pages/Shift.jsx'
+import ShiftClose from './pages/ShiftClose.jsx'
 import ShiftHistory from './pages/ShiftHistory.jsx'
 import Shifts from './pages/Shifts.jsx'
 import Colleagues from './pages/Colleagues.jsx'
 
 // Заголовки для каждого маршрута
 const ROUTE_TITLES = {
-  '/':           { title: 'Пул заказов',    sub: 'свободные заказы' },
-  '/trip':       { title: 'Мой рейс',       sub: 'активный рейс' },
-  '/trip/close': { title: 'Закрытие рейса', sub: 'итоги' },
-  '/shift':      { title: '🚛 Текущая смена', sub: 'статистика и рейсы' },
-  '/shifts':     { title: 'Смены',          sub: 'история' },
-  '/colleagues': { title: 'Коллеги',        sub: 'на смене сегодня' },
+  '/':            { title: 'Пул заказов',    sub: 'свободные заказы' },
+  '/trip':        { title: 'Мой рейс',       sub: 'активный рейс' },
+  '/trip/close':  { title: 'Закрытие рейса', sub: 'итоги' },
+  '/shift':       { title: '🚛 Текущая смена', sub: 'статистика и рейсы' },
+  '/shift/close': { title: 'Закрытие смены', sub: 'итоги' },
+  '/shifts':      { title: 'Смены',          sub: 'история' },
+  '/colleagues':  { title: 'Коллеги',        sub: 'на смене сегодня' },
 }
 
 function TopBar() {
   const location = useLocation()
   const isConfirm = location.pathname.startsWith('/order/')
   const isTripClose = location.pathname === '/trip/close'
-  if (isConfirm || isTripClose) return null  // Эти страницы рендерят свой topbar
+  const isShiftClose = location.pathname === '/shift/close'
+  if (isConfirm || isTripClose || isShiftClose) return null  // Эти страницы рендерят свой topbar
 
   const info = ROUTE_TITLES[location.pathname] || { title: 'Osnova 2.0', sub: '' }
   return (
@@ -37,7 +41,7 @@ function TopBar() {
 
 function BottomNav() {
   const location = useLocation()
-  if (location.pathname.startsWith('/order/') || location.pathname === '/trip/close') return null
+  if (location.pathname.startsWith('/order/') || location.pathname === '/trip/close' || location.pathname === '/shift/close') return null
 
   const items = [
     { to: '/',           label: 'Пул',     icon: '📦' },
@@ -63,6 +67,45 @@ function BottomNav() {
   )
 }
 
+function FAB() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  
+  // Не показываем FAB на странице создания заказа
+  const showFAB = location.pathname !== '/orders/create'
+  
+  if (!showFAB) return null
+  
+  return (
+    <button
+      onClick={() => navigate('/orders/create')}
+      style={{
+        position: 'fixed',
+        bottom: '60px',
+        right: '20px',
+        width: '52px',
+        height: '52px',
+        borderRadius: '50%',
+        background: '#3b82f6',
+        color: 'white',
+        fontSize: '28px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        zIndex: 1000,
+        border: 'none',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: '300',
+        lineHeight: '1'
+      }}
+      title="Создать заказ"
+    >
+      +
+    </button>
+  )
+}
+
 function AppShell() {
   const location = useLocation()
   const isConfirm = location.pathname.startsWith('/order/')
@@ -84,13 +127,16 @@ function AppShell() {
         <Route path="/trip"                element={<Trip />} />
         <Route path="/trip/close"          element={<TripClose />} />
         <Route path="/order/:id/confirm"   element={<OrderConfirm />} />
+        <Route path="/orders/create"       element={<OrderCreate />} />
         <Route path="/shift"               element={<Shift />} />
+        <Route path="/shift/close"         element={<ShiftClose />} />
         <Route path="/shifts"              element={<Shifts />} />
         <Route path="/shifts/history"      element={<ShiftHistory />} />
         <Route path="/colleagues"          element={<Colleagues />} />
       </Routes>
 
       <BottomNav />
+      <FAB />
     </div>
   )
 }

@@ -1,5 +1,18 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Leaflet Map Styles ──────────────────────────────────────────────────── */
+.leaflet-container {
+  font-family: var(--font);
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+}
+
+.leaflet-popup-content {
+  font-size: 14px;
+}
+
 :root {
   --ink:        #1a1a1a;
   --ink2:       #444;
@@ -396,8 +409,15 @@ html, body, #root {
   border-radius: 10px;
   padding: 9px 12px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+}
+.col-card.online {
+  border-color: var(--green);
+  border-width: 1.5px;
+}
+.col-card.offline {
+  opacity: 0.6;
 }
 .col-avatar {
   width: 36px; height: 36px;
@@ -409,9 +429,48 @@ html, body, #root {
   font-weight: 600;
   flex-shrink: 0;
 }
+.col-avatar.online {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.col-avatar.offline {
+  background: var(--bg3);
+  color: var(--ink3);
+}
 .col-info { flex: 1; }
-.col-info .ci-name  { font-size: 13px; font-weight: 500; color: var(--ink); }
+.col-info .ci-name  {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .col-info .ci-stats { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.col-info .ci-stat-row {
+  font-size: 11px;
+  color: var(--ink2);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.col-info .ci-stat-row strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.online-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 .col-badge {
   font-size: 11px;
   padding: 3px 9px;

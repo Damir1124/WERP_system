@@ -13,8 +13,6 @@ export default function Colleagues() {
       .finally(() => setLoading(false))
   }, [])
 
-  const fmt = (n) => (n || 0).toLocaleString('ru-RU')
-
   const initials = (name = '') => {
     const parts = name.trim().split(' ')
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
@@ -23,6 +21,10 @@ export default function Colleagues() {
 
   if (loading) return <div className="spinner">Загрузка...</div>
 
+  // Разделяем на онлайн и оффлайн
+  const onlineColleagues = colleagues.filter(c => c.is_online)
+  const offlineColleagues = colleagues.filter(c => !c.is_online)
+
   return (
     <div className="page-body">
       {error && <div className="error-box">{error}</div>}
@@ -30,26 +32,57 @@ export default function Colleagues() {
       {colleagues.length === 0 ? (
         <div className="empty-state">
           <div className="es-icon">👥</div>
-          <p>Нет коллег на смене</p>
-          <p style={{ fontSize: '12px', marginTop: '4px' }}>Сегодня никто больше не работает</p>
+          <p>Нет зарегистрированных курьеров</p>
         </div>
       ) : (
         <>
-          <div className="sec-lbl">На смене сегодня — {colleagues.length} чел.</div>
-          {colleagues.map(c => (
-            <div className="col-card" key={c.id}>
-              <div className="col-avatar">{initials(c.full_name)}</div>
-              <div className="col-info">
-                <div className="ci-name">{c.full_name}</div>
-                <div className="ci-stats">
-                  Доставлено: {c.delivered_today || 0} · 
-                  Нал: {fmt(c.cash_total)} · 
-                  Карта: {fmt(c.card_total)}
+          {/* Онлайн курьеры */}
+          {onlineColleagues.length > 0 && (
+            <>
+              <div className="sec-lbl">🟢 Онлайн — {onlineColleagues.length} чел.</div>
+              {onlineColleagues.map(c => (
+                <div className="col-card online" key={c.id}>
+                  <div className="col-avatar online">{initials(c.full_name)}</div>
+                  <div className="col-info">
+                    <div className="ci-name">
+                      {c.full_name}
+                      <span className="online-badge">●</span>
+                    </div>
+                    <div className="ci-stat-row">
+                      <span>🚗 В машине: <strong>{c.water_in_car || 0}</strong> бак</span>
+                    </div>
+                    <div className="ci-stat-row">
+                      <span>📦 Надо доставить: <strong>{c.water_needed || 0}</strong> бак</span>
+                    </div>
+                    <div className="ci-stat-row">
+                      <span>✅ Выполнено: <strong>{c.orders_completed || 0}</strong> зак</span>
+                      <span style={{ marginLeft: '12px' }}>⏳ Осталось: <strong>{c.orders_pending || 0}</strong> зак</span>
+                    </div>
+                  </div>
                 </div>
+              ))}
+            </>
+          )}
+
+          {/* Оффлайн курьеры */}
+          {offlineColleagues.length > 0 && (
+            <>
+              <div className="sec-lbl" style={{ marginTop: onlineColleagues.length > 0 ? '16px' : '0' }}>
+                ⚪ Оффлайн — {offlineColleagues.length} чел.
               </div>
-              <span className="col-badge">{c.delivered_today || 0} зак.</span>
-            </div>
-          ))}
+              {offlineColleagues.map(c => (
+                <div className="col-card offline" key={c.id}>
+                  <div className="col-avatar offline">{initials(c.full_name)}</div>
+                  <div className="col-info">
+                    <div className="ci-name">{c.full_name}</div>
+                    <div className="ci-stats" style={{ fontSize: '11px', color: '#999' }}>
+                      Смена не открыта
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </>
       )}
     </div>

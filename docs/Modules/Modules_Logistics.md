@@ -31,6 +31,8 @@
 - **Рефакторинг этапа 3.7**: удалены поля `product`, `quantity`, `price`, `container_op`. Теперь заказ может содержать несколько позиций через модель `OrderItem`.
 - Метод `get_total_price()` вычисляет общую стоимость заказа как сумму `price` всех связанных `OrderItem`.
 - Перевод в статус `DELIVERED` — триггер для всей цепочки обновлений: пересчёт суммы рейса/смены, списание на складе и создание финансовой транзакции.
+- **Многоадресность (2026-07):** добавлено поле `delivery_address` (FK → `clients.ClientAddress`, `SET_NULL`, `related_name='orders'`). Вместо устаревшего `client.address` заказ ссылается на конкретную запись адреса. При создании заказа (`OrderCreateModelSerializer.create()`) адрес создаётся/находится по тексту или координатам и привязывается к `Order.delivery_address`.
+- **Снимок адреса (2026-07):** рядом с FK добавлены собственные поля `delivery_address_text` / `delivery_latitude` / `delivery_longitude` — копия адреса **на момент создания заказа**. Они не зависят от `ClientAddress`, поэтому при авто-удалении 4-го адреса исторический заказ не теряет адрес (см. баг [[Bugs_AddressSnapshot]]). `OrderSerializer`, `OrderCard` и `notify.py` читают именно снимок. Лимит «3 адреса» в `save_client_address` и `create()` защищён: не удаляет `ClientAddress`, на который висят заказы (`orders__isnull=True`).
 
 См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:238) и логику сигналов в [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
 

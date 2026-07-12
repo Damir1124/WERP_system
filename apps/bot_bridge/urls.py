@@ -1,5 +1,6 @@
 from django.urls import path
 from apps.bot_bridge import views
+from apps.clients.views import get_client_addresses, save_client_address
 
 app_name = 'bot_bridge'
 
@@ -32,6 +33,7 @@ urlpatterns = [
     # ── Курьер: пул заказов ──────────────────────────────────────────────────
     path('courier/pool/', views.CourierPoolView.as_view(), name='courier_pool'),
     path('courier/pool/<int:order_id>/assign/', views.CourierAssignOrderView.as_view(), name='courier_assign_order'),
+    path('courier/pool/<int:order_id>/return/', views.CourierReturnToPoolView.as_view(), name='courier_return_to_pool'),
 
     # ── Курьер: операции с заказами ──────────────────────────────────────────
     path('courier/orders/confirm/', views.OrderConfirmationView.as_view(), name='order_confirmation'),
@@ -45,6 +47,9 @@ urlpatterns = [
     path('products/', views.ProductListView.as_view(), name='product_list'),
     path('clients/', views.ClientInfoView.as_view(), name='client_info'),
     path('clients/search/', views.ClientSearchView.as_view(), name='client_search'),
+    # Адреса клиента (зарегистрированы здесь, т.к. фронтенд курьера зовёт api/bot/clients/addresses/...)
+    path('clients/addresses/<str:phone>/', get_client_addresses, name='client_addresses'),
+    path('clients/addresses/save/', save_client_address, name='save_client_address'),
     
     # ── Курьер: создание заказа (новый endpoint) ─────────────────────────────
     path('courier/orders/create-new/', views.CourierCreateOrderView.as_view(), name='courier_create_order'),

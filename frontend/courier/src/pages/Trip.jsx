@@ -50,6 +50,20 @@ export default function Trip() {
     }
   }
 
+  // Возврат заказа в пул (снять с рейса)
+  const handleReturnToPool = async (orderId) => {
+    if (!window.confirm(`Вернуть заказ #${orderId} в пул?`)) return
+    setActionLoading(true)
+    try {
+      await api.returnOrderToPool(orderId)
+      await load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (loading) return <div className="spinner">Загрузка...</div>
 
   // Нет активной смены
@@ -167,15 +181,15 @@ export default function Trip() {
 
         {orders.map(order => {
         const delivered = order.status === 'DL'
-        
+
         // Преобразуем данные заказа в формат OrderCard
         const transformedOrder = {
           id: order.id,
           created_at: order.created_at,
           delivered_at: order.delivered_at || null,
-          address: order.client_address || 'Адрес не указан',
-          latitude: order.latitude || null,
-          longitude: order.longitude || null,
+          delivery_address_text: order.delivery_address_text || 'Адрес не указан',
+          delivery_latitude: order.delivery_latitude || null,
+          delivery_longitude: order.delivery_longitude || null,
           payment_type: order.payment_type,
           payment_type_label: order.payment_type === 'CD' ? 'Карта' : order.payment_type === 'BS' ? 'Бонус' : 'Наличные',
           items: order.items || [],
@@ -196,6 +210,7 @@ export default function Trip() {
             isDelivered={delivered}
             isTripOrder={!delivered}
             onConfirm={!delivered ? () => navigate(`/order/${order.id}/confirm`) : undefined}
+            onReturnToPool={!delivered ? () => handleReturnToPool(order.id) : undefined}
           />
         )
         })}

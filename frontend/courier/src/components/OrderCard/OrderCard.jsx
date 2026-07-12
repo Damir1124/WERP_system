@@ -11,6 +11,7 @@ import './OrderCard.css'
  * @param {boolean} isDelivered - Заказ доставлен (визуальное состояние)
  * @param {Function} onAccept - Callback для взятия заказа
  * @param {Function} onConfirm - Callback для подтверждения доставки
+ * @param {Function} onReturnToPool - Callback для возврата заказа в пул (снять с рейса)
  */
 export default function OrderCard({
   order,
@@ -18,7 +19,8 @@ export default function OrderCard({
   isTripOrder = false,
   isDelivered = false,
   onAccept,
-  onConfirm
+  onConfirm,
+  onReturnToPool
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -78,15 +80,19 @@ export default function OrderCard({
         ) : (
           <FreshnessIndicator createdAt={order.created_at} />
         )}
-        
+
         <div className="order-id">#{order.id}</div>
-        
+
         <div className="quantity-badge">{getQuantityBadge()}</div>
-        
-        <div className="address-truncated">{order.address}</div>
-        
+
+        <div className="address-truncated">
+          {order.delivery_latitude && order.delivery_longitude && order.delivery_address_text
+            ? `📍 | ${order.delivery_address_text}`
+            : order.delivery_address_text || '📍 Локация'}
+        </div>
+
         <div className={paymentBadge.className}>{paymentBadge.text}</div>
-        
+
         <div className={`chevron ${expanded ? 'rotated' : ''}`}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -97,18 +103,23 @@ export default function OrderCard({
       {/* Развёрнутое состояние */}
       <div className={`order-card-body ${expanded ? 'expanded' : 'collapsed'}`}>
         <div className="order-card-body-content">
-          {/* Адрес с геолокацией */}
-          <div className="detail-section">
-            <div className="detail-label">Адрес</div>
-            <div className="detail-value">{order.address}</div>
-            {order.latitude && order.longitude && (
+          {/* Адрес с кнопкой локации */}
+          <div className="detail-section detail-row">
+            <div className="detail-col">
+              <div className="detail-label">Адрес</div>
+              <div className="detail-value">
+                {order.delivery_address_text || 'Адрес не указан'}
+              </div>
+            </div>
+            {order.delivery_latitude && order.delivery_longitude && (
               <a
-                href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
+                href={`https://www.google.com/maps/search/?api=1&query=${order.delivery_latitude},${order.delivery_longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="map-link"
+                className="call-button"
+                style={{ background: 'var(--blue)' }}
               >
-                Открыть на карте
+                📍 Локация
               </a>
             )}
           </div>
@@ -162,16 +173,28 @@ export default function OrderCard({
               </div>
             </div>
           ) : (
-            <div className="order-card-actions">
+            <div className={`order-card-actions ${isTripOrder ? 'trip-actions' : ''}`}>
               {isPoolOrder && onAccept && (
                 <button className="action-btn primary" onClick={onAccept}>
                   Взять заказ
                 </button>
               )}
-              
+
               {isTripOrder && onConfirm && (
                 <button className="action-btn primary" onClick={onConfirm}>
                   Доставить
+                </button>
+              )}
+
+              {isTripOrder && onReturnToPool && (
+                <button
+                  type="button"
+                  className="action-btn square return-btn"
+                  onClick={onReturnToPool}
+                  title="Вернуть заказ в пул"
+                  aria-label="Вернуть заказ в пул"
+                >
+                  ↩
                 </button>
               )}
             </div>

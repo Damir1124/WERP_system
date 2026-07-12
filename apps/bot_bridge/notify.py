@@ -122,7 +122,8 @@ def notify_courier_new_order(courier_tg_id: int, order):
         return False
 
     client_name = order.client.name if order.client else "Неизвестный клиент"
-    address = order.client.address if order.client else "Адрес не указан"
+    # Используем снимок адреса из заказа (не зависит от удалённого ClientAddress)
+    address = order.delivery_address_text or "Адрес не указан"
 
     # Собираем позиции из OrderItem
     items = order.items.select_related('product').all()

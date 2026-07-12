@@ -379,6 +379,14 @@ def update_stock_on_order(sender, instance, created, **kwargs):
                 logger.warning("Продукт для подмены не найден: type=%s", mapped_product_type)
                 continue
 
+        # Вода (WATER) и продукты с track_inventory=False не списываются со склада:
+        # вода физически не хранится, учитывается только тара (отдельная позиция BOTTLE).
+        # Иначе падает "Не найден StockBalance для продукта Вода 19".
+        if product.type_product == Product.TypeProduct.WATER or not product.track_inventory:
+            logger.info("Продукт %s не списывается со склада (type=%s, track_inventory=%s)",
+                        product.name, product.type_product, product.track_inventory)
+            continue
+
         # Определяем количество для списания
         # Для BOTTLE_20L (вода с тарой): списываем exchange_qty (обмен) + sell_with_qty (продажа с тарой)
         # Так как мы больше не создаем отдельную позицию BOTTLE OrderItem,

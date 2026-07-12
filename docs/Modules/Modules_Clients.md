@@ -42,6 +42,35 @@
 
 **Особенности:** `unique=True`, `null=True` (пока не все клиенты есть в Telegram).
 
+## Модель `ClientAddress` (многоадресность)
+
+Добавлена для хранения **до 3 адресов доставки** на одного клиента (вместо единственного устаревшего поля `Client.address`).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `client` | FK → `Client` (CASCADE, `related_name='addresses'`) | Владелец адреса |
+| `address_text` | CharField(120) | Текстовый адрес (улица, дом) |
+| `latitude` | DecimalField(10,6) | Широта (может быть пустой) |
+| `longitude` | DecimalField(10,6) | Долгота (может быть пустой) |
+| `last_used_at` | DateTimeField(null=True) | Когда адрес использован в последний раз |
+| `created_at` | DateTimeField(auto_now_add) | Дата создания |
+
+**Лимит 3 адреса:** при создании 4-го самый старый (по `last_used_at`, затем `created_at`) удаляется — как в `save_client_address`, так и в `OrderCreateModelSerializer.create()`.
+
+**Сортировка:** `Meta.ordering = ['-last_used_at', '-created_at']` — последний использованный адрес всегда первый в списке.
+
+> 💡 **Почему отдельная модель, а не поле `address` в `Client`:** у клиента может быть дом, работа, дача. Хранить список в одном поле — значит парсить строки и терять координаты. Отдельная таблица даёт нормализованные координаты, историю использования и простой лимит через `count() > 3`.
+
+### API адресов
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| GET | `/api/clients/addresses/<phone>/` (продублировано в `api/bot/`) | Получить до 3 адресов клиента |
+| POST | `/api/clients/addresses/save/` (продублировано в `api/bot/`) | Создать/обновить адрес, соблюсти лимит 3 |
+
+См. реализацию: [`apps/clients/views.py`](apps/clients/views.py:54) (`get_client_addresses`), [`apps/clients/views.py`](apps/clients/views.py:93) (`save_client_address`).
+
+> ⚠️ **Важно про маршрутизацию:** фронтенд курьера зовёт `api/bot/clients/addresses/...`, поэтому маршруты продублированы и в `apps/bot_bridge/urls.py`. См. баг [[Bugs_ClientAddressesRouting]].
+
 ## Связи с другими модулями
 
 ### `accounting`
