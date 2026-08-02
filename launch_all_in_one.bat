@@ -20,10 +20,11 @@ echo ║  [6] ОТКРЫТЬ MINI APP КУРЬЕРА в браузере        
 echo ║  [7] ОТКРЫТЬ MINI APP КЛИЕНТА в браузере        ║
 echo ║  [8] ПОКАЗАТЬ ЛОГИ (последние 50 строк)         ║
 echo ║  [9] ОСТАНОВИТЬ ВСЁ И ВЫЙТИ                     ║
+echo ║  [10] ПЕРЕЗАПУСТИТЬ БОТА                          ║
 echo ╚══════════════════════════════════════════════════╝
 echo.
 
-set /p choice="Выбери действие (1-9): "
+set /p choice="Выбери действие (1-10): "
 
 if "%choice%"=="1" goto START_ALL
 if "%choice%"=="2" goto RESTART_APP
@@ -34,6 +35,7 @@ if "%choice%"=="6" goto OPEN_COURIER
 if "%choice%"=="7" goto OPEN_CLIENT
 if "%choice%"=="8" goto SHOW_LOGS
 if "%choice%"=="9" goto KILL_ALL
+if "%choice%"=="10" goto RESTART_BOT
 goto MENU
 
 :: ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +91,30 @@ echo ║  Курьер:  http://localhost:8000/miniapp/courier/ ║
 echo ║  Клиент:  http://localhost:8000/miniapp/client/  ║
 echo ║  API:     http://localhost:8000/api/bot/         ║
 echo ╚══════════════════════════════════════════════════╝
+echo.
+echo Нажми любую клавишу для возврата в меню...
+pause >nul
+goto MENU
+
+:: ─────────────────────────────────────────────────────────────────────────────
+:RESTART_BOT
+echo.
+echo Перезапуск Telegram Бота...
+echo Остановка текущего процесса бота...
+
+:: Ищем и убиваем процесс python.exe, который запущен с tg_bot
+powershell -Command "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like '*tg_bot*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
+
+:: Также пробуем закрыть окно по заголовку (на случай если первый способ не сработал)
+taskkill /f /fi "WINDOWTITLE eq Telegram Bot*" >nul 2>&1
+
+timeout /t 2 >nul
+
+echo Запуск Telegram Бота...
+start "Telegram Bot" /min cmd /k "cd /d "%ROOT_DIR%" && "%PYTHON_PATH%" -m tg_bot"
+
+echo.
+echo ✅ Бот успешно перезапущен!
 echo.
 echo Нажми любую клавишу для возврата в меню...
 pause >nul

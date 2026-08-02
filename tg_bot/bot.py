@@ -9,13 +9,12 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import Message
 
-from tg_bot.config import BOT_TOKEN, LOG_LEVEL, MINI_APP_URL
+from tg_bot.config import BOT_TOKEN, LOG_LEVEL
 from tg_bot.middlewares.auth import AuthMiddleware
 from tg_bot.routers import courier, client, admin
-from tg_bot.routers import courier_create_order
+from tg_bot.routers import courier_create_order, client_order
 
 # Настройка логирования
 logging.basicConfig(level=LOG_LEVEL)
@@ -34,7 +33,9 @@ dp = Dispatcher(storage=storage)
 # Подключаем middleware
 dp.update.middleware(AuthMiddleware())
 
-# ─── Роутер для незарегистрированных пользователей ───────────────────────────
+# ─── Роутер для незарегистрированных пользователей (fallback) ─────────────────
+# IdentifyView теперь авто-регистрирует новых пользователей как клиентов,
+# поэтому этот роутер срабатывает только при недоступности API.
 
 unknown_router = Router(name="unknown")
 
@@ -42,39 +43,25 @@ unknown_router = Router(name="unknown")
 @unknown_router.message(Command("start"))
 async def unknown_start(message: Message, user: dict = None):
     """
-    Обработка /start для незарегистрированного пользователя.
-    По умолчанию предлагаем зарегистрироваться как клиент.
+    Обработка /start если API недоступен.
     """
     tg_user = message.from_user
-    logger.info(f"Новый пользователь tg_id={tg_user.id} — предлагаем регистрацию как клиент")
-
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="📝 Зарегистрироваться и заказать воду",
-        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
-    ))
+    logger.warning(f"Пользователь tg_id={tg_user.id} — не удалось определить роль (API недоступен?)")
 
     await message.answer(
-        f"👋 Привет, {tg_user.first_name}!\n\n"
+        f"👋 Здравствуйте, {tg_user.first_name}!\n\n"
         f"💧 <b>Osnova 2.0</b> — доставка питьевой воды в Самарканде\n\n"
-        f"Вы ещё не зарегистрированы в системе.\n"
-        f"Нажмите кнопку ниже, чтобы зарегистрироваться и сделать первый заказ:",
-        reply_markup=builder.as_markup()
+        f"❌ Не удалось подключиться к серверу.\n"
+        f"Пожалуйста, попробуйте позже или отправьте /start снова."
     )
 
 
 @unknown_router.message()
 async def unknown_any_message(message: Message):
-    """Любое другое сообщение от незарегистрированного пользователя."""
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="📝 Зарегистрироваться",
-        web_app=WebAppInfo(url=f"{MINI_APP_URL}/client/")
-    ))
+    """Любое другое сообщение при недоступности API."""
     await message.answer(
-        "❓ Вы не зарегистрированы в системе.\n"
-        "Нажмите кнопку ниже для регистрации:",
-        reply_markup=builder.as_markup()
+        "❓ Не удалось подключиться к серверу.\n"
+        "Пожалуйста, попробуйте позже или отправьте /start."
     )
 
 
@@ -94,6 +81,9 @@ courier_create_order.router.callback_query.filter(lambda callback, user=None, **
 client.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'client')
 client.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'client')
 
+client_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'client')
+client_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'client')
+
 admin.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'admin')
 admin.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'admin')
 
@@ -103,6 +93,7 @@ unknown_router.callback_query.filter(lambda callback, user=None, **kwargs: user 
 dp.include_router(admin.router)
 dp.include_router(courier.router)
 dp.include_router(courier_create_order.router)
+dp.include_router(client_order.router)
 dp.include_router(client.router)
 dp.include_router(unknown_router)
 

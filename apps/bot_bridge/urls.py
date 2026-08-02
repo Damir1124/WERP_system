@@ -1,13 +1,10 @@
 from django.urls import path
 from apps.bot_bridge import views
 from apps.clients.views import get_client_addresses, save_client_address
-
 app_name = 'bot_bridge'
-
 urlpatterns = [
     # Корневой эндпоинт
     path('', views.APIRootView.as_view(), name='api_root'),
-
     # Идентификация пользователя по tg_id
     path('identify/', views.IdentifyView.as_view(), name='identify'),
 
@@ -32,6 +29,7 @@ urlpatterns = [
 
     # ── Курьер: пул заказов ──────────────────────────────────────────────────
     path('courier/pool/', views.CourierPoolView.as_view(), name='courier_pool'),
+    path('courier/pool/<int:order_id>/', views.CourierPoolDetailView.as_view(), name='courier_pool_detail'),
     path('courier/pool/<int:order_id>/assign/', views.CourierAssignOrderView.as_view(), name='courier_assign_order'),
     path('courier/pool/<int:order_id>/return/', views.CourierReturnToPoolView.as_view(), name='courier_return_to_pool'),
 

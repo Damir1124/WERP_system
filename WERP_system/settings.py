@@ -161,3 +161,8 @@ CORS_ALLOW_HEADERS = [
 ]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- Bot auth via X-Telegram-ID header ---
+# False (default): header is optional, fallback identity is used.
+# True: strict header check (enable for production).
+BOT_BRIDGE_REQUIRE_TG_HEADER = os.getenv('BOT_BRIDGE_REQUIRE_TG_HEADER', 'False') == 'True'

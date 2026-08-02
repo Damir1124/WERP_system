@@ -117,8 +117,8 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
     # Поля для создания/поиска клиента
     client_id = serializers.IntegerField(required=False, write_only=True, help_text="ID клиента (если найден)")
     client_phone = serializers.CharField(required=False, write_only=True, help_text="Номер телефона клиента")
-    client_address = serializers.CharField(required=False, allow_blank=True, write_only=True, help_text="Адрес доставки")
-    client_name = serializers.CharField(required=False, allow_blank=True, write_only=True, help_text="ФИО клиента")
+    client_address = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True, help_text="Адрес доставки")
+    client_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True, help_text="ФИО клиента")
     client_lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True, write_only=True, help_text="Широта")
     client_lon = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True, write_only=True, help_text="Долгота")
     

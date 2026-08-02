@@ -1,306 +1,1134 @@
 """
 Роутер для обработки команд курьера.
-Реализует интерфейс через кнопки Telegram согласно спецификации.
+Реализует ПОЛНЫЙ интерфейс через кнопки Telegram (гибрид с Mini App):
+курьер может выполнить весь цикл (смена → рейс → пул → взять → доставить)
+через кнопки, не открывая Mini App. Кнопка «🌐 Mini App» в главном меню
+оставляет привычный Web App рабочим.
 """
+import asyncio
 import logging
-
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
-
-from tg_bot.keyboards.courier import get_courier_main_keyboard
+from tg_bot.keyboards.courier import (
+    get_courier_main_keyboard,
+    get_pool_inline_keyboard,
+    get_order_details_keyboard,
+    get_deliver_orders_inline_keyboard,
+    get_order_water_qty,
+    get_shifts_list_keyboard,
+    get_shift_detail_keyboard,
+    get_trip_detail_keyboard,
+    get_couriers_list_keyboard,
+    get_courier_orders_keyboard,
+)
 from tg_bot.api_client import api_client
-
+from tg_bot.messages import MSG_POOL_LEGEND
+from tg_bot.states.courier import CourierTripStart, CourierDeliverOrder, CourierCreateOrder
 logger = logging.getLogger(__name__)
-
 router = Router(name="courier")
 
+# ─── Кэш данных «Смены и рейсы» ───────────────────────────────────────────────
+# При открытии истории загружаем данные один раз и храним по tg_id,
+# чтобы при навигации (смена → рейс → заказ) не делать лишние API-запросы.
+_shifts_cache: dict[int, list] = {}
+# ─── Кэш данных «Курьеры» ─────────────────────────────────────────────────────
+# Для навигации курьеры → заказы курьера → детали заказа.
+_couriers_cache: dict[int, list] = {}
 
+# ─── Вспомогательные функции ──────────────────────────────────────────────────
+
+
+def auth_headers(tg_id: int) -> dict:
+    return {'X-Telegram-ID': str(tg_id)}
+
+
+async def get_trip_state(tg_id: int) -> dict:
+    """Текущее состояние смены/рейса курьера."""
+    return await api_client.get('/courier/trip/current/', headers=auth_headers(tg_id))
+
+
+async def show_main_menu(message: Message, tg_id: int):
+    """Показать адаптивное главное меню в зависимости от состояния."""
+    data = await get_trip_state(tg_id)
+    has_shift = data.get('active_shift', False)
+    has_trip = data.get('active_trip', False)
+    kb = get_courier_main_keyboard(has_shift=has_shift, has_trip=has_trip)
+    await message.answer("📋 <b>Главное меню курьера</b>", reply_markup=kb)
+
+
+def fmt_money(value) -> str:
+    try:
+        return f"{int(value):,}".replace(',', ' ')
+    except (TypeError, ValueError):
+        return "0"
+
+# ─── Старт ────────────────────────────────────────────────────────────────────
 @router.message(Command("start"))
-async def cmd_start(message: Message, user: dict = None):
+async def cmd_start(message: Message):
     """Обработка команды /start для курьера."""
-    user_data = message.from_user
-    logger.info(f"Курьер {user_data.id} запустил бота")
-    
-    role = user.get('role', 'unknown') if user else 'unknown'
-    name = user.get('name', user_data.first_name) if user else user_data.first_name
-    
-    await message.answer(
-        f"Привет, {name}!\n"
-        f"Вы авторизованы как {'администратор' if role == 'admin' else 'курьер'}.\n\n"
-        f"Используйте меню ниже для работы:",
-        reply_markup=get_courier_main_keyboard()
-    )
-
-
-@router.message(F.text == "📦 Пул заказов")
-async def show_pool(message: Message):
-    """Показать пул заказов со статистикой коллег."""
     tg_id = message.from_user.id
-    
-    # Получаем статистику коллег
-    colleagues_data = await api_client.get(
-        '/courier/colleagues/',
-        headers={'X-Telegram-ID': str(tg_id)}
+    await show_main_menu(message, tg_id)
+
+# ─── Создать заказ ─────────────────────────────────────────────────────────────
+@router.message(F.text == "➕ Создать заказ")
+async def create_order_from_main_menu(message: Message, state: FSMContext):
+    """Начать создание заказа из главного меню."""
+    from tg_bot.routers.courier_create_order import create_order_start
+    # Создаём фиктивный callback, чтобы переиспользовать существующий обработчик
+    await message.answer("Введите номер телефона клиента:\n(формат: +998901234567)")
+    await state.set_state(CourierCreateOrder.waiting_for_phone)
+
+
+# ─── Открыть смену ─────────────────────────────────────────────────────────────
+@router.message(F.text == "🟢 Открыть смену")
+async def open_shift(message: Message):
+    tg_id = message.from_user.id
+    result = await api_client.post('/shifts/', headers=auth_headers(tg_id))
+    if 'error' in result:
+        await message.answer(f"❌ Ошибка: {result.get('error')}")
+        return
+    shift = result.get('shift', {})
+    await message.answer(
+        f"✅ Смена #{shift.get('id')} открыта!\n"
+        f"📅 Дата: {shift.get('date')}\n\n"
+        f"Теперь загрузите машину и нажмите «🚀 Начать рейс»."
     )
-    
-    # Получаем список заказов из пула
-    pool_data = await api_client.get(
-        '/courier/pool/',
-        headers={'X-Telegram-ID': str(tg_id)}
+    await show_main_menu(message, tg_id)
+
+# ─── Начать рейс (FSM: ввод количества баклажек) ───────────────────────────────
+@router.message(F.text == "🚀 Начать рейс")
+async def start_trip(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "🚚 <b>Начало рейса</b>\n\n"
+        "Сколько полных баклажек загружено в машину?\n"
+        "Отправьте число (например: 50):"
     )
+    await state.set_state(CourierTripStart.waiting_for_full_loaded)
+@router.message(CourierTripStart.waiting_for_full_loaded, F.text.regexp(r'^\d+$'))
+async def trip_full_loaded(message: Message, state: FSMContext):
+    tg_id = message.from_user.id
+    full_loaded = int(message.text)
+    result = await api_client.post(
+        '/trips/',
+        data={'full_loaded': full_loaded},
+        headers=auth_headers(tg_id)
+    )
+    await state.clear()
+    if 'error' in result:
+        await message.answer(f"❌ Ошибка: {result.get('error')}")
+        return
+    trip = result.get('trip', {})
+    transferred = result.get('transferred_orders', 0)
+    text = (
+        f"🚚 Рейс #{trip.get('id')} начат!\n"
+        f"Загружено: {full_loaded} шт."
+    )
+    if transferred:
+        text += f"\n🔄 Перенесено незавершённых заказов: {transferred}"
+    await message.answer(text)
+    await show_main_menu(message, tg_id)
+@router.message(CourierTripStart.waiting_for_full_loaded, F.text.in_({"Отмена", "🚀 Начать рейс"}))
+async def trip_full_loaded_cancel(message: Message, state: FSMContext):
+    """Отмена начала рейса (по «❌ Отмена» или повторному нажатию «🚀 Начать рейс»)."""
+    await state.clear()
+    await message.answer("❌ Начало рейса отменено.")
+    await show_main_menu(message, message.from_user.id)
+
+
+@router.message(CourierTripStart.waiting_for_full_loaded)
+async def trip_full_loaded_invalid(message: Message, state: FSMContext):
+    await message.answer(
+        "❌ Введите число (количество полных баклажек). Например: 50\n"
+        "Или отправьте «❌ Отмена» для выхода."
+    )
+
+# ─── Пул заказов ───────────────────────────────────────────────────────────────
+@router.message(F.text.in_({"📦 Заказы", "📦 Пул заказов"}))
+async def show_pool(message: Message):
+    tg_id = message.from_user.id
+    pool_data, colleagues_data = await asyncio.gather(
+        api_client.get('/courier/pool/', headers=auth_headers(tg_id)),
+        api_client.get('/courier/colleagues/', headers=auth_headers(tg_id)),
+    )
+    if 'error' in pool_data:
+        await message.answer("❌ Ошибка загрузки пула заказов.")
+        return
+    orders = pool_data if isinstance(pool_data, list) else []
+    colleagues = colleagues_data if isinstance(colleagues_data, list) else []
+    text = build_pool_text(orders, colleagues)
+    kb = get_pool_inline_keyboard(orders)
+    await message.answer(text, reply_markup=kb)
+
+
+# ─── В процессе — курьеры → их заказы (всегда доступно) ────────────────────────
+@router.message(F.text == "📋 В процессе")
+async def show_in_progress(message: Message):
+    """Показать список курьеров для просмотра их заказов."""
+    tg_id = message.from_user.id
+    colleagues_data = await api_client.get('/courier/colleagues/', headers=auth_headers(tg_id))
+    couriers = colleagues_data if isinstance(colleagues_data, list) else []
+    if not couriers:
+        await message.answer("📋 Нет активных курьеров.")
+        return
+    _couriers_cache[tg_id] = couriers
+    text = "👥 <b>Курьеры на смене:</b>\n\nВыберите курьера, чтобы увидеть его заказы:"
+    kb = get_couriers_list_keyboard(couriers)
+    await message.answer(text, reply_markup=kb)
+
+@router.callback_query(F.data.startswith("courier_orders_"))
+async def show_courier_orders(callback: CallbackQuery):
+    """Показать PENDING заказы выбранного курьера."""
+    tg_id = callback.from_user.id
+    courier_id = int(callback.data.split("_")[2])
+    couriers = _couriers_cache.get(tg_id, [])
+    courier = next((c for c in couriers if c['id'] == courier_id), None)
+    name = courier.get('full_name', f"Курьер #{courier_id}") if courier else f"Курьер #{courier_id}"
     
-    if 'error' in colleagues_data or 'error' in pool_data:
-        await message.answer(
-            "Ошибка загрузки данных. Попробуйте позже.",
-            reply_markup=get_courier_main_keyboard()
-        )
+    orders_data = await api_client.get(f'/courier/pool/?courier_id={courier_id}', headers=auth_headers(tg_id))
+    orders = orders_data if isinstance(orders_data, list) else []
+    if not orders:
+        await callback.message.edit_text(f"👤 <b>{name}</b>\n\nНет заказов в работе.")
+        await callback.answer()
         return
     
-    # Формируем шапку со статистикой коллег
-    header = "📊 Курьеры на смене:\n\n"
-    header += "💧 💧 ✅ ⏳\n"
-    header += "Остаток | Нужно  Вып  Проц  Имя Телефон\n"
-    header += "=" * 50 + "\n"
-    
-    colleagues = colleagues_data if isinstance(colleagues_data, list) else []
-    for colleague in colleagues:
-        trip = colleague.get('current_trip', {})
-        header += (
-            f"{trip.get('full_remain', 0):2d}      | "
-            f"{trip.get('total_needed', 0):2d}      "
-            f"{trip.get('delivered_count', 0):2d}   "
-            f"{trip.get('pending_count', 0):2d}    "
-            f"{colleague.get('courier_name', 'N/A')} "
-            f"{colleague.get('phone', '')}\n"
-        )
-    
-    header += "\n💧 - Остаток в машине | Всего нужно\n"
-    header += "✅ - Выполнено\n"
-    header += "⏳ - В процессе\n\n"
-    header += "=" * 50 + "\n\n"
-    
-    # Формируем кнопки заказов
-    orders = pool_data if isinstance(pool_data, list) else []
-    buttons = []
-    
-    for order in orders[:20]:  # Максимум 20 заказов
-        # API возвращает client_address, а не client.address
-        address = order.get('client_address', 'N/A')
-        address_short = address[:30] if len(address) > 30 else address
-        
-        # Считаем общее количество товаров
-        items = order.get('items', [])
-        total_qty = sum(item.get('quantity', 0) for item in items)
-        
-        button_text = f"#{order['id']} | {total_qty} | {address_short}"
-        buttons.append([InlineKeyboardButton(
-            text=button_text,
-            callback_data=f"order_details_{order['id']}"
-        )])
-    
-    # Кнопка создания заказа
-    buttons.append([InlineKeyboardButton(
-        text="➕ Создать новый заказ",
-        callback_data="create_order_start"
-    )])
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    if orders:
-        await message.answer(
-            header + f"📦 Доступные заказы ({len(orders)}):",
-            reply_markup=keyboard
-        )
-    else:
-        await message.answer(
-            header + "Пул заказов пуст.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="➕ Создать новый заказ", callback_data="create_order_start")
-            ]])
-        )
+    text = f"👤 <b>{name}</b>\n📦 Заказов в работе: {len(orders)}\n\nВыберите заказ:"
+    kb = get_courier_orders_keyboard(orders, courier_id)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
 
 
-@router.callback_query(F.data.startswith("order_details_"))
-async def show_order_details(callback: CallbackQuery):
-    """Показать детали заказа из пула."""
-    order_id = int(callback.data.split("_")[2])
-    
-    # Получаем детали заказа
-    order_data = await api_client.get(f'/courier/pool/{order_id}/')
-    
+@router.callback_query(F.data.startswith("courier_order_detail_"))
+async def show_courier_order_detail(callback: CallbackQuery):
+    """Показать детали заказа из списка заказов курьера."""
+    # callback_data = "courier_order_detail_{courier_id}_{order_id}"
+    parts = callback.data.split("_")
+    courier_id = int(parts[3])
+    order_id = int(parts[4])
+    tg_id = callback.from_user.id
+    order_data = await api_client.get(f'/courier/pool/{order_id}/', headers=auth_headers(tg_id))
     if 'error' in order_data:
         await callback.answer("❌ Ошибка загрузки заказа", show_alert=True)
         return
-    
-    items = order_data.get('items', [])
-    
-    # Формируем список товаров
-    items_text = "\n".join([
-        f"• {item.get('product_name', 'N/A')} x {item.get('quantity', 0)} sht."
-        for item in items
-    ])
-    
-    # Вычисляем время с создания
-    minutes_ago = order_data.get('minutes_ago', 0)
-    time_text = f"{minutes_ago} минут назад" if minutes_ago < 60 else f"{minutes_ago // 60} часов назад"
-    
-    text = (
-        f"📦 Заказ #{order_id}\n\n"
-        f"👤 Клиент: {order_data.get('client_name', 'N/A')}\n"
-        f"📞 Телефон: {order_data.get('client_phone', 'N/A')}\n"
-        f"📍 Адрес: {order_data.get('client_address', 'N/A')}\n\n"
-        f"🚰 Товары:\n{items_text}\n\n"
-        f"💰 Сумма: {order_data.get('total_price', 0):,} сум\n"
-        f"💳 Оплата: {order_data.get('payment_type_display', 'N/A')}\n\n"
-        f"⏰ Создан: {time_text}"
-    )
-    
-    buttons = [
-        [InlineKeyboardButton(text="✅ Взять заказ", callback_data=f"take_order_{order_id}")],
-        [InlineKeyboardButton(text="⬅️ Назад в пул", callback_data="back_to_pool")]
+    text = build_pool_order_detail_text(order_data)
+    # Кнопка «⬅️ Назад к заказам» — возвращает к списку заказов этого курьера
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Назад к заказам", callback_data=f"courier_orders_{courier_id}")
+    ]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_couriers")
+async def back_to_couriers(callback: CallbackQuery):
+    """Назад к списку курьеров."""
+    tg_id = callback.from_user.id
+    couriers = _couriers_cache.get(tg_id, [])
+    if not couriers:
+        await callback.answer("Данные устарели.", show_alert=True)
+        return
+    text = "👥 <b>Курьеры на смене:</b>\n\nВыберите курьера, чтобы увидеть его заказы:"
+    kb = get_couriers_list_keyboard(couriers)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+def build_pool_text(orders: list, colleagues: list) -> str:
+    """Текст сообщения «Пул заказов»: итоги + список курьеров на смене."""
+    total_orders = len(orders)
+    total_water = sum(get_order_water_qty(o) for o in orders)
+    lines = [
+        f"Всего заказов - {total_orders}",
+        f"Всего воды - {total_water}",
+        "",
+        MSG_POOL_LEGEND,
     ]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    for c in colleagues:
+        lines.append(format_courier_line(c))
+    return "\n".join(lines)
 
 
-@router.callback_query(F.data.startswith("take_order_"))
-async def take_order(callback: CallbackQuery):
-    """Взять заказ в свой рейс."""
+def format_courier_line(c: dict) -> str:
+    """Строка курьера в пуле: [вода в машине] | [нужно воды] [выполнено] [в ожидании] Имя телефон."""
+    water_in_car = c.get('water_in_car', 0)
+    water_needed = c.get('water_needed', 0)
+    completed = c.get('orders_completed', 0)
+    pending = c.get('orders_pending', 0)
+    name = c.get('full_name', '—')
+    phone = c.get('phone', '')
+    return (
+        f"{water_in_car} | {water_needed:>2}  {completed:>2}  {pending:>2}  "
+        f"{name} {phone}".rstrip()
+    )
+@router.callback_query(F.data.startswith("order_details_"))
+async def show_order_details(callback: CallbackQuery):
     order_id = int(callback.data.split("_")[2])
     tg_id = callback.from_user.id
-    
-    # Назначаем заказ курьеру
+    order_data = await api_client.get(f'/courier/pool/{order_id}/', headers=auth_headers(tg_id))
+    if 'error' in order_data:
+        await callback.answer("❌ Ошибка загрузки заказа", show_alert=True)
+        return
+    text = build_pool_order_detail_text(order_data)
+    await callback.message.edit_text(text, reply_markup=get_order_details_keyboard(order_id))
+
+
+def build_pool_order_detail_text(order: dict) -> str:
+    """Карточка заказа из пула (как раскрытая OrderCard в Mini App)."""
+    from datetime import datetime
+    items = order.get('items', [])
+    items_text = " | ".join(
+        f"{it.get('product_name', 'N/A')} × {it.get('quantity', 0)}"
+        for it in items
+    ) or "—"
+    addr = order.get('delivery_address_text') or order.get('client_address') or 'Адрес не указан'
+    lat = order.get('delivery_latitude')
+    lon = order.get('delivery_longitude')
+    loc_link = (
+        f'\n📍 <a href="https://www.google.com/maps/search/?api=1&query={lat},{lon}">Локация</a>'
+        if lat and lon else ''
+    )
+    phone = order.get('client_phone') or ''
+    # Нормализуем: если номер без +, добавляем (в БД может храниться в разных форматах)
+    if phone and not phone.startswith('+'):
+        phone = '+' + phone
+    # Кликабельный номер телефона
+    phone_text = f'\n📞 <a href="tel:{phone}">{phone}</a>' if phone else ''
+    # Вместо «X мин. назад» — день месяца и время (ЧЧ:ММ)
+    created_at_raw = order.get('created_at')
+    if created_at_raw:
+        try:
+            dt = datetime.fromisoformat(created_at_raw.replace('Z', '+00:00'))
+            time_text = dt.strftime('%d.%m %H:%M')
+        except (ValueError, TypeError):
+            time_text = str(created_at_raw)[:16]
+    else:
+        time_text = '—'
+    created_by = order.get('created_by') or '—'
+    return (
+        f"📦 <b>Заказ #{order.get('id')}</b>\n"
+        f"{'=' * 28}\n"
+        f"📍 <b>Адрес:</b> {addr}{loc_link}\n"
+        f"👤 <b>Клиент:</b> {order.get('client_name', 'N/A')}{phone_text}\n"
+        f"🚰 <b>Товары:</b> {items_text}\n"
+        f"💰 <b>Сумма:</b> {fmt_money(order.get('total_price'))} сум\n"
+        f"💳 <b>Оплата:</b> {order.get('payment_type_display', 'N/A')}\n"
+        f"⏰ <b>Создан:</b> {time_text} | создал: {created_by}"
+    )
+@router.callback_query(F.data.startswith("take_order_"))
+async def take_order(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[2])
+    tg_id = callback.from_user.id
     result = await api_client.post(
         f'/courier/pool/{order_id}/assign/',
-        headers={'X-Telegram-ID': str(tg_id)}
+        headers=auth_headers(tg_id)
     )
-    
     if 'error' in result:
-        await callback.answer(f"Oshibka: {result.get('error')}", show_alert=True)
-    else:
-        await callback.message.edit_text(
-            f"Zakaz #{order_id} dobavlen v vash reys!\n\n"
-            f"Ispolzuyte 'Moy reys' dlya prosmotra."
-        )
-        await callback.answer("Uspeshno!")
-
-
+        await callback.answer(f"❌ {result.get('error')}", show_alert=True)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Назад в пул", callback_data="back_to_pool")
+    ]])
+    await callback.message.edit_text(
+        f"✅ Заказ #{order_id} взят в работу!\nОткройте «🚚 Мой рейс» для просмотра.",
+        reply_markup=kb
+    )
+    await callback.answer("Готово!")
 @router.callback_query(F.data == "back_to_pool")
 async def back_to_pool(callback: CallbackQuery):
-    """Вернуться к списку заказов пула."""
-    # Просто вызываем show_pool через сообщение
     await callback.message.delete()
     await show_pool(callback.message)
 
-
+# ─── Мой рейс ──────────────────────────────────────────────────────────────────
 @router.message(F.text == "🚚 Мой рейс")
 async def show_current_trip(message: Message):
-    """Показать текущий активный рейс."""
     tg_id = message.from_user.id
-    
-    trip_data = await api_client.get(
-        '/courier/trip/current/',
-        headers={'X-Telegram-ID': str(tg_id)}
-    )
-    
-    if 'error' in trip_data:
-        await message.answer(
-            "U vas net aktivnogo reysa.\n"
-            "Otkroyte smenu i nachните reys.",
-            reply_markup=get_courier_main_keyboard()
-        )
+    trip_data = await get_trip_state(tg_id)
+    if not trip_data.get('active_shift'):
+        await message.answer("🌅 Смена не открыта. Начните с «🟢 Открыть смену».")
         return
+    if not trip_data.get('active_trip'):
+        await message.answer("🚚 Смена открыта, но рейс не начат. Нажмите «🚀 Начать рейс».")
+        return
+    trip = trip_data.get('trip', {})
+    summary = trip_data.get('summary', {})
+    text = (
+        f"🚚 <b>Рейс #{trip.get('id')}</b> (в пути)\n"
+        f"{'=' * 32}\n"
+        f"Загружено: {summary.get('full_loaded', 0)} шт.\n"
+        f"Доставлено: {summary.get('delivered', 0)} шт.\n"
+        f"Остаток в машине: {summary.get('full_remain', 0)} шт.\n"
+        f"Пустых в машине: {summary.get('empty_expected', 0)} шт.\n"
+        f"Брак: {summary.get('defective_received', 0)} шт.\n"
+        f"{'=' * 32}\n"
+        f"💵 Наличными: {fmt_money(summary.get('cash_expected'))} сум\n"
+        f"💳 Картой: {fmt_money(summary.get('card_expected'))} сум"
+    )
+    # Показываем только заказы в статусе 'в пути' (PD), доставленные (DL) скрываем
+    orders = [o for o in trip.get('orders', []) if o.get('status') != 'DL']
+    buttons = []
+    for order in orders:
+        label = build_trip_order_label(order)
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"trip_order_{order['id']}")])
+    buttons.append([InlineKeyboardButton(text="🏁 Закрыть рейс", callback_data="close_trip")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer(text, reply_markup=kb)
+
+
+def build_trip_order_label(order: dict) -> str:
+    """Метка кнопки заказа в рейсе: №id | кол-во | адрес/локация."""
+    order_id = order.get('id')
+    items = order.get('items', [])
+    total_qty = sum(it.get('quantity', 0) for it in items)
+    addr = order.get('delivery_address_text') or order.get('client_address') or ''
+    if not addr and (order.get('delivery_latitude') or order.get('latitude')):
+        addr = '📍 локация'
+    addr_short = (addr[:24] + '…') if len(addr) > 24 else addr
+    status_icon = '✅' if order.get('status') == 'DL' else '⏳'
+    return f"{status_icon} №{order_id} | {total_qty} | {addr_short}"
+
+
+def build_order_detail_text(order: dict) -> str:
+    """Подробная карточка заказа (как в Mini App)."""
+    items = order.get('items', [])
+    items_text = "\n".join([
+        f"• {it.get('product_name', 'N/A')} × {it.get('quantity', 0)} шт."
+        for it in items
+    ])
+    minutes_ago = order.get('minutes_ago', 0)
+    time_text = f"{minutes_ago} мин. назад" if minutes_ago < 60 else f"{minutes_ago // 60} ч. назад"
+    return (
+        f"📦 <b>Заказ #{order.get('id')}</b>\n\n"
+        f"👤 Клиент: {order.get('client_name', 'N/A')}\n"
+        f"📞 Телефон: {order.get('client_phone', 'N/A')}\n"
+        f"📍 Адрес: {order.get('delivery_address_text') or order.get('client_address') or 'локация'}\n\n"
+        f"🚰 Товары:\n{items_text}\n\n"
+        f"💰 Сумма: {fmt_money(order.get('total_price'))} сум\n"
+        f"💳 Оплата: {order.get('payment_type_display', 'N/A')}\n"
+        f"⏰ Создан: {time_text}"
+    )
+@router.callback_query(F.data.startswith("trip_order_"))
+async def trip_order_detail(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[2])
+    tg_id = callback.from_user.id
+    trip_data = await get_trip_state(tg_id)
+    order = next(
+        (o for o in trip_data.get('trip', {}).get('orders', []) if o.get('id') == order_id),
+        None
+    )
+    if not order:
+        await callback.answer("Заказ не найден в рейсе", show_alert=True)
+        return
+    buttons = [
+        [InlineKeyboardButton(text="✅ Доставить", callback_data=f"deliver_order_{order_id}")],
+        [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"trip_cancel_{order_id}")],
+        [InlineKeyboardButton(text="↩️ Вернуть в пул", callback_data=f"return_order_{order_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_trip")],
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(build_order_detail_text(order), reply_markup=kb)
+@router.callback_query(F.data.startswith("trip_cancel_"))
+async def trip_cancel_order(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[2])
+    tg_id = callback.from_user.id
+    result = await api_client.post(
+        '/courier/orders/confirm/',
+        data={'order_id': order_id, 'confirmed': False},
+        headers=auth_headers(tg_id)
+    )
+    if 'error' in result:
+        await callback.answer(f"❌ {result.get('error')}", show_alert=True)
+        return
+    await callback.answer("❌ Заказ отменён")
+    await show_current_trip(callback.message)
+@router.callback_query(F.data.startswith("return_order_"))
+async def return_order_to_pool(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[2])
+    tg_id = callback.from_user.id
+    result = await api_client.post(
+        f'/courier/pool/{order_id}/return/',
+        headers=auth_headers(tg_id)
+    )
+    if 'error' in result:
+        await callback.answer(f"❌ {result.get('error')}", show_alert=True)
+        return
+    await callback.answer("✅ Возвращено в пул")
+    await show_current_trip(callback.message)
+@router.callback_query(F.data == "close_trip")
+async def close_trip(callback: CallbackQuery):
+    """Показать подтверждение закрытия рейса со статистикой."""
+    tg_id = callback.from_user.id
+    trip_data = await get_trip_state(tg_id)
+    if not trip_data.get('active_trip'):
+        await callback.answer("Нет активного рейса", show_alert=True)
+        return
+    trip = trip_data.get('trip', {})
+    summary = trip_data.get('summary', {})
+    
+    cash_expected = summary.get('cash_expected', 0)
+    card_expected = summary.get('card_expected', 0)
+    total_expected = cash_expected + card_expected
+    full_loaded = summary.get('full_loaded', 0)
+    delivered = summary.get('delivered', 0)
+    full_remain = summary.get('full_remain', 0)
+    empty_received = summary.get('empty_received', 0) or summary.get('empty_expected', 0)
     
     text = (
-        f"Reys #{trip_data.get('id', 'N/A')} (aktivnyy)\n"
-        f"{'=' * 40}\n"
-        f"Zagruzheno: {trip_data.get('full_loaded', 0)} sht.\n"
-        f"Dostavleno: {trip_data.get('delivered_count', 0)} zakazov ({trip_data.get('delivered_qty', 0)} sht.)\n"
-        f"Ostatok v mashine: {trip_data.get('full_remain', 0)} sht.\n"
-        f"Pustykh v mashine: {trip_data.get('empty_in_car', 0)} sht.\n"
-        f"Brak: {trip_data.get('defect_qty', 0)} sht.\n"
-        f"{'=' * 40}\n"
-        f"Nalichnykh dolzhno byt: {trip_data.get('cash_expected', 0):,} sum\n"
-        f"Po karte: {trip_data.get('card_expected', 0):,} sum\n"
-        f"{'=' * 40}\n"
+        f"🏁 <b>Закрытие рейса #{trip.get('id')}</b>\n"
+        f"{'=' * 28}\n"
+        f"📦 <b>Баклажки</b>\n"
+        f"   Загружено: {full_loaded} бак\n"
+        f"   Доставлено: {delivered} бак\n"
+        f"   Остаток: {full_remain} бак\n"
+        f"\n📭 <b>Тара</b>\n"
+        f"   Пустых собрано: {empty_received} шт\n"
+        f"\n💰 <b>Финансы</b>\n"
+        f"   💵 Наличные: {fmt_money(cash_expected)} сум\n"
+        f"   💳 Карта: {fmt_money(card_expected)} сум\n"
+        f"   {'=' * 20}\n"
+        f"   <b>Итого: {fmt_money(total_expected)} сум</b>\n"
+        f"\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Подтвердите закрытие рейса:"
     )
-    
     buttons = [
-        [InlineKeyboardButton(text="Spisok zakazov reysa", callback_data="trip_orders")],
-        [InlineKeyboardButton(text="Zakryt reys", callback_data="close_trip")]
+        [InlineKeyboardButton(text="✅ Закрыть рейс", callback_data="confirm_close_trip")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_close_trip")],
     ]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    await message.answer(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await callback.answer()
 
+
+@router.callback_query(F.data == "confirm_close_trip")
+async def confirm_close_trip(callback: CallbackQuery):
+    """Подтвердить и выполнить закрытие рейса."""
+    tg_id = callback.from_user.id
+    trip_data = await get_trip_state(tg_id)
+    if not trip_data.get('active_trip'):
+        await callback.answer("Рейс уже закрыт", show_alert=True)
+        return
+    trip = trip_data.get('trip', {})
+    result = await api_client.post(
+        f'/courier/trips/{trip.get("id")}/close/',
+        headers=auth_headers(tg_id)
+    )
+    if 'error' in result:
+        await callback.answer(f"❌ {result.get('error')}", show_alert=True)
+        return
+    msg = result.get('message', f"Рейс #{trip.get('id')} закрыт.")
+    pending = result.get('pending_transferred', 0)
+    if pending > 0:
+        msg += f"\n\n📦 {pending} заказов будут автоматически перенесены, когда вы откроете следующий рейс."
+    await callback.message.edit_text(f"🏁 {msg}")
+    # Возвращаемся в главное меню — курьер сам решит, открывать ли новый рейс
+    await show_main_menu(callback.message, tg_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_close_trip")
+async def cancel_close_trip(callback: CallbackQuery):
+    """Отмена закрытия рейса — возврат к текущему рейсу."""
+    await show_current_trip(callback.message)
+    await callback.answer()
+@router.callback_query(F.data == "back_to_trip")
+async def back_to_trip(callback: CallbackQuery):
+    await callback.message.delete()
+    await show_current_trip(callback.message)
+
+# ─── Подтверждение доставки (FSM) ──────────────────────────────────────────────
+@router.message(F.text == "✅ Подтвердить доставку")
+async def show_deliver_menu(message: Message):
+    tg_id = message.from_user.id
+    trip_data = await get_trip_state(tg_id)
+    if not trip_data.get('active_trip'):
+        await message.answer("🚚 Нет активного рейса. Начните рейс, чтобы подтверждать доставку.")
+        return
+    orders = trip_data.get('trip', {}).get('orders', [])
+    pending = [o for o in orders if o.get('status') == 'PD']
+    if not pending:
+        await message.answer("✅ В текущем рейсе нет заказов, ожидающих доставки.")
+        return
+    kb = get_deliver_orders_inline_keyboard(pending)
+    await message.answer(
+        f"✅ Выберите заказ для подтверждения доставки ({len(pending)}):",
+        reply_markup=kb
+    )
+@router.callback_query(F.data.startswith("deliver_order_"))
+async def deliver_order_start(callback: CallbackQuery, state: FSMContext):
+    order_id = int(callback.data.split("_")[2])
+    tg_id = callback.from_user.id
+    trip_data = await get_trip_state(tg_id)
+    if not trip_data.get('active_trip'):
+        await callback.answer("Нет активного рейса", show_alert=True)
+        return
+    order = next((o for o in trip_data.get('trip', {}).get('orders', []) if o.get('id') == order_id), None)
+    if not order:
+        await callback.answer("Заказ не найден в рейсе", show_alert=True)
+        return
+    edit = init_deliver_edit(order)
+    await state.update_data(order_id=order_id, order=order, edit=edit)
+    await state.set_state(CourierDeliverOrder.waiting_for_edit)
+    await show_deliver_edit(callback.message, order, edit)
+    await callback.answer()
+WATER_TYPES = ('19W', 'B19W')
+
+
+def is_water_item(item: dict) -> bool:
+    return item.get('product_type') in WATER_TYPES
+
+
+def init_deliver_edit(order: dict) -> dict:
+    """Структура редактирования: {item_id: {quantity, exchange_qty, sell_with_qty, defective_qty}}."""
+    edit = {}
+    for it in order.get('items', []):
+        qty = it.get('quantity', 0)
+        if is_water_item(it):
+            edit[it['id']] = {
+                'quantity': qty,
+                'exchange_qty': qty,   # по умолчанию = заказано (бэкенд требует != 0)
+                'sell_with_qty': 0,
+                'defective_qty': 0,
+            }
+        else:
+            edit[it['id']] = {
+                'quantity': qty,
+                'exchange_qty': 0,
+                'sell_with_qty': 0,
+                'defective_qty': 0,
+            }
+    return edit
+
+
+def build_deliver_edit_text(order: dict, edit: dict) -> str:
+    lines = [f"📦 <b>Редактирование доставки — Заказ #{order.get('id')}</b>\n"]
+    for it in order.get('items', []):
+        iid = it['id']
+        st = edit.get(iid, {})
+        if is_water_item(it):
+            lines.append(
+                f"💧 {it.get('product_name')} (заказано {st.get('quantity', 0)})\n"
+                f"   🔄 обмен: {st.get('exchange_qty', 0)} | "
+                f"💰 с тарой: {st.get('sell_with_qty', 0)} | "
+                f"⚠️ брак: {st.get('defective_qty', 0)}"
+            )
+        else:
+            lines.append(f"🛒 {it.get('product_name')}: {st.get('quantity', 0)} шт.")
+    lines.append("\n✏️ Измените количество и операции с тарой, затем подтвердите.")
+    return "\n".join(lines)
+
+
+def get_deliver_edit_keyboard(order: dict, edit: dict) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for it in order.get('items', []):
+        iid = it['id']
+        if is_water_item(it):
+            builder.row(
+                InlineKeyboardButton(text="➖ обмен", callback_data=f"d_ex_{iid}_m"),
+                InlineKeyboardButton(text="➕ обмен", callback_data=f"d_ex_{iid}_p"),
+            )
+            builder.row(
+                InlineKeyboardButton(text="➖ с тарой", callback_data=f"d_sw_{iid}_m"),
+                InlineKeyboardButton(text="➕ с тарой", callback_data=f"d_sw_{iid}_p"),
+            )
+            builder.row(
+                InlineKeyboardButton(text="➖ брак", callback_data=f"d_df_{iid}_m"),
+                InlineKeyboardButton(text="➕ брак", callback_data=f"d_df_{iid}_p"),
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(text="➖ кол-во", callback_data=f"d_qty_{iid}_m"),
+                InlineKeyboardButton(text="➕ кол-во", callback_data=f"d_qty_{iid}_p"),
+            )
+    builder.row(
+        InlineKeyboardButton(text="✅ Подтвердить доставку", callback_data="d_confirm"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="d_cancel"),
+    )
+    return builder.as_markup()
+
+
+async def show_deliver_edit(target, order: dict, edit: dict):
+    text = build_deliver_edit_text(order, edit)
+    kb = get_deliver_edit_keyboard(order, edit)
+    if hasattr(target, 'edit_text'):
+        await target.edit_text(text, reply_markup=kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+def adjust_edit(edit: dict, item_id: int, field: str, delta: int) -> str:
+    """Изменяет поле позиции с валидацией. Возвращает '' или текст ошибки."""
+    st = edit.get(item_id)
+    if not st:
+        return "Позиция не найдена"
+    val = st.get(field, 0) + delta
+    if field == 'quantity':
+        if val < 1:
+            return "Количество не может быть меньше 1"
+        if val > 999:
+            return "Слишком большое количество"
+    elif field == 'exchange_qty':
+        if val < 1:
+            return "Обмен тары не может быть меньше 1"
+        if val > 999:
+            return "Слишком большой обмен"
+    elif field == 'sell_with_qty':
+        if val < 0:
+            return "Продажа с тарой не может быть отрицательной"
+        if val > st.get('exchange_qty', 0):
+            return "Продажа с тарой не может превышать обмен"
+    elif field == 'defective_qty':
+        if val < 0:
+            return "Брак не может быть отрицательным"
+        if val > 999:
+            return "Слишком большой брак"
+    st[field] = val
+    return ""
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_qty_"))
+async def deliver_edit_qty(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split("_")[2])
+    delta = 1 if callback.data.endswith("_p") else -1
+    data = await state.get_data()
+    err = adjust_edit(data['edit'], item_id, 'quantity', delta)
+    if err:
+        await callback.answer(err, show_alert=True)
+        return
+    await state.update_data(edit=data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await callback.answer()
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_ex_"))
+async def deliver_edit_ex(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split("_")[2])
+    delta = 1 if callback.data.endswith("_p") else -1
+    data = await state.get_data()
+    err = adjust_edit(data['edit'], item_id, 'exchange_qty', delta)
+    if err:
+        await callback.answer(err, show_alert=True)
+        return
+    await state.update_data(edit=data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await callback.answer()
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_sw_"))
+async def deliver_edit_sw(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split("_")[2])
+    delta = 1 if callback.data.endswith("_p") else -1
+    data = await state.get_data()
+    err = adjust_edit(data['edit'], item_id, 'sell_with_qty', delta)
+    if err:
+        await callback.answer(err, show_alert=True)
+        return
+    await state.update_data(edit=data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await callback.answer()
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_df_"))
+async def deliver_edit_df(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split("_")[2])
+    delta = 1 if callback.data.endswith("_p") else -1
+    data = await state.get_data()
+    err = adjust_edit(data['edit'], item_id, 'defective_qty', delta)
+    if err:
+        await callback.answer(err, show_alert=True)
+        return
+    await state.update_data(edit=data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await callback.answer()
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_confirm")
+async def deliver_edit_confirm(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    order = data['order']
+    edit = data['edit']
+    tg_id = callback.from_user.id
+    items = []
+    for it in order.get('items', []):
+        iid = it['id']
+        st = edit.get(iid, {})
+        payload = {
+            'item_id': iid,
+            'exchange_qty': st.get('exchange_qty', 0),
+            'sell_with_qty': st.get('sell_with_qty', 0),
+            'defective_qty': st.get('defective_qty', 0),
+        }
+        if not is_water_item(it):
+            payload['quantity'] = st.get('quantity', it.get('quantity', 0))
+        items.append(payload)
+    result = await api_client.post(
+        '/courier/orders/confirm/',
+        data={'order_id': data['order_id'], 'confirmed': True, 'note': '', 'items': items},
+        headers=auth_headers(tg_id)
+    )
+    await state.clear()
+    if 'error' in result:
+        await callback.message.edit_text(f"❌ Ошибка подтверждения: {result.get('error')}")
+        await callback.answer()
+        return
+    await callback.message.edit_text(f"✅ Заказ #{data['order_id']} доставлен!")
+    await callback.answer("Готово!")
+    # Обновляем список "Мой рейс" — доставленный заказ исчезнет
+    await show_current_trip(callback.message)
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_cancel")
+async def deliver_edit_cancel(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    order = data['order']
+    await state.clear()
+    # Возврат к карточке заказа (без отмены самого заказа)
+    buttons = [
+        [InlineKeyboardButton(text="✅ Доставить", callback_data=f"deliver_order_{order['id']}")],
+        [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"trip_cancel_{order['id']}")],
+        [InlineKeyboardButton(text="↩️ Вернуть в пул", callback_data=f"return_order_{order['id']}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_trip")],
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(build_order_detail_text(order), reply_markup=kb)
+    await callback.answer()
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Смены и рейсы — 3 уровня навигации (смена → рейс → заказ)
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ─── Форматирование текста ────────────────────────────────────────────────────
+
+def _build_shift_list_text(shifts: list) -> str:
+    """Сводка по всем сменам (стартовый экран)."""
+    total_cash = sum(s.get('cash_total') or 0 for s in shifts)
+    total_card = sum(s.get('card_total') or 0 for s in shifts)
+    total_orders = sum((s.get('stats') or {}).get('orders_count', 0) for s in shifts)
+    total_water = sum((s.get('stats') or {}).get('water_delivered', 0) for s in shifts)
+    lines = [
+        "📋 <b>Смены и рейсы</b>",
+        "=" * 28,
+        f"📅 Всего смен: {len(shifts)}",
+        f"📦 Доставлено: {total_orders} заказов, {total_water} шт воды",
+        f"💵 Наличные: {fmt_money(total_cash)} сум",
+        f"💳 Карта: {fmt_money(total_card)} сум",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        "Выберите смену для просмотра:",
+    ]
+    return "\n".join(lines)
+
+
+def _build_shift_detail_text(shift: dict) -> str:
+    """Детали одной смены + список рейсов."""
+    date = shift.get('date', 'N/A')
+    is_open = shift.get('status') == 'OP'
+    status = '🟢 ОТКРЫТА' if is_open else '🔴 ЗАКРЫТА'
+    cash = shift.get('cash_total') or 0
+    card = shift.get('card_total') or 0
+    stats = shift.get('stats') or {}
+    orders_count = stats.get('orders_count', 0)
+    water = stats.get('water_delivered', 0)
+    trips = shift.get('trips', [])
+    total_trip_delivered = sum(
+        (t.get('summary') or {}).get('delivered', 0) for t in trips
+    )
+    lines = [
+        f"📋 <b>Смена {date}</b> ({status})",
+        "=" * 28,
+        f"💵 Наличные: {fmt_money(cash)} сум",
+        f"💳 Карта: {fmt_money(card)} сум",
+        f"📦 Воды доставлено: {water} шт",
+        f"📋 Заказов выполнено: {orders_count}",
+        f"🚚 Рейсов: {len(trips)} (доставлено {total_trip_delivered} шт)",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        "Рейсы:",
+    ]
+    return "\n".join(lines)
+
+
+def _build_trip_detail_text(trip: dict) -> str:
+    """Детали одного рейса + список заказов."""
+    trip_id = trip.get('id')
+    is_active = trip.get('status') == 'AC'
+    status = '🟢 ACTIVE' if is_active else '🔵 DONE'
+    summary = trip.get('summary', {})
+    full_loaded = summary.get('full_loaded', trip.get('full_loaded', 0))
+    delivered = summary.get('delivered', 0)
+    full_remain = summary.get('full_remain', 0)
+    empty_in_car = summary.get('empty_in_car', 0)
+    defect_qty = summary.get('defect_qty', 0)
+    orders = trip.get('orders', [])
+    lines = [
+        f"🚚 <b>Рейс #{trip_id}</b> ({status})",
+        "=" * 28,
+        f"📦 Загружено: {full_loaded} шт",
+        f"✅ Доставлено: {delivered} шт",
+        f"📦 Остаток: {full_remain} шт",
+        f"🔄 Пустых: {empty_in_car} шт",
+        f"⚠️ Брак: {defect_qty} шт",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"Заказы ({len(orders)}):" if orders else "Заказов нет",
+    ]
+    return "\n".join(lines)
+
+
+# ─── Уровень 0: Список смен (стартовый экран) ────────────────────────────────
 
 @router.message(F.text == "📋 Смены и рейсы")
 async def show_shifts_history(message: Message):
-    """История смен и рейсов."""
     tg_id = message.from_user.id
-    
-    shifts_data = await api_client.get(
-        '/shifts/history/',
-        headers={'X-Telegram-ID': str(tg_id)}
-    )
-    
-    if 'error' in shifts_data or not shifts_data:
-        await message.answer("Net istorii smen.")
+    shifts_data = await api_client.get('/shifts/history/', headers=auth_headers(tg_id))
+    current = await get_trip_state(tg_id)
+    if 'error' in shifts_data or not isinstance(shifts_data, list) or not shifts_data:
+        await message.answer("📋 История смен пуста.")
         return
-    
-    text = "Istoriya vashikh smen (poslednie 5):\n\n"
-    
-    shifts = shifts_data if isinstance(shifts_data, list) else []
-    for shift in shifts[:5]:
-        status = "OTKRYTA" if shift.get('status') == 'OPEN' else "ZAKRYTA"
-        text += (
-            f"{shift.get('date', 'N/A')} | {status}\n"
-            f"Nalichnye: {shift.get('cash_total', 0):,} | "
-            f"Karta: {shift.get('card_total', 0):,}\n\n"
-        )
-    
-    await message.answer(text)
+    # Показываем только последние 10 смен
+    shifts_data = shifts_data[:10]
+    # Кэшируем данные для последующей навигации
+    _shifts_cache[tg_id] = shifts_data
+    text = _build_shift_list_text(shifts_data)
+    has_active = current.get('active_shift', False)
+    kb = get_shifts_list_keyboard(shifts_data, has_active_shift=has_active)
+    await message.answer(text, reply_markup=kb)
 
 
+# ─── Уровень 1: Детали смены ─────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("shift_detail_"))
+async def show_shift_detail(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    shift_id = int(callback.data.split("_")[2])
+    shifts = _shifts_cache.get(tg_id, [])
+    shift = next((s for s in shifts if s['id'] == shift_id), None)
+    if not shift:
+        await callback.answer("Данные устарели. Откройте «Смены и рейсы» заново.", show_alert=True)
+        return
+    text = _build_shift_detail_text(shift)
+    trips = shift.get('trips', [])
+    kb = get_shift_detail_keyboard(trips, shift_id)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+# ─── Уровень 2: Детали рейса ─────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("trip_detail_"))
+async def show_trip_detail(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    trip_id = int(callback.data.split("_")[2])
+    shifts = _shifts_cache.get(tg_id, [])
+    # Ищем рейс во всех сменах
+    trip = None
+    shift_id = None
+    for s in shifts:
+        for t in s.get('trips', []):
+            if t['id'] == trip_id:
+                trip = t
+                shift_id = s['id']
+                break
+        if trip:
+            break
+    if not trip:
+        await callback.answer("Данные устарели. Откройте «Смены и рейсы» заново.", show_alert=True)
+        return
+    text = _build_trip_detail_text(trip)
+    orders = trip.get('orders', [])
+    kb = get_trip_detail_keyboard(orders, shift_id)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+# ─── Уровень 3: Детали заказа (из рейса) ─────────────────────────────────────
+
+@router.callback_query(F.data.startswith("order_info_"))
+async def show_order_info(callback: CallbackQuery):
+    """Показать детали заказа из рейса (только для просмотра)."""
+    tg_id = callback.from_user.id
+    order_id = int(callback.data.split("_")[2])
+    shifts = _shifts_cache.get(tg_id, [])
+    # Ищем заказ во всех сменах/рейсах
+    order = None
+    shift_id = None
+    for s in shifts:
+        for t in s.get('trips', []):
+            for o in t.get('orders', []):
+                if o['id'] == order_id:
+                    order = o
+                    shift_id = s['id']
+                    break
+            if order:
+                break
+        if order:
+            break
+    if not order:
+        await callback.answer("Данные устарели. Откройте «Смены и рейсы» заново.", show_alert=True)
+        return
+
+    status = order.get('status')
+    icon = '🟢' if status == 'DL' else ('🔴' if status == 'CN' else '🟡')
+    status_label = {'DL': 'Доставлен', 'CN': 'Отменён'}.get(status, 'В работе')
+    items = order.get('items', [])
+    items_text = "\n".join(
+        f"   • {it.get('product_name', 'N/A')} × {it.get('quantity', 0)}"
+        for it in items
+    ) or "   Нет позиций"
+    pay_icon = {'CD': '💳', 'BS': '🎁'}.get(order.get('payment_type'), '💵')
+    lines = [
+        f"📦 <b>Заказ #{order['id']}</b> {icon}",
+        "=" * 28,
+        f"👤 Клиент: {order.get('client_name') or 'Клиент не указан'}",
+        f"🚰 Товары:\n{items_text}",
+        f"💰 Сумма: {fmt_money(order.get('total_price'))} сум",
+        f"{pay_icon} Оплата: {order.get('payment_type')}",
+        f"📊 Статус: {status_label}",
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Назад к рейсу", callback_data=f"back_to_shift_{shift_id}")
+    ]])
+    await callback.message.edit_text("\n".join(lines), reply_markup=kb)
+    await callback.answer()
+
+
+# ─── Навигация: назад ─────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "back_to_shifts")
+async def back_to_shifts_list(callback: CallbackQuery):
+    """Назад к списку смен."""
+    tg_id = callback.from_user.id
+    shifts = _shifts_cache.get(tg_id, [])
+    if not shifts:
+        await callback.answer("Данные устарели. Откройте заново.", show_alert=True)
+        return
+    text = _build_shift_list_text(shifts)
+    current = await get_trip_state(tg_id)
+    has_active = current.get('active_shift', False)
+    kb = get_shifts_list_keyboard(shifts, has_active_shift=has_active)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("back_to_shift_"))
+async def back_to_shift(callback: CallbackQuery):
+    """Назад к деталям смены."""
+    tg_id = callback.from_user.id
+    # callback_data = "back_to_shift_5" → split = ['back','to','shift','5'] → берём последний элемент
+    shift_id = int(callback.data.rsplit("_", 1)[1])
+    shifts = _shifts_cache.get(tg_id, [])
+    shift = next((s for s in shifts if s['id'] == shift_id), None)
+    if not shift:
+        await callback.answer("Данные устарели. Откройте заново.", show_alert=True)
+        return
+    text = _build_shift_detail_text(shift)
+    trips = shift.get('trips', [])
+    kb = get_shift_detail_keyboard(trips, shift_id)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+@router.callback_query(F.data == "close_shift")
+async def close_shift(callback: CallbackQuery):
+    """Показать подтверждение закрытия смены со статистикой (как ShiftClose.jsx)."""
+    tg_id = callback.from_user.id
+    current = await get_trip_state(tg_id)
+    if not current.get('active_shift'):
+        await callback.answer("Смена уже закрыта", show_alert=True)
+        return
+    if current.get('active_trip'):
+        await callback.answer("❌ Сначала закройте активный рейс", show_alert=True)
+        return
+    shift_id = current.get('shift_id')
+    # Загружаем статистику смены
+    shift_data = await api_client.get('/shifts/current/', headers=auth_headers(tg_id))
+    shift_info = shift_data.get('shift', {}) if isinstance(shift_data, dict) else {}
+    shift_stats = shift_data.get('shift_stats', {}) if isinstance(shift_data, dict) else {}
+
+    cash_total = shift_info.get('cash_total', 0)
+    card_total = shift_info.get('card_total', 0)
+    total_amount = cash_total + card_total
+    water_delivered = shift_stats.get('water_delivered', 0)
+    orders_count = shift_stats.get('orders_count', 0)
+    date = shift_info.get('date', 'N/A')
+
+    reminder = "\n💵 Не забудьте сдать наличные!\n" if cash_total > 0 else "\n"
+    text = (
+        f"📋 <b>Закрытие смены #{shift_id}</b>\n"
+        f"{'=' * 28}\n"
+        f"📅 <b>Дата:</b> {date}\n"
+        f"\n📦 <b>Статистика доставки</b>\n"
+        f"   Воды доставлено: {water_delivered} бак\n"
+        f"   Заказов выполнено: {orders_count} шт\n"
+        f"\n💰 <b>Финансы</b>\n"
+        f"   💵 Наличные: {fmt_money(cash_total)} сум\n"
+        f"   💳 Карта: {fmt_money(card_total)} сум\n"
+        f"   {'=' * 20}\n"
+        f"   <b>Итого: {fmt_money(total_amount)} сум</b>\n"
+        f"{reminder}"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Подтвердите закрытие:"
+    )
+    buttons = [
+        [InlineKeyboardButton(text="✅ Закрыть смену", callback_data="confirm_close_shift")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_close_shift")],
+    ]
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "confirm_close_shift")
+async def confirm_close_shift(callback: CallbackQuery):
+    """Подтвердить и выполнить закрытие смены."""
+    tg_id = callback.from_user.id
+    current = await get_trip_state(tg_id)
+    if not current.get('active_shift'):
+        await callback.answer("Смена уже закрыта", show_alert=True)
+        return
+    shift_id = current.get('shift_id')
+    result = await api_client.post(
+        f'/courier/shifts/{shift_id}/close/',
+        headers=auth_headers(tg_id)
+    )
+    if 'error' in result:
+        await callback.answer(f"❌ {result.get('error')}", show_alert=True)
+        return
+    await callback.message.edit_text(f"🔒 Смена #{shift_id} закрыта.")
+    await show_main_menu(callback.message, tg_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_close_shift")
+async def cancel_close_shift(callback: CallbackQuery):
+    """Отмена закрытия смены."""
+    await show_main_menu(callback.message, callback.from_user.id)
+    await callback.answer()
+
+# ─── Коллеги ───────────────────────────────────────────────────────────────────
 @router.message(F.text == "👥 Коллеги")
 async def show_colleagues(message: Message):
-    """Показать список коллег с открытыми сменами."""
     tg_id = message.from_user.id
-    
-    colleagues_data = await api_client.get(
-        '/courier/colleagues/',
-        headers={'X-Telegram-ID': str(tg_id)}
-    )
-    
+    colleagues_data = await api_client.get('/courier/colleagues/', headers=auth_headers(tg_id))
     if 'error' in colleagues_data or not colleagues_data:
-        await message.answer("Net kolleg na smene.")
+        await message.answer("👥 Коллег на смене нет.")
         return
-    
-    text = "Vashi kollegi na smene segodnya:\n\n"
-    
-    colleagues = colleagues_data if isinstance(colleagues_data, list) else []
-    for colleague in colleagues:
-        trip = colleague.get('current_trip', {})
+    online = [c for c in colleagues_data if c.get('is_online')]
+    text = f"👥 <b>Коллеги на смене ({len(online)}):</b>\n\n"
+    for c in colleagues_data:
+        status = "🟢" if c.get('is_online') else "⚪️"
         text += (
-            f"{colleague.get('courier_name', 'N/A')}\n"
-            f"Dostavok: {trip.get('delivered_count', 0)}\n"
-            f"Tel: {colleague.get('phone', 'N/A')}\n\n"
+            f"{status} {c.get('full_name', 'N/A')}\n"
+            f"   💧 В машине: {c.get('water_in_car', 0)} | Нужно: {c.get('water_needed', 0)}\n"
+            f"   ✅ Доставлено: {c.get('orders_completed', 0)} | ⏳ В работе: {c.get('orders_pending', 0)}\n"
+            f"   📞 {c.get('phone', 'N/A')}\n\n"
         )
-    
     await message.answer(text)
 
-
+# ─── Помощь ────────────────────────────────────────────────────────────────────
 @router.message(F.text == "🆘 Помощь")
 async def show_help(message: Message):
-    """Показать справку для курьера."""
     await message.answer(
-        "Pomoshch po komandam kuryera:\n\n"
-        "• Pul zakazov - spisok zakazov, kotorye mozhno vzyat\n"
-        "• Moy reys - detali tekushchego reysa i schetchiki\n"
-        "• Smeny i reysy - istoriya vashikh smen\n"
-        "• Kollegi - kto segodnya na smene\n\n"
-        "Dlya sozdaniya zakaza ispolzuyte knopku v pule zakazov."
+        "🆘 <b>Помощь курьера</b>\n\n"
+        "• 🟢 Открыть смену — начать рабочий день\n"
+        "• 🚀 Начать рейс — загрузить машину и начать развоз\n"
+        "• 📦 Заказы — пул свободных заказов, взять в работу\n"
+        "• 📋 В процессе — курьеры и их взятые заказы\n"
+        "• ➕ Создать заказ — создать новый заказ для клиента\n"
+        "• 🚚 Мой рейс — статистика рейса, список заказов, закрытие\n"
+        "• ✅ Подтвердить доставку — отметить заказ доставленным\n"
+        "• 📋 Смены и рейсы — история смен, рейсов, заказов\n"
+        "• 🆘 Помощь — эта подсказка"
     )
