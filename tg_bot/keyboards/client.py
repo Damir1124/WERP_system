@@ -1,6 +1,5 @@
 """
-Клавиатуры для клиента (reply и inline).
-Все взаимодействия — через кнопки Telegram, без Mini App.
+Клавиатуры для клиента.
 """
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
@@ -8,99 +7,150 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-
-def get_client_main_keyboard() -> ReplyKeyboardMarkup:
-    """Главное меню клиента."""
-    builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="🛒 Заказать воду"))
-    builder.add(KeyboardButton(text="📋 Мои заказы"))
-    builder.add(KeyboardButton(text="📍 Мой адрес"))
-    builder.add(KeyboardButton(text="🆘 Помощь"))
-    builder.adjust(1, 2, 1)
-    return builder.as_markup(resize_keyboard=True, input_field_placeholder="Выберите действие")
+from tg_bot.constants import (
+    LANGUAGES, t,
+    BTN_BACK, BTN_SKIP, BTN_ADD_ADDRESS, BTN_NEW_ADDRESS,
+    BTN_DELETE, BTN_YES, BTN_NO,
+    BTN_SEND_LOCATION, BTN_SEND_PHONE,
+    MAIN_MENU_BTN, MY_ADDRESSES_BTN, LANG_BTN, COOLERS_BTN,
+    ADDRESS_LABELS,
+)
 
 
-# ─── Клавиатуры для FSM заказа воды ───────────────────────────────────────────
+# ─── Языки ─────────────────────────────────────────────────────────────────────
 
-def get_location_request_keyboard() -> ReplyKeyboardMarkup:
-    """Reply-клавиатура с кнопкой отправки геолокации."""
-    builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="📍 Отправить местоположение", request_location=True))
-    builder.add(KeyboardButton(text="⬅️ Назад"))
-    builder.adjust(1)
-    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-
-def get_phone_request_keyboard() -> ReplyKeyboardMarkup:
-    """Reply-клавиатура с кнопкой отправки номера телефона."""
-    builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="📱 Отправить номер", request_contact=True))
-    builder.add(KeyboardButton(text="⬅️ Назад"))
-    builder.adjust(1)
-    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-
-def get_quantity_keyboard() -> InlineKeyboardMarkup:
-    """
-    Inline-клавиатура с сеткой чисел для быстрого выбора количества.
-    Показывает числа от 2 до 10 в сетке 3x3. Больше можно ввести вручную.
-    """
+def get_lang_keyboard() -> InlineKeyboardMarkup:
+    """Выбор языка: [🇷🇺 Русский] [🇺🇿 O'zbek] [🇬🇧 English]"""
     builder = InlineKeyboardBuilder()
-    # Сетка 3x3: числа от 2 до 10
-    for n in range(2, 11):
-        builder.add(InlineKeyboardButton(text=str(n), callback_data=f"client_qty_{n}"))
+    for code, label in LANGUAGES.items():
+        builder.add(InlineKeyboardButton(text=label, callback_data=f"lang_{code}"))
     builder.adjust(3)
     return builder.as_markup()
 
 
-def get_phone_confirm_keyboard() -> InlineKeyboardMarkup:
-    """Inline-клавиатура для подтверждения существующего номера."""
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(text="Да, использовать", callback_data="phone_confirm_yes"))
-    builder.add(InlineKeyboardButton(text="📱 Изменить номер", callback_data="phone_confirm_change"))
-    builder.adjust(2)
-    return builder.as_markup()
+# ─── Главное меню ──────────────────────────────────────────────────────────────
+
+def get_main_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
+    """Главное меню клиента."""
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text=t(MAIN_MENU_BTN, lang)))
+    builder.add(KeyboardButton(text=t(MY_ADDRESSES_BTN, lang)))
+    builder.add(KeyboardButton(text=t(LANG_BTN, lang)))
+    builder.add(KeyboardButton(text=t(COOLERS_BTN, lang)))
+    builder.adjust(1, 1, 2)
+    return builder.as_markup(resize_keyboard=True)
 
 
-def get_address_selection_keyboard(addresses: list) -> InlineKeyboardMarkup:
+# ─── Количество ────────────────────────────────────────────────────────────────
+
+def get_quantity_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
+    """Reply-клавиатура с сеткой чисел 2-10 и кнопкой Главное меню."""
+    from tg_bot.constants import BTN_MAIN_MENU, t
+    builder = ReplyKeyboardBuilder()
+    for n in range(2, 11):
+        builder.add(KeyboardButton(text=str(n)))
+    builder.add(KeyboardButton(text=t(BTN_MAIN_MENU, lang)))
+    # 3 колонки для чисел, последняя строка — Главное меню
+    builder.adjust(3, 3, 3, 1)
+    return builder.as_markup(resize_keyboard=True)
+
+
+# ─── Адреса ────────────────────────────────────────────────────────────────────
+
+def get_address_list_keyboard(addresses: list, lang: str = 'ru') -> InlineKeyboardMarkup:
     """
-    Inline-клавиатура для выбора адреса из сохранённых.
-    
-    Args:
-        addresses: Список словарей с ключами id, address_text, latitude, longitude
+    Список адресов для выбора.
+    Каждая кнопка: "{label or 'Адрес #N'} — {address_text или '📍 Геолокация'}"
+    + кнопка [➕ Новый адрес]
     """
     builder = InlineKeyboardBuilder()
-    
     for addr in addresses:
-        label = addr.get('address_text', '').strip()
-        if not label and addr.get('latitude') and addr.get('longitude'):
-            label = f"📍 {float(addr['latitude']):.4f}, {float(addr['longitude']):.4f}"
-        if not label:
-            label = f"Адрес #{addr['id']}"
-        if len(label) > 35:
-            label = label[:32] + '...'
-        
+        label = addr.label or f"Адрес #{addr.id}"
+        text = addr.address_text or '📍 Геолокация'
         builder.row(InlineKeyboardButton(
-            text=f"🏠 {label}",
-            callback_data=f"client_addr_select_{addr['id']}"
+            text=f"{label} — {text}",
+            callback_data=f"sel_addr_{addr.id}"
         ))
-    
     builder.row(InlineKeyboardButton(
-        text="➕ Добавить новый адрес",
-        callback_data="client_addr_new"
+        text=t(BTN_NEW_ADDRESS, lang),
+        callback_data="new_addr"
     ))
-    builder.row(InlineKeyboardButton(
-        text="⬅️ Назад",
-        callback_data="client_addr_back"
-    ))
-    
     return builder.as_markup()
 
 
-def get_order_confirm_keyboard() -> InlineKeyboardMarkup:
-    """Inline-клавиатура для подтверждения заказа."""
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="client_order_confirm"))
-    builder.add(InlineKeyboardButton(text="❌ Отменить", callback_data="client_order_cancel"))
+def get_address_label_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
+    """Быстрые метки для адреса + Пропустить."""
+    builder = ReplyKeyboardBuilder()
+    # Показываем метки на текущем языке
+    labels_map = {
+        'ru': ['Дом', 'Офис', 'Работа'],
+        'uz': ['Uy', 'Ofis', 'Ish'],
+        'en': ['Home', 'Office', 'Work'],
+    }
+    for label in labels_map.get(lang, labels_map['ru']):
+        builder.add(KeyboardButton(text=label))
+    builder.add(KeyboardButton(text=t(BTN_SKIP, lang)))
+    builder.adjust(2, 2, 1)
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_location_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
+    """Клавиатура с кнопкой геолокации."""
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text=t(BTN_SEND_LOCATION, lang), request_location=True))
+    builder.add(KeyboardButton(text=t(BTN_BACK, lang)))
     builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+# ─── Телефон ───────────────────────────────────────────────────────────────────
+
+def get_phone_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
+    """Клавиатура с кнопкой отправки номера."""
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text=t(BTN_SEND_PHONE, lang), request_contact=True))
+    builder.add(KeyboardButton(text=t(BTN_BACK, lang)))
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+# ─── Управление адресами ───────────────────────────────────────────────────────
+
+def get_my_addresses_keyboard(addresses: list, lang: str = 'ru') -> InlineKeyboardMarkup:
+    """
+    Список адресов с кнопками удаления.
+    Для каждого адреса: [🗑️ Удалить]
+    + кнопка [➕ Добавить адрес]
+    """
+    builder = InlineKeyboardBuilder()
+    for addr in addresses:
+        label = addr.label or f"Адрес #{addr.id}"
+        text = addr.address_text or '📍 Геолокация'
+        builder.row(InlineKeyboardButton(
+            text=f"{label} — {text}",
+            callback_data=f"noop_{addr.id}"  # просто информация, без действия
+        ))
+        builder.add(InlineKeyboardButton(
+            text=t(BTN_DELETE, lang),
+            callback_data=f"del_addr_{addr.id}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text=t(BTN_ADD_ADDRESS, lang),
+        callback_data="add_addr"
+    ))
+    return builder.as_markup()
+
+
+def get_confirm_delete_keyboard(address_id: int, lang: str = 'ru') -> InlineKeyboardMarkup:
+    """Подтверждение удаления адреса."""
+    builder = InlineKeyboardBuilder()
+    builder.add(InlineKeyboardButton(
+        text=t(BTN_YES, lang),
+        callback_data=f"confirm_del_{address_id}"
+    ))
+    builder.add(InlineKeyboardButton(
+        text=t(BTN_NO, lang),
+        callback_data="cancel_del"
+    ))
+    builder.adjust(2)
     return builder.as_markup()

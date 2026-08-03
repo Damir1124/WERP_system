@@ -5,11 +5,17 @@
 """
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
 # Добавляем корень проекта в sys.path для импорта модулей Django
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Настройка Django (для прямого ORM-доступа из бота)
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'WERP_system.settings')
+import django
+django.setup()
 
 # Настройка логирования
 logging.basicConfig(

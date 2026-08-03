@@ -50,6 +50,12 @@ class ClientAddress(models.Model):
         related_name='addresses',
         verbose_name='Клиент'
     )
+    label = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        verbose_name='Метка (Дом, Офис, Работа)'
+    )
     address_text = models.CharField(
         max_length=120,
         blank=True,

@@ -94,24 +94,7 @@ class IdentifyView(APIView):
                 'phone': client.phone,
                 'address': client.address,
             })
-        # Авто-регистрация: если пользователь нигде не найден — создаём как клиента
-        from apps.clients.models import Client as ClientModel
-        tg_id_str = str(tg_id_int)
-        auto_name = f"Клиент {tg_id_str[-4:]}"
-        new_client = ClientModel.objects.create(
-            tg_id=tg_id_int,
-            name=auto_name,
-            phone='',
-            address='',
-        )
-        return Response({
-            'role': 'client',
-            'name': new_client.name,
-            'id': new_client.id,
-            'phone': '',
-            'address': '',
-            'is_new': True,
-        })
+        return Response({'role': 'unknown', 'message': 'Пользователь не зарегистрирован'})
 
 # ─── Профиль курьера ──────────────────────────────────────────────────────────
 

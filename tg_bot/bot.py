@@ -14,7 +14,7 @@ from aiogram.types import Message
 from tg_bot.config import BOT_TOKEN, LOG_LEVEL
 from tg_bot.middlewares.auth import AuthMiddleware
 from tg_bot.routers import courier, client, admin
-from tg_bot.routers import courier_create_order, client_order
+from tg_bot.routers import courier_create_order
 
 # Настройка логирования
 logging.basicConfig(level=LOG_LEVEL)
@@ -78,14 +78,12 @@ courier.router.callback_query.filter(lambda callback, user=None, **kwargs: user 
 courier_create_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
 courier_create_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
 
-client.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'client')
-client.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'client')
-
-client_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'client')
-client_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'client')
-
 admin.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'admin')
 admin.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'admin')
+
+# Клиентский роутер обрабатывает ЛЮБОГО пользователя (сам определяет роль через ORM):
+# /start → выбор языка → регистрация через телефон при заказе.
+# Фильтр не нужен, но ставим минимальный, чтобы не перехватывать служебные апдейты.
 
 unknown_router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'unknown')
 unknown_router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'unknown')
@@ -93,7 +91,6 @@ unknown_router.callback_query.filter(lambda callback, user=None, **kwargs: user 
 dp.include_router(admin.router)
 dp.include_router(courier.router)
 dp.include_router(courier_create_order.router)
-dp.include_router(client_order.router)
 dp.include_router(client.router)
 dp.include_router(unknown_router)
 
