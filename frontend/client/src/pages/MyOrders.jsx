@@ -90,7 +90,7 @@ export default function MyOrders() {
               <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <span className="text-xs text-gray-400">Заказ #{order.id}</span>
+                    <span className="text-xs text-gray-400">Заказ {order.display_number != null ? String(order.display_number).padStart(3, '0') : String(order.id)}</span>
                     <h3 className="font-semibold text-gray-900 mt-0.5">
                       {order.product_name}
                     </h3>

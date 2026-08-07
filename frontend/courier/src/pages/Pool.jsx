@@ -59,6 +59,7 @@ export default function Pool() {
   // Преобразуем данные заказа в формат, ожидаемый OrderCard
   const transformOrder = (order) => ({
     id: order.id,
+    display_number: order.display_number ?? null,
     created_at: order.created_at,
     delivery_address_text: order.delivery_address_text || 'Адрес не указан',
     delivery_latitude: order.delivery_latitude || null,

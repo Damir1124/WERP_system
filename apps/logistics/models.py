@@ -288,13 +288,31 @@ class Order(models.Model):
     created_at    = models.DateTimeField(auto_now_add=True)
     delivered_at  = models.DateTimeField(null=True, blank=True)
 
+    # Декоративный номер (1-999) для отображения сотрудникам, например «Заказ N042».
+    # НЕ является уникальным бизнес-идентификатором и НЕ используется для API/URL.
+    # Настоящий идентификатор — Order.id. См. apps/logistics/services.py.
+    display_number = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Декоративный номер'
+    )
+
     class Meta:
         verbose_name = "Заказ"
         verbose_name_plural = "Заказы"
         ordering = ['-created_at']
 
+    @property
+    def human_number(self) -> str:
+        """Форматированный декоративный номер: 042 (для старых заказов — id)."""
+        if self.display_number is not None:
+            return f"{self.display_number:03d}"
+        return str(self.id)
+
     def __str__(self):
+        if self.pk is None:
+            return f'Заказ (новый, display_number={self.display_number})'
         items_count = self.items.count()
+        if self.display_number:
+            return f'Заказ #{self.display_number:03d} (ID:{self.id}, {items_count} поз.)'
         return f'Заказ #{self.id} ({items_count} позиций)'
 
     def get_total_price(self):
@@ -365,3 +383,26 @@ class OrderItem(models.Model):
             logger.info(f"OrderItem save: product={self.product.name}, quantity={self.quantity}, price={self.price}")
 
         super().save(*args, **kwargs)
+
+
+class OrderNumberCounter(models.Model):
+    """Счётчик декоративных номеров заказов (1-999).
+
+    Хранит единственную рабочую запись с последним выданным номером.
+    При new_order_number() блокируется строка через select_for_update()
+    в рамках транзакции, что гарантирует уникальность номера при
+    одновременном создании заказов.
+
+    После N999 следующий номер снова равен 1.
+    Номера не возвращаются в пул после отмены заказа.
+    """
+    current_number = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Текущий номер'
+    )
+
+    class Meta:
+        verbose_name = 'Счетчик номеров заказов'
+        verbose_name_plural = 'Счетчик номеров заказов'
+
+    def __str__(self):
+        return f'Счетчик: {self.current_number}'

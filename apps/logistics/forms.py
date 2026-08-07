@@ -109,6 +109,11 @@ class OrderForm(forms.ModelForm):
     def save(self, commit=True):
         """Сохранение заказа с автоматическим созданием/поиском клиента"""
         order = super().save(commit=False)
+
+        # Если это новый заказ — присваиваем декоративный номер
+        if not order.pk and order.display_number is None:
+            from apps.logistics.services import get_next_display_number
+            order.display_number = get_next_display_number()
         
         # Получаем данные клиента из формы
         phone = self.cleaned_data.get('client_phone')

@@ -21,10 +21,11 @@ echo ║  [7] ОТКРЫТЬ MINI APP КЛИЕНТА в браузере        
 echo ║  [8] ПОКАЗАТЬ ЛОГИ (последние 50 строк)         ║
 echo ║  [9] ОСТАНОВИТЬ ВСЁ И ВЫЙТИ                     ║
 echo ║  [10] ПЕРЕЗАПУСТИТЬ БОТА                          ║
+echo ║  [11] ОТКРЫТЬ DASHBOARD                           ║
 echo ╚══════════════════════════════════════════════════╝
 echo.
 
-set /p choice="Выбери действие (1-10): "
+set /p choice="Выбери действие (1-11): "
 
 if "%choice%"=="1" goto START_ALL
 if "%choice%"=="2" goto RESTART_APP
@@ -36,6 +37,7 @@ if "%choice%"=="7" goto OPEN_CLIENT
 if "%choice%"=="8" goto SHOW_LOGS
 if "%choice%"=="9" goto KILL_ALL
 if "%choice%"=="10" goto RESTART_BOT
+if "%choice%"=="11" goto OPEN_DASHBOARD
 goto MENU
 
 :: ─────────────────────────────────────────────────────────────────────────────
@@ -87,6 +89,7 @@ echo ║  ✅ СИСТЕМА ЗАПУЩЕНА!                            ║
 echo ╠══════════════════════════════════════════════════╣
 echo ║  Django:  http://localhost:8000                  ║
 echo ║  Admin:   http://localhost:8000/admin/           ║
+echo ║  Dashb:   http://localhost:8000/dashboard/       ║
 echo ║  Курьер:  http://localhost:8000/miniapp/courier/ ║
 echo ║  Клиент:  http://localhost:8000/miniapp/client/  ║
 echo ║  API:     http://localhost:8000/api/bot/         ║
@@ -189,6 +192,10 @@ goto MENU
 
 :OPEN_CLIENT
 start "" "http://localhost:8000/miniapp/client/"
+goto MENU
+
+:OPEN_DASHBOARD
+start "" "http://localhost:8000/dashboard/"
 goto MENU
 
 :: ─────────────────────────────────────────────────────────────────────────────

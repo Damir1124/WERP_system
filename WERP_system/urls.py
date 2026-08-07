@@ -45,8 +45,8 @@ urlpatterns = [
     # DRF аутентификация (опционально)
     path('api-auth/', include('rest_framework.urls')),
 
-    # Веб-дашборд (P6) - временно отключено, так как приложение еще не создано
-    # path('', include('apps.dashboard.urls')),
+    # Веб-дашборд (P6)
+    path('dashboard/', include('apps.dashboard.urls')),
 
     # Mini App для курьера — SPA (все пути отдают index.html)
     path('miniapp/courier/', serve_spa('courier'), name='courier_miniapp'),

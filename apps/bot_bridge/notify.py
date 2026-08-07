@@ -82,7 +82,7 @@ def notify_client_order_accepted(order):
         f"{courier_info}"
         f"Заказ: {items_str}\n"
         f"Статус: В пути 🚚\n\n"
-        f"Номер заказа: #{order.id}"
+        f"Номер заказа: {order.human_number}"
     )
     return send_telegram_message(order.client.tg_id, text)
 
@@ -108,7 +108,7 @@ def notify_client_order_delivered(order):
         f"Заказ: {items_str}\n"
         f"Сумма: {total_price} сум\n"
         f"Спасибо за покупку!\n\n"
-        f"Номер заказа: #{order.id}"
+        f"Номер заказа: {order.human_number}"
     )
     return send_telegram_message(order.client.tg_id, text)
 

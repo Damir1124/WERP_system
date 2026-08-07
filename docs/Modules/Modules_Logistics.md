@@ -33,6 +33,7 @@
 - Перевод в статус `DELIVERED` — триггер для всей цепочки обновлений: пересчёт суммы рейса/смены, списание на складе и создание финансовой транзакции.
 - **Многоадресность (2026-07):** добавлено поле `delivery_address` (FK → `clients.ClientAddress`, `SET_NULL`, `related_name='orders'`). Вместо устаревшего `client.address` заказ ссылается на конкретную запись адреса. При создании заказа (`OrderCreateModelSerializer.create()`) адрес создаётся/находится по тексту или координатам и привязывается к `Order.delivery_address`.
 - **Снимок адреса (2026-07):** рядом с FK добавлены собственные поля `delivery_address_text` / `delivery_latitude` / `delivery_longitude` — копия адреса **на момент создания заказа**. Они не зависят от `ClientAddress`, поэтому при авто-удалении 4-го адреса исторический заказ не теряет адрес (см. баг [[Bugs_AddressSnapshot]]). `OrderSerializer`, `OrderCard` и `notify.py` читают именно снимок. Лимит «3 адреса» в `save_client_address` и `create()` защищён: не удаляет `ClientAddress`, на который висят заказы (`orders__isnull=True`).
+- **Декоративный номер (2026-08):** добавлено поле `display_number` (PositiveSmallIntegerField, nullable) — число от 1 до 999 для отображения сотрудникам в формате «Заказ N042». Номер **не уникален** и **не используется** для API/URL. Настоящий идентификатор — `Order.id`. Свойство `human_number` возвращает строку `N042` для интерфейсов. Подробнее — в разделе «Декоративные номера заказов» ниже.
 
 См. реализацию: [`apps/logistics/models.py`](apps/logistics/models.py:238) и логику сигналов в [`apps/logistics/signals.py`](apps/logistics/signals.py:61).
 
@@ -115,6 +116,110 @@
 - Сумма `exchange_qty + sell_with_qty + defective_qty` не может превышать `quantity` позиции
 - Данные проверяются как на уровне сериализаторов, так и на уровне бизнес-логики
 - При изменении количества проверяется, что новые данные о таре не превышают новое количество
+
+## Декоративные номера заказов (Order.display_number)
+
+**Добавлено:** 2026-08-04
+**Зачем:** Курьер и диспетчер видят в интерфейсе «Заказ N042» вместо «Заказ #15480». Короткий номер удобнее для устного общения и не выдаёт масштаб базы.
+
+### Архитектура
+
+```mermaid
+flowchart LR
+    A[Курьер/Клиент создаёт заказ] --> B[create_order_with_display_number]
+    B --> C[get_next_display_number]
+    C --> D[(OrderNumberCounter\nselect_for_update)]
+    D --> E[Order.display_number = N]
+    E --> F[Order создан]
+```
+
+### Ключевые решения
+
+1. **Отдельная таблица-счётчик** — [`OrderNumberCounter`](apps/logistics/models.py:377) с одной строкой. Не `MAX()`, не `COUNT()`, не просмотр таблицы заказов. Это даёт O(1) и защиту от гонок.
+
+2. **`select_for_update()` в транзакции** — два одновременных вызова получат разные номера. Первый заблокирует строку счётчика, второй подождёт и получит следующий номер.
+
+3. **Цикл 1–999** — после N999 следующий снова N001. Это не уникальный бизнес-идентификатор, а только удобная метка для интерфейса.
+
+4. **Не уникально** — `display_number` без `unique=True`. Разные заказы могут иметь одинаковый номер (разные `Order.id` различают их).
+
+5. **Nullable** — старые заказы (до миграции) имеют `display_number = NULL`. Свойство `human_number` возвращает `N{id}` как fallback.
+
+### Модель-счётчик
+
+```python
+class OrderNumberCounter(models.Model):
+    current_number = models.PositiveSmallIntegerField(default=0)
+```
+
+Создаётся автоматически при первом вызове `get_next_display_number()`. В админке только просмотр (без удаления/создания).
+
+### Сервис выдачи номера
+
+[`apps/logistics/services.py`](apps/logistics/services.py:27) — `get_next_display_number()`:
+
+```python
+with transaction.atomic():
+    counter = OrderNumberCounter.objects.select_for_update().first()
+    if counter is None:
+        counter = OrderNumberCounter.objects.create(current_number=0)
+    next_number = counter.current_number + 1
+    if next_number > 999:
+        next_number = 1
+    OrderNumberCounter.objects.filter(pk=counter.pk).update(
+        current_number=next_number
+    )
+    return next_number
+```
+
+### `create_order_with_display_number()`
+
+Единая точка создания заказа, которую используют все пути:
+
+- [`OrderCreateModelSerializer.create()`](apps/bot_bridge/serializers.py:334) — курьер через Mini App
+- [`ClientOrderCreateView`](apps/bot_bridge/views.py:953) — клиент через Mini App
+- [`CourierCreateOrderView`](apps/bot_bridge/views.py:1556) — курьер через API
+- [`create_order()`](tg_bot/routers/client.py:170) — Telegram Bot (клиент)
+- [`OrderForm.save()`](apps/logistics/forms.py:112) — Django Admin
+
+### API
+
+[`OrderSerializer`](apps/bot_bridge/serializers.py:98) возвращает:
+```json
+{
+  "id": 15480,
+  "display_number": 42,
+  "human_number": "N042",
+  ...
+}
+```
+
+### Django Admin
+
+В списке заказов:
+```
+ID: 15482 | Заказ N042 | Клиент | Дата | Статус
+```
+Поле `display_number` — readonly в форме редактирования.
+
+### Тесты
+
+[`tests/logistics/test_display_number.py`](tests/logistics/test_display_number.py) — 7 тестов:
+- Первый заказ → N001
+- Последовательные → N002, N003
+- После N999 → N001
+- `create_order_with_display_number` создаёт заказ с номером
+- `human_number` форматирует трёхзначный номер
+- Старые заказы без номера не ломаются
+- Отсутствие unique-ограничения
+
+### Почему не через Django signals
+
+Сигналы выполняются **после** `post_save` — это значит, что заказ уже создан без номера. Если сигнал упадёт, номер не присвоится, а заказ останется в БД. Сервис присваивает номер **до** создания заказа — атомарно, в одной транзакции.
+
+### Почему не auto-increment поле
+
+`PositiveSmallIntegerField` с `auto_increment` не сбрасывается после 999. Пришлось бы делать ручной сброс последовательности, что в PostgreSQL означает сброс `SEQUENCE` — опасно при параллельных вставках.
 
 ## Автономность пересчёта (как это работает)
 

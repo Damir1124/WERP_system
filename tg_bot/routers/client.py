@@ -167,7 +167,8 @@ def get_water_product() -> Optional[Product]:
 
 @sync_to_async
 def create_order(client: Client, **kwargs) -> Order:
-    return Order.objects.create(client=client, **kwargs)
+    from apps.logistics.services import create_order_with_display_number
+    return create_order_with_display_number(client=client, **kwargs)
 
 
 @sync_to_async
@@ -621,7 +622,7 @@ async def _create_order(message: Message, state: FSMContext, client: Client):
 
     await message.answer(
         f"{t(ORDER_CREATED, lang)}\n"
-        f"{t(ORDER_NUMBER, lang).format(order_id=order.id)}\n"
+        f"{t(ORDER_NUMBER, lang).format(human_number=order.human_number)}\n"
         f"{t(ORDER_SUMMARY, lang).format(quantity=quantity, address=address_display)}",
         reply_markup=get_main_keyboard(lang),
         parse_mode='HTML',

@@ -68,7 +68,8 @@ def get_pool_inline_keyboard(orders: list, mini_app_url: str = MINI_APP_URL) -> 
         water_qty = get_order_water_qty(order)
         address = (order.get('client_address') or order.get('delivery_address_text') or 'Адрес не указан')
         address_short = address[:28] + ('…' if len(address) > 28 else '')
-        text = f"#{order['id']} | {water_qty} | {address_short}"
+        label = order.get('human_number', f"#{order['id']}")
+        text = f"{label} | {water_qty} | {address_short}"
         builder.add(InlineKeyboardButton(text=text, callback_data=f"order_details_{order['id']}"))
     builder.add(InlineKeyboardButton(text="🌐 Открыть Mini App (пул)", web_app=WebAppInfo(url=f"{mini_app_url}/courier/")))
     builder.adjust(1)
@@ -95,7 +96,8 @@ def get_courier_orders_keyboard(orders: list, courier_id: int) -> InlineKeyboard
         water_qty = get_order_water_qty(order)
         address = (order.get('client_address') or order.get('delivery_address_text') or 'Адрес не указан')
         address_short = address[:24] + ('…' if len(address) > 24 else '')
-        label = f"#{order['id']} | {water_qty} | {address_short}"
+        display = order.get('human_number', f"#{order['id']}")
+        label = f"{display} | {water_qty} | {address_short}"
         builder.row(InlineKeyboardButton(
             text=label,
             callback_data=f"courier_order_detail_{courier_id}_{order['id']}"
@@ -209,7 +211,8 @@ def get_deliver_orders_inline_keyboard(orders: list) -> InlineKeyboardMarkup:
         total_qty = sum(item.get('quantity', 0) for item in items)
         address = (order.get('client_address') or order.get('delivery_address_text') or 'Адрес не указан')
         address_short = address[:24] + ('…' if len(address) > 24 else '')
-        text = f"✅ #{order['id']} | {total_qty} шт. | {address_short}"
+        display = order.get('human_number', f"#{order['id']}")
+        text = f"✅ {display} | {total_qty} шт. | {address_short}"
         builder.add(InlineKeyboardButton(text=text, callback_data=f"deliver_order_{order['id']}"))
     builder.add(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_trip"))
     builder.adjust(1)

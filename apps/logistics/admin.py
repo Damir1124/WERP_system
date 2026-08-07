@@ -3,6 +3,7 @@ from django.utils.html import format_html
 from .models import (
     DeliveryLog, DeliveryLogMove,
     CourierShift, CourierTrip, Order, OrderItem,
+    OrderNumberCounter,
 )
 from .forms import OrderForm, OrderItemFormSet
 from apps.products.models import Product
@@ -57,8 +58,8 @@ class OrderItemInline(admin.TabularInline):
 class OrderInline(admin.TabularInline):
     model = Order
     extra = 0
-    fields = ('client', 'payment_type', 'status', 'assigned_courier', 'note', 'created_at', 'delivered_at')
-    readonly_fields = ('created_at', 'delivered_at')
+    fields = ('display_number', 'client', 'payment_type', 'status', 'assigned_courier', 'note', 'created_at', 'delivered_at')
+    readonly_fields = ('created_at', 'delivered_at', 'display_number')
     show_change_link = True
     verbose_name = "Заказ"
     verbose_name_plural = "Заказы рейса"
@@ -119,15 +120,21 @@ class OrderAdmin(admin.ModelAdmin):
     change_form_template = 'admin/logistics/order_change_form.html'
     
     list_display = (
-        'id', 'trip', 'client', 'payment_type', 'status',
+        'id', 'display_number_display', 'trip', 'client', 'payment_type', 'status',
         'total_price_display', 'assigned_courier', 'created_at', 'delivered_at',
     )
     list_filter = ('status', 'payment_type', 'trip__shift__courier', 'trip__shift__date')
-    search_fields = ('client__name', 'client__phone', 'note')
-    readonly_fields = ('created_at', 'delivered_at')
+    search_fields = ('client__name', 'client__phone', 'note', 'display_number')
+    readonly_fields = ('created_at', 'delivered_at', 'display_number')
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
     inlines = [OrderItemInline]
+
+    @admin.display(description='Декоративный номер')
+    def display_number_display(self, obj):
+        if obj.display_number:
+            return f'Заказ N{obj.display_number:03d}'
+        return '—'
 
     @admin.display(description='Сумма')
     def total_price_display(self, obj):
@@ -213,3 +220,16 @@ class OrderItemAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'order__client__name')
     readonly_fields = ('price',)
     ordering = ('-order__created_at', 'id')
+
+
+@admin.register(OrderNumberCounter)
+class OrderNumberCounterAdmin(admin.ModelAdmin):
+    """Счётчик декоративных номеров заказов (только просмотр)."""
+    list_display = ('id', 'current_number')
+    readonly_fields = ('current_number',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -30,7 +30,12 @@ def update_finance_record(date):
     income = sum(t.amount for t in transactions if t.transaction_type == FinancialTransactions.TransactionsType.PLUS)
     consumption = sum(
         t.amount for t in transactions if t.transaction_type == FinancialTransactions.TransactionsType.MINUS)
-    card_profit = sum(t.card_amount for t in transactions)
+    # card_profit считаем ТОЛЬКО по PLUS-транзакциям (доходным операциям),
+    # чтобы расходные MINUS-операции с card_amount не искажали безналичную прибыль.
+    card_profit = sum(
+        t.card_amount for t in transactions
+        if t.transaction_type == FinancialTransactions.TransactionsType.PLUS
+    )
 
     finance, created = Finance.objects.get_or_create(date=date)
     finance.income = income

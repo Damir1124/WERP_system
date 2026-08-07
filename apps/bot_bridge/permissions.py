@@ -34,16 +34,23 @@ class IsCourier(BasePermission):
             if courier is not None and courier.worker_type == Worker.WorkerType.COURIER:
                 request.courier = courier
                 return True
-            # Заголовок есть, но не соответствует курьеру
+            # Работник есть, но он не курьер — доступ запрещён
+            if courier is not None:
+                raise AuthenticationFailed(
+                    'Доступ к Mini App только для курьеров. '
+                    'Ваш тип сотрудника: ' + courier.get_worker_type_display()
+                )
+            # Заголовок есть, но не соответствует ни одному работнику
             if require:
                 raise AuthenticationFailed(
-                    'Курьер с таким Telegram ID не найден или доступ только для курьеров'
+                    'Курьер с таким Telegram ID не найден'
                 )
             # иначе — резервная идентификация
         else:
             if require:
                 raise AuthenticationFailed('Заголовок X-Telegram-ID обязателен')
 
+        # Резервная идентификация — только для разработки
         request.courier = self._fallback_courier()
         return True
 

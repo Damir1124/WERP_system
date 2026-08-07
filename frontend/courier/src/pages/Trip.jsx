@@ -52,7 +52,7 @@ export default function Trip() {
 
   // Возврат заказа в пул (снять с рейса)
   const handleReturnToPool = async (orderId) => {
-    if (!window.confirm(`Вернуть заказ #${orderId} в пул?`)) return
+    if (!window.confirm(`Вернуть заказ в пул?`)) return
     setActionLoading(true)
     try {
       await api.returnOrderToPool(orderId)
@@ -185,6 +185,7 @@ export default function Trip() {
         // Преобразуем данные заказа в формат OrderCard
         const transformedOrder = {
           id: order.id,
+          display_number: order.display_number ?? null,
           created_at: order.created_at,
           delivered_at: order.delivered_at || null,
           delivery_address_text: order.delivery_address_text || 'Адрес не указан',

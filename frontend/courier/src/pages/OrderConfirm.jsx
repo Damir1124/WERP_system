@@ -43,16 +43,22 @@ export default function OrderConfirm() {
   const [paymentType, setPaymentType] = useState('CH')
   const [bottlePrice, setBottlePrice] = useState(25000) // Дефолт 25000, перезаписывается из API
 
+  // ── Состояние для добавления новых продуктов ──────────────────────────────────
+  const [allProducts, setAllProducts] = useState([])       // все продукты из API
+  const [selectedProductId, setSelectedProductId] = useState('')  // выбранный в селекторе
+  const [newItemQty, setNewItemQty] = useState(1)          // количество для добавления
+  const [extraItems, setExtraItems] = useState([])         // [{ product_id, product_name, price, quantity }]
+
   useEffect(() => {
     loadOrder()
   }, [id])
 
-  // Загрузка реальной цены тары из API (продукт id=9, тип BT).
-  // Заменяет захардкоженные 25000, чтобы превью совпадало с ценой в БД.
+  // Загрузка всех продуктов из API (и для цены тары, и для селектора добавления)
   useEffect(() => {
-    const fetchBottlePrice = async () => {
+    const fetchProducts = async () => {
       try {
         const products = await api.getProducts()
+        setAllProducts(products)
         const bottle = products.find(p => p.id === 9 && p.type_product === 'BT')
         if (bottle) {
           setBottlePrice(bottle.price)
@@ -61,7 +67,7 @@ export default function OrderConfirm() {
         console.error('Не удалось загрузить продукты', e)
       }
     }
-    fetchBottlePrice()
+    fetchProducts()
   }, [])
 
   const loadOrder = async () => {
@@ -133,6 +139,50 @@ export default function OrderConfirm() {
     return type === '19W' || type === 'B19W'
   }
 
+  // ── Хэндлеры для добавленных продуктов ────────────────────────────────────────
+
+  const handleAddProduct = () => {
+    if (!selectedProductId) return
+    const product = allProducts.find(p => p.id === parseInt(selectedProductId))
+    if (!product) return
+
+    // Проверяем, не добавлен ли уже этот продукт
+    const existing = extraItems.findIndex(e => e.product_id === product.id)
+    if (existing >= 0) {
+      // Если уже есть — увеличиваем количество
+      setExtraItems(prev => prev.map((item, idx) =>
+        idx === existing ? { ...item, quantity: item.quantity + newItemQty } : item
+      ))
+    } else {
+      // Иначе добавляем новый
+      setExtraItems(prev => [...prev, {
+        product_id: product.id,
+        product_name: product.name,
+        product_type: product.type_product,
+        price: product.price,
+        quantity: newItemQty,
+      }])
+    }
+    // Сбрасываем селектор
+    setSelectedProductId('')
+    setNewItemQty(1)
+  }
+
+  const updateExtraItem = (index, newQty) => {
+    if (newQty < 1) {
+      // Если количество стало 0 — удаляем позицию
+      setExtraItems(prev => prev.filter((_, i) => i !== index))
+    } else {
+      setExtraItems(prev => prev.map((item, i) =>
+        i === index ? { ...item, quantity: newQty } : item
+      ))
+    }
+  }
+
+  const removeExtraItem = (index) => {
+    setExtraItems(prev => prev.filter((_, i) => i !== index))
+  }
+
   // Валидация позиций
   const validationErrors = useMemo(() => {
     const errors = {}
@@ -167,10 +217,10 @@ export default function OrderConfirm() {
     [order]
   )
 
-  // Динамический расчёт общей стоимости на основе itemStates
+  // Динамический расчёт общей стоимости на основе itemStates + extraItems
   const totalPrice = useMemo(() => {
     const items = order?.items || []
-    return items.reduce((sum, item) => {
+    const orderTotal = items.reduce((sum, item) => {
       const st = itemStates[item.id] || {}
       const isWater = isBottle20L(item)
       
@@ -182,9 +232,6 @@ export default function OrderConfirm() {
       // текущее quantity из state.
       const effectiveQty = isWater ? (st.exchange_qty || 0) : (st.quantity || item.quantity)
       
-      // ВАЖНО: Новая логика - тара создаётся отдельной позицией на бэкенде при sell_with_qty > 0
-      // Поэтому здесь мы просто считаем: unitPrice * effectiveQty
-      // Цену тары добавляем отдельно только для визуального отображения
       let itemTotal = Math.round(unitPrice * effectiveQty)
       
       // Добавляем цену тары для визуального отображения ТОЛЬКО если отдельной позиции
@@ -196,7 +243,12 @@ export default function OrderConfirm() {
       
       return sum + itemTotal + bottleTotal
     }, 0)
-  }, [order, itemStates, bottlePrice, taraItemExists])
+
+    // Добавляем стоимость дополнительных продуктов
+    const extraTotal = extraItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+    return orderTotal + extraTotal
+  }, [order, itemStates, bottlePrice, taraItemExists, extraItems])
 
   // Детализация по позициям для отображения
   const itemsWithPrices = useMemo(() => {
@@ -205,18 +257,10 @@ export default function OrderConfirm() {
       const st = itemStates[item.id] || {}
       const isWater = isBottle20L(item)
       
-      // unit_price = исходная цена позиции / исходное количество
       const unitPrice = (item.quantity && item.price) ? (item.price / item.quantity) : 0
-      
-      // Для воды фактическое количество = exchange_qty (бэкенд при подтверждении
-      // ставит quantity = exchange_qty). Для не-воды — текущее quantity из state.
       const effectiveQty = isWater ? (st.exchange_qty || 0) : (st.quantity || item.quantity)
-      
-      // Новая логика: цена = unitPrice * effectiveQty
       const lineTotal = Math.round(unitPrice * effectiveQty)
       
-      // Цена тары добавляется отдельно только для визуального отображения
-      // и только если отдельной позиции тары ещё нет в заказе (нет двойного счёта)
       let bottleTotal = 0
       if (isWater && bottlePrice > 0 && st.sell_with_qty > 0 && !taraItemExists) {
         bottleTotal = Math.round(bottlePrice * st.sell_with_qty)
@@ -257,7 +301,14 @@ export default function OrderConfirm() {
         }
         return payload
       })
-      await api.confirmOrder(parseInt(id), true, items, '')
+
+      // Добавляем новые продукты, если есть
+      const newItems = extraItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }))
+
+      await api.confirmOrder(parseInt(id), true, items, '', newItems)
       navigate('/trip')
     } catch (e) {
       setError(e.message)
@@ -293,6 +344,12 @@ export default function OrderConfirm() {
   }
 
   const fmt = (n) => (n || 0).toLocaleString('ru-RU')
+
+  // Фильтр: продукты, которые уже есть в заказе или добавлены, не показываем в селекторе
+  const productsInOrder = new Set([
+    ...(order?.items || []).map(i => i.product_id || i.product),
+    ...extraItems.map(i => i.product_id),
+  ])
 
   return (
     <div className="page-body">
@@ -381,6 +438,75 @@ export default function OrderConfirm() {
           </div>
         )
       })}
+
+      {/* ── Секция: Добавить новый товар ─────────────────────────────────────── */}
+      <div className="sec-lbl">➕ Добавить товар</div>
+      <div className="add-product-block">
+        <div className="add-product-row">
+          <select
+            className="add-product-select"
+            value={selectedProductId}
+            onChange={(e) => setSelectedProductId(e.target.value)}
+          >
+            <option value="">— Выберите товар —</option>
+            {allProducts
+              .filter(p => !productsInOrder.has(p.id))
+              .map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {fmt(p.price)} сум
+                </option>
+              ))}
+          </select>
+          <div className="add-product-stepper">
+            <Stepper
+              value={newItemQty}
+              onChange={(val) => setNewItemQty(Math.max(1, val))}
+              color="var(--blue)"
+            />
+          </div>
+          <button
+            className="add-product-btn"
+            onClick={handleAddProduct}
+            disabled={!selectedProductId}
+          >
+            ➜ Добавить
+          </button>
+        </div>
+      </div>
+
+      {/* ── Список добавленных товаров ────────────────────────────────────────── */}
+      {extraItems.length > 0 && (
+        <>
+          <div className="sec-lbl">🆕 Добавленные товары</div>
+          {extraItems.map((item, idx) => (
+            <div className="prod-block" key={`extra-${idx}`}>
+              <div className="prod-header">
+                <span style={{ fontSize: '14px' }}>{productIcon(item.product_type)}</span>
+                <span className="ph-name">{item.product_name}</span>
+                <span className="ph-total">{fmt(item.price * item.quantity)} сум</span>
+              </div>
+              <div className="prod-body">
+                <div className="op-row">
+                  <span className="op-lbl">Количество</span>
+                  <span className="op-tag">шт.</span>
+                  <Stepper
+                    value={item.quantity}
+                    onChange={(val) => updateExtraItem(idx, val)}
+                    color="var(--blue)"
+                  />
+                  <button
+                    className="remove-item-btn"
+                    onClick={() => removeExtraItem(idx)}
+                    title="Удалить"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       {/* Оплата */}
       <div className="sec-lbl">Оплата</div>

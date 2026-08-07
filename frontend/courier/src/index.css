@@ -334,6 +334,77 @@ html, body, #root {
 }
 .simple-row .sr-lbl { font-size: 11px; color: var(--ink2); }
 
+/* ── Add product block (confirm screen) ──────────────────────────────────── */
+.add-product-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.add-product-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.add-product-select {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg2);
+  color: var(--ink);
+  font-family: var(--font);
+  cursor: pointer;
+  min-width: 0;
+}
+.add-product-select:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+.add-product-stepper {
+  flex-shrink: 0;
+}
+.add-product-btn {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.add-product-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.add-product-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.remove-item-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--red-bg);
+  color: var(--red-text);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.remove-item-btn:hover {
+  background: var(--red);
+  color: #fff;
+}
+
 /* ── Payment grid ────────────────────────────────────────────────────────── */
 .pay-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .pay-btn {

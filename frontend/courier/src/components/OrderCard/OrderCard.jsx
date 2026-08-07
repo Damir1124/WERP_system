@@ -81,7 +81,7 @@ export default function OrderCard({
           <FreshnessIndicator createdAt={order.created_at} />
         )}
 
-        <div className="order-id">#{order.id}</div>
+        <div className="order-id">{order.display_number != null ? String(order.display_number).padStart(3, '0') : String(order.id)}</div>
 
         <div className="quantity-badge">{getQuantityBadge()}</div>
 

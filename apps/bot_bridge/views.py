@@ -78,7 +78,12 @@ class IdentifyView(APIView):
             return Response({'error': 'Необходим параметр tg_id или заголовок X-Telegram-Init-Data'}, status=status.HTTP_400_BAD_REQUEST)
         worker = Worker.objects.filter(tg_id=tg_id_int).first()
         if worker:
-            role = 'admin' if worker.is_admin else 'courier'
+            # Роль 'courier' только для worker_type=COURIER.
+            # Packer'ы и другие типы не получают доступ к Mini App.
+            if worker.worker_type == Worker.WorkerType.COURIER:
+                role = 'admin' if worker.is_admin else 'courier'
+            else:
+                role = 'other'
             return Response({
                 'role': role,
                 'name': worker.full_name,
@@ -517,7 +522,7 @@ class OrderConfirmationView(APIView):
                     order_item = OrderItem.objects.get(id=item_id, order=order)
                 except OrderItem.DoesNotExist:
                     return Response(
-                        {'error': f'Позиция с ID {item_id} не найдена в заказе #{order.id}'},
+                        {'error': f'Позиция с ID {item_id} не найдена в заказе {order.human_number}'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 if order_item.product.type_product in (Product.TypeProduct.BOTTLE_20L, Product.TypeProduct.WATER):
@@ -537,7 +542,7 @@ class OrderConfirmationView(APIView):
                     order_item = OrderItem.objects.get(id=item_id, order=order)
                 except OrderItem.DoesNotExist:
                     return Response(
-                        {'error': f'Позиция с ID {item_id} не найдена в заказе #{order.id}'},
+                        {'error': f'Позиция с ID {item_id} не найдена в заказе {order.human_number}'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
@@ -615,6 +620,25 @@ class OrderConfirmationView(APIView):
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR
                         )
             
+            # ── Обработка новых позиций, добавленных курьером ──────────────────────
+            new_items_data = data.get('new_items', [])
+            new_items_created = []
+            for new_item in new_items_data:
+                product = new_item['product']
+                quantity = new_item['quantity']
+                order_item = OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=quantity,
+                )
+                logger.info(f"Created new order item: id={order_item.id}, product={product.name}, quantity={quantity}, price={order_item.price}")
+                new_items_created.append({
+                    'item_id': order_item.id,
+                    'product': product.name,
+                    'quantity': quantity,
+                    'price': order_item.price,
+                })
+            
             # Обновляем статус заказа
             # Складской сигнал update_stock_on_order списывает exchange_qty + sell_with_qty
             # для BOTTLE_20L (подменяет на BOTTLE). Созданная BOTTLE OrderItem не списывается
@@ -632,17 +656,18 @@ class OrderConfirmationView(APIView):
                 pass
             return Response({
                 'status': 'confirmed',
-                'message': f'Заказ #{order.id} подтверждён',
+                'message': f'Заказ {order.human_number} подтверждён',
                 'order_id': order.id,
                 'delivered_at': order.delivered_at,
                 'updated_items': updated_items,
+                'new_items_created': new_items_created,
             })
         else:
             order.status = Order.Status.CANCELLED
             order.save()
             return Response({
                 'status': 'cancelled',
-                'message': f'Заказ #{order.id} отменён',
+                'message': f'Заказ {order.human_number} отменён',
                 'order_id': order.id,
             })
 
@@ -776,11 +801,17 @@ class CourierAssignOrderView(APIView):
         order = get_object_or_404(Order, id=order_id, status=Order.Status.PENDING)
         if order.assigned_courier and order.assigned_courier != courier:
             return Response({'error': 'Заказ уже назначен другому курьеру'}, status=status.HTTP_400_BAD_REQUEST)
-        # Назначаем курьера на заказ, НО не привязываем к рейсу.
-        # Рейс курьер создаст сам через «🚀 Начать рейс».
-        # При создании рейса CourierTripListView.POST перенесёт все orphan-заказы в него.
+        # Назначаем курьера на заказ. Если у курьера уже есть активный рейс —
+        # привязываем заказ к нему, чтобы он сразу появился в «Мой рейс».
+        # Если рейса нет — заказ остаётся без рейса (попадёт в рейс при его создании).
         order.assigned_courier = courier
-        order.trip = None
+        from apps.logistics.models import CourierShift, CourierTrip
+        active_trip = CourierTrip.objects.filter(
+            shift__courier=courier,
+            shift__status=CourierShift.Status.OPEN,
+            status=CourierTrip.Status.ACTIVE
+        ).first()
+        order.trip = active_trip  # None если нет активного рейса
         order.save(update_fields=['assigned_courier', 'trip'])
         # Уведомление клиенту
         try:
@@ -790,7 +821,7 @@ class CourierAssignOrderView(APIView):
             pass
         return Response({
             'status': 'assigned',
-            'message': f'Заказ #{order.id} взят в работу',
+            'message': f'Заказ {order.human_number} взят в работу',
             'order_id': order.id,
             'trip_id': None,
         })
@@ -817,7 +848,7 @@ class CourierReturnToPoolView(APIView):
         order.save(update_fields=['trip', 'assigned_courier'])
         return Response({
             'status': 'returned',
-            'message': f'Заказ #{order.id} возвращён в пул',
+            'message': f'Заказ {order.human_number} возвращён в пул',
             'order_id': order.id,
         })
 
@@ -950,7 +981,8 @@ class ClientOrderCreateView(APIView):
             return Response({'error': 'Продукт не найден'}, status=status.HTTP_404_NOT_FOUND)
         # Создаём заказ без рейса (trip=None — ждёт назначения курьера)
         from apps.logistics.models import OrderItem
-        order = Order.objects.create(
+        from apps.logistics.services import create_order_with_display_number
+        order = create_order_with_display_number(
             trip=None,
             client=client,
             payment_type=payment_type,
@@ -1012,8 +1044,9 @@ class ClientOrderCreateView(APIView):
                                       'delivery_latitude', 'delivery_longitude'])
         return Response({
             'status': 'created',
-            'message': 'Заказ создан и ожидает назначения курьера',
+            'message': f'Заказ создан и ожидает назначения курьера',
             'order_id': order.id,
+            'display_number': order.display_number,
             'product': product.name,
             'quantity': item.quantity,
             'price': item.price,
@@ -1553,7 +1586,8 @@ class CourierCreateOrderView(APIView):
 
         # Создаём заказ (без trip и assigned_courier — чтобы он попал в пул,
         # а не сразу в рейс создавшего курьера)
-        order = Order.objects.create(
+        from apps.logistics.services import create_order_with_display_number
+        order = create_order_with_display_number(
             client=client,
             trip=None,
             assigned_courier=None,
@@ -1592,6 +1626,7 @@ class CourierCreateOrderView(APIView):
         return Response({
             'success': True,
             'order_id': order.id,
+            'display_number': order.display_number,
             'total': order.get_total_price(),
             'client': {
                 'id': client.id,

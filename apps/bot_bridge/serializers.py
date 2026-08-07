@@ -95,7 +95,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'trip', 'client', 'client_name', 'client_address', 'client_phone',
+        fields = ['id', 'display_number', 'human_number', 'trip', 'client', 'client_name', 'client_address', 'client_phone',
                   'latitude', 'longitude',
                   'delivery_address_text', 'delivery_latitude', 'delivery_longitude',
                   'payment_type', 'payment_type_display',
@@ -330,9 +330,10 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         if courier:
             validated_data['created_by_worker'] = courier
         
-        # Создаём заказ
-        order = Order.objects.create(**validated_data)
-        logger.info(f"Created order id={order.id}, created_by={courier.full_name if courier else 'Unknown'}")
+        # Создаём заказ через сервис (автоматически проставляет display_number)
+        from apps.logistics.services import create_order_with_display_number
+        order = create_order_with_display_number(**validated_data)
+        logger.info(f"Created order id={order.id}, display_number={order.display_number}, created_by={courier.full_name if courier else 'Unknown'}")
         
         # Создаём позиции заказа
         for idx, item_data in enumerate(items_data):
@@ -391,6 +392,12 @@ class OrderConfirmationSerializer(serializers.Serializer):
         required=False,
         default=list,
         help_text="Массив позиций с данными о таре: [{'item_id': int, 'exchange_qty': int, 'sell_with_qty': int, 'defective_qty': int}]"
+    )
+    new_items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+        help_text="Новые позиции, добавленные курьером: [{'product_id': int, 'quantity': int}]"
     )
 
     def validate_items(self, value):
@@ -473,6 +480,41 @@ class OrderConfirmationSerializer(serializers.Serializer):
             validated_items.append(validated_item)
         
         return validated_items
+
+    def validate_new_items(self, value):
+        """Валидация массива новых позиций, добавленных курьером"""
+        if not value:
+            return []
+        
+        from apps.products.models import Product
+        
+        validated_new_items = []
+        for idx, item in enumerate(value):
+            product_id = item.get('product_id')
+            if not product_id:
+                raise serializers.ValidationError(f"new_items[{idx}]: 'product_id' обязателен")
+            
+            # Проверяем, что продукт существует
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                raise serializers.ValidationError(f"new_items[{idx}]: продукт с ID {product_id} не найден")
+            
+            # Проверяем количество
+            quantity = item.get('quantity', 1)
+            if not isinstance(quantity, int) or quantity < 1:
+                raise serializers.ValidationError(
+                    f"new_items[{idx}]: quantity должен быть целым числом >= 1"
+                )
+            
+            validated_new_items.append({
+                'product_id': product_id,
+                'product': product,
+                'quantity': quantity,
+                'price': product.price,
+            })
+        
+        return validated_new_items
 
 
 class QuantityUpdateSerializer(serializers.Serializer):

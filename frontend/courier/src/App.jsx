@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { initTelegram } from './tg.js'
+import { initTelegram, tgId } from './tg.js'
 import Pool from './pages/Pool.jsx'
 import Trip from './pages/Trip.jsx'
 import TripClose from './pages/TripClose.jsx'
@@ -141,10 +141,71 @@ function AppShell() {
   )
 }
 
+function AccessDenied() {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      padding: '20px',
+      textAlign: 'center',
+      background: '#f8f9fa',
+    }}>
+      <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚫</div>
+      <h1 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>
+        Доступ запрещён
+      </h1>
+      <p style={{ fontSize: '14px', color: '#666', maxWidth: '300px' }}>
+        Mini App доступно только для курьеров. Если вы курьер, обратитесь к администратору.
+      </p>
+    </div>
+  )
+}
+
 export default function App() {
+  const [access, setAccess] = React.useState({ loading: true, granted: false })
+
   useEffect(() => {
     initTelegram()
+    checkAccess()
   }, [])
+
+  async function checkAccess() {
+    try {
+      const { api } = await import('./api.js')
+      const data = await api.identify(tgId)
+      if (data.role === 'courier' || data.role === 'admin') {
+        setAccess({ loading: false, granted: true })
+      } else {
+        setAccess({ loading: false, granted: false })
+        console.warn('[Access] Роль не является курьером:', data.role, data)
+      }
+    } catch (err) {
+      console.error('[Access] Ошибка проверки доступа:', err)
+      setAccess({ loading: false, granted: false })
+    }
+  }
+
+  if (access.loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        fontSize: '16px',
+        color: '#666',
+      }}>
+        Проверка доступа...
+      </div>
+    )
+  }
+
+  if (!access.granted) {
+    return <AccessDenied />
+  }
 
   return (
     <Router>

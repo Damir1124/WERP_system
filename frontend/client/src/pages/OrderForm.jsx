@@ -36,8 +36,9 @@ export default function OrderForm({ clientData }) {
         address: form.address,
         note: form.note,
       })
+      const displayNum = result.display_number != null ? String(result.display_number).padStart(3, '0') : String(result.order_id)
       navigate('/orders', {
-        state: { successMessage: `Заказ #${result.order_id} создан! Ожидайте курьера.` }
+        state: { successMessage: `Заказ ${displayNum} создан! Ожидайте курьера.` }
       })
     } catch (err) {
       setError(err.message)

@@ -81,7 +81,7 @@ export const api = {
   returnOrderToPool: (orderId) => apiFetch(`/courier/pool/${orderId}/return/`, { method: 'POST' }),
 
   // ── Операции с заказами ───────────────────────────────────────────────────
-  confirmOrder: (orderId, confirmed = true, items = null, note = '') =>
+  confirmOrder: (orderId, confirmed = true, items = null, note = '', newItems = null) =>
     apiFetch('/courier/orders/confirm/', {
       method: 'POST',
       body: JSON.stringify({
@@ -89,6 +89,7 @@ export const api = {
         confirmed,
         items: items,
         note,
+        ...(newItems && newItems.length > 0 ? { new_items: newItems } : {}),
       }),
     }),
 

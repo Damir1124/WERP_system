@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'apps.warehouse',
     'apps.workers',
     'apps.bot_bridge',
+    'apps.dashboard',
 ]
 
 MIDDLEWARE = [

@@ -312,8 +312,9 @@ def build_pool_order_detail_text(order: dict) -> str:
     else:
         time_text = '—'
     created_by = order.get('created_by') or '—'
+    _hn = order.get('human_number') or '#' + str(order.get('id', ''))
     return (
-        f"📦 <b>Заказ #{order.get('id')}</b>\n"
+        f"📦 <b>Заказ {_hn}</b>\n"
         f"{'=' * 28}\n"
         f"📍 <b>Адрес:</b> {addr}{loc_link}\n"
         f"👤 <b>Клиент:</b> {order.get('client_name', 'N/A')}{phone_text}\n"
@@ -337,7 +338,7 @@ async def take_order(callback: CallbackQuery):
         InlineKeyboardButton(text="⬅️ Назад в пул", callback_data="back_to_pool")
     ]])
     await callback.message.edit_text(
-        f"✅ Заказ #{order_id} взят в работу!\nОткройте «🚚 Мой рейс» для просмотра.",
+        f"✅ Заказ взят в работу!\nОткройте «🚚 Мой рейс» для просмотра.",
         reply_markup=kb
     )
     await callback.answer("Готово!")
@@ -355,7 +356,6 @@ async def show_current_trip(message: Message):
         await message.answer("🌅 Смена не открыта. Начните с «🟢 Открыть смену».")
         return
     if not trip_data.get('active_trip'):
-        await message.answer("🚚 Смена открыта, но рейс не начат. Нажмите «🚀 Начать рейс».")
         return
     trip = trip_data.get('trip', {})
     summary = trip_data.get('summary', {})
@@ -383,7 +383,7 @@ async def show_current_trip(message: Message):
 
 
 def build_trip_order_label(order: dict) -> str:
-    """Метка кнопки заказа в рейсе: №id | кол-во | адрес/локация."""
+    """Метка кнопки заказа в рейсе: номер | кол-во | адрес/локация."""
     order_id = order.get('id')
     items = order.get('items', [])
     total_qty = sum(it.get('quantity', 0) for it in items)
@@ -392,7 +392,8 @@ def build_trip_order_label(order: dict) -> str:
         addr = '📍 локация'
     addr_short = (addr[:24] + '…') if len(addr) > 24 else addr
     status_icon = '✅' if order.get('status') == 'DL' else '⏳'
-    return f"{status_icon} №{order_id} | {total_qty} | {addr_short}"
+    label = order.get('human_number', f'#{order_id}')
+    return f"{status_icon} {label} | {total_qty} | {addr_short}"
 
 
 def build_order_detail_text(order: dict) -> str:
@@ -402,10 +403,19 @@ def build_order_detail_text(order: dict) -> str:
         f"• {it.get('product_name', 'N/A')} × {it.get('quantity', 0)} шт."
         for it in items
     ])
-    minutes_ago = order.get('minutes_ago', 0)
-    time_text = f"{minutes_ago} мин. назад" if minutes_ago < 60 else f"{minutes_ago // 60} ч. назад"
+    from datetime import datetime
+    created_at_raw = order.get('created_at')
+    if created_at_raw:
+        try:
+            dt = datetime.fromisoformat(created_at_raw.replace('Z', '+00:00'))
+            time_text = dt.strftime('%d.%m %H:%M')
+        except (ValueError, TypeError):
+            time_text = str(created_at_raw)[:16]
+    else:
+        time_text = 'неизвестно'
+    _hn = order.get('human_number') or '#' + str(order.get('id', ''))
     return (
-        f"📦 <b>Заказ #{order.get('id')}</b>\n\n"
+        f"📦 <b>Заказ {_hn}</b>\n\n"
         f"👤 Клиент: {order.get('client_name', 'N/A')}\n"
         f"📞 Телефон: {order.get('client_phone', 'N/A')}\n"
         f"📍 Адрес: {order.get('delivery_address_text') or order.get('client_address') or 'локация'}\n\n"
@@ -572,9 +582,18 @@ async def deliver_order_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Заказ не найден в рейсе", show_alert=True)
         return
     edit = init_deliver_edit(order)
-    await state.update_data(order_id=order_id, order=order, edit=edit)
+    # Загружаем список продуктов для возможности добавления новых позиций
+    products_data = await api_client.get('/products/', headers=auth_headers(tg_id))
+    all_products = products_data if isinstance(products_data, list) else []
+    await state.update_data(
+        order_id=order_id,
+        order=order,
+        edit=edit,
+        extra_items=[],       # [{product_id, product_name, price, quantity}]
+        all_products=all_products,
+    )
     await state.set_state(CourierDeliverOrder.waiting_for_edit)
-    await show_deliver_edit(callback.message, order, edit)
+    await show_deliver_edit(callback.message, order, edit, extra_items=[])
     await callback.answer()
 WATER_TYPES = ('19W', 'B19W')
 
@@ -605,8 +624,9 @@ def init_deliver_edit(order: dict) -> dict:
     return edit
 
 
-def build_deliver_edit_text(order: dict, edit: dict) -> str:
-    lines = [f"📦 <b>Редактирование доставки — Заказ #{order.get('id')}</b>\n"]
+def build_deliver_edit_text(order: dict, edit: dict, extra_items: list = None) -> str:
+    _hn = order.get('human_number') or '#' + str(order.get('id', ''))
+    lines = [f"📦 <b>Редактирование доставки — Заказ {_hn}</b>\n"]
     for it in order.get('items', []):
         iid = it['id']
         st = edit.get(iid, {})
@@ -619,11 +639,17 @@ def build_deliver_edit_text(order: dict, edit: dict) -> str:
             )
         else:
             lines.append(f"🛒 {it.get('product_name')}: {st.get('quantity', 0)} шт.")
+    # Добавленные товары
+    extra = extra_items or []
+    if extra:
+        lines.append("")
+        for idx, ei in enumerate(extra):
+            lines.append(f"➕ {ei.get('product_name')}: {ei.get('quantity', 0)} шт. × {fmt_money(ei.get('price', 0))}")
     lines.append("\n✏️ Измените количество и операции с тарой, затем подтвердите.")
     return "\n".join(lines)
 
 
-def get_deliver_edit_keyboard(order: dict, edit: dict) -> InlineKeyboardMarkup:
+def get_deliver_edit_keyboard(order: dict, edit: dict, extra_items: list = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for it in order.get('items', []):
         iid = it['id']
@@ -645,6 +671,17 @@ def get_deliver_edit_keyboard(order: dict, edit: dict) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="➖ кол-во", callback_data=f"d_qty_{iid}_m"),
                 InlineKeyboardButton(text="➕ кол-во", callback_data=f"d_qty_{iid}_p"),
             )
+    # Кнопки для добавленных товаров
+    extra = extra_items or []
+    for idx, ei in enumerate(extra):
+        builder.row(
+            InlineKeyboardButton(text=f"➖ {ei.get('product_name', '')[:12]}", callback_data=f"d_extra_{idx}_m"),
+            InlineKeyboardButton(text=f"➕ {ei.get('product_name', '')[:12]}", callback_data=f"d_extra_{idx}_p"),
+        )
+    # Кнопка "Добавить товар"
+    builder.row(
+        InlineKeyboardButton(text="➕ Добавить товар", callback_data="d_add_product"),
+    )
     builder.row(
         InlineKeyboardButton(text="✅ Подтвердить доставку", callback_data="d_confirm"),
     )
@@ -654,9 +691,10 @@ def get_deliver_edit_keyboard(order: dict, edit: dict) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-async def show_deliver_edit(target, order: dict, edit: dict):
-    text = build_deliver_edit_text(order, edit)
-    kb = get_deliver_edit_keyboard(order, edit)
+async def show_deliver_edit(target, order: dict, edit: dict, extra_items: list = None):
+    extra = extra_items or []
+    text = build_deliver_edit_text(order, edit, extra_items=extra)
+    kb = get_deliver_edit_keyboard(order, edit, extra_items=extra)
     if hasattr(target, 'edit_text'):
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -701,7 +739,7 @@ async def deliver_edit_qty(callback: CallbackQuery, state: FSMContext):
         await callback.answer(err, show_alert=True)
         return
     await state.update_data(edit=data['edit'])
-    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=data.get('extra_items'))
     await callback.answer()
 @router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_ex_"))
 async def deliver_edit_ex(callback: CallbackQuery, state: FSMContext):
@@ -713,7 +751,7 @@ async def deliver_edit_ex(callback: CallbackQuery, state: FSMContext):
         await callback.answer(err, show_alert=True)
         return
     await state.update_data(edit=data['edit'])
-    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=data.get('extra_items'))
     await callback.answer()
 @router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_sw_"))
 async def deliver_edit_sw(callback: CallbackQuery, state: FSMContext):
@@ -725,7 +763,7 @@ async def deliver_edit_sw(callback: CallbackQuery, state: FSMContext):
         await callback.answer(err, show_alert=True)
         return
     await state.update_data(edit=data['edit'])
-    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=data.get('extra_items'))
     await callback.answer()
 @router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_df_"))
 async def deliver_edit_df(callback: CallbackQuery, state: FSMContext):
@@ -737,13 +775,113 @@ async def deliver_edit_df(callback: CallbackQuery, state: FSMContext):
         await callback.answer(err, show_alert=True)
         return
     await state.update_data(edit=data['edit'])
-    await show_deliver_edit(callback.message, data['order'], data['edit'])
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=data.get('extra_items'))
     await callback.answer()
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_add_product")
+async def deliver_add_product_list(callback: CallbackQuery, state: FSMContext):
+    """Показать список доступных продуктов для добавления."""
+    data = await state.get_data()
+    all_products = data.get('all_products', [])
+    order = data.get('order', {})
+    extra_items = data.get('extra_items', [])
+    
+    # ID продуктов уже в заказе или добавленных
+    existing_ids = set()
+    for it in order.get('items', []):
+        existing_ids.add(it.get('product_id') or it.get('product'))
+    for ei in extra_items:
+        existing_ids.add(ei.get('product_id'))
+    
+    # Фильтруем: только те, что ещё не в заказе
+    available = [p for p in all_products if p.get('id') not in existing_ids]
+    
+    if not available:
+        await callback.answer("Нет доступных товаров для добавления", show_alert=True)
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for p in available:
+        name = p.get('name', 'Товар')
+        price = p.get('price', 0)
+        btn_text = f"{name} — {fmt_money(price)} сум"
+        builder.add(InlineKeyboardButton(text=btn_text, callback_data=f"d_sel_product_{p['id']}"))
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="d_back_to_edit"))
+    
+    await callback.message.edit_text(
+        "➕ <b>Выберите товар для добавления:</b>",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_back_to_edit")
+async def deliver_back_to_edit(callback: CallbackQuery, state: FSMContext):
+    """Вернуться к редактированию доставки."""
+    data = await state.get_data()
+    await show_deliver_edit(
+        callback.message, data['order'], data['edit'],
+        extra_items=data.get('extra_items')
+    )
+    await callback.answer()
+
+
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_sel_product_"))
+async def deliver_add_product_select(callback: CallbackQuery, state: FSMContext):
+    """Добавить выбранный продукт в extra_items."""
+    product_id = int(callback.data.split("_")[3])
+    data = await state.get_data()
+    all_products = data.get('all_products', [])
+    extra_items = list(data.get('extra_items', []))
+    
+    product = next((p for p in all_products if p.get('id') == product_id), None)
+    if not product:
+        await callback.answer("Товар не найден", show_alert=True)
+        return
+    
+    # Добавляем с количеством 1
+    extra_items.append({
+        'product_id': product['id'],
+        'product_name': product['name'],
+        'price': product['price'],
+        'quantity': 1,
+    })
+    await state.update_data(extra_items=extra_items)
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=extra_items)
+    await callback.answer()
+
+
+@router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data.startswith("d_extra_"))
+async def deliver_edit_extra(callback: CallbackQuery, state: FSMContext):
+    """Изменить количество добавленного товара."""
+    parts = callback.data.split("_")
+    idx = int(parts[2])
+    delta = 1 if parts[3] == 'p' else -1
+    data = await state.get_data()
+    extra_items = list(data.get('extra_items', []))
+    
+    if idx < 0 or idx >= len(extra_items):
+        await callback.answer("Позиция не найдена", show_alert=True)
+        return
+    
+    new_qty = extra_items[idx]['quantity'] + delta
+    if new_qty < 1:
+        # Удаляем позицию если количество стало 0
+        extra_items.pop(idx)
+    else:
+        extra_items[idx]['quantity'] = new_qty
+    
+    await state.update_data(extra_items=extra_items)
+    await show_deliver_edit(callback.message, data['order'], data['edit'], extra_items=extra_items)
+    await callback.answer()
+
+
 @router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_confirm")
 async def deliver_edit_confirm(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     order = data['order']
     edit = data['edit']
+    extra_items = data.get('extra_items', [])
     tg_id = callback.from_user.id
     items = []
     for it in order.get('items', []):
@@ -758,9 +896,20 @@ async def deliver_edit_confirm(callback: CallbackQuery, state: FSMContext):
         if not is_water_item(it):
             payload['quantity'] = st.get('quantity', it.get('quantity', 0))
         items.append(payload)
+    
+    # Формируем new_items из добавленных товаров
+    new_items = [
+        {'product_id': ei['product_id'], 'quantity': ei['quantity']}
+        for ei in extra_items
+    ]
+    
+    payload = {'order_id': data['order_id'], 'confirmed': True, 'note': '', 'items': items}
+    if new_items:
+        payload['new_items'] = new_items
+    
     result = await api_client.post(
         '/courier/orders/confirm/',
-        data={'order_id': data['order_id'], 'confirmed': True, 'note': '', 'items': items},
+        data=payload,
         headers=auth_headers(tg_id)
     )
     await state.clear()
@@ -768,10 +917,8 @@ async def deliver_edit_confirm(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"❌ Ошибка подтверждения: {result.get('error')}")
         await callback.answer()
         return
-    await callback.message.edit_text(f"✅ Заказ #{data['order_id']} доставлен!")
+    await callback.message.edit_text(f"✅ Заказ доставлен!")
     await callback.answer("Готово!")
-    # Обновляем список "Мой рейс" — доставленный заказ исчезнет
-    await show_current_trip(callback.message)
 @router.callback_query(CourierDeliverOrder.waiting_for_edit, F.data == "d_cancel")
 async def deliver_edit_cancel(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -971,8 +1118,9 @@ async def show_order_info(callback: CallbackQuery):
         for it in items
     ) or "   Нет позиций"
     pay_icon = {'CD': '💳', 'BS': '🎁'}.get(order.get('payment_type'), '💵')
+    _hn = order.get('human_number') or '#' + str(order.get('id', ''))
     lines = [
-        f"📦 <b>Заказ #{order['id']}</b> {icon}",
+        f"📦 <b>Заказ {_hn}</b> {icon}",
         "=" * 28,
         f"👤 Клиент: {order.get('client_name') or 'Клиент не указан'}",
         f"🚰 Товары:\n{items_text}",

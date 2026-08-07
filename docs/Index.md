@@ -1,6 +1,6 @@
 # База знаний Osnova 2.0
 
-> Последнее обновление: 2026-07-12 (Многоадресность клиента: ClientAddress + Order.delivery_address, цепочка багов маршрутизации/нормализации/пропсов)
+> Последнее обновление: 2026-08-04 (Декоративные номера заказов: Order.display_number, OrderNumberCounter, select_for_update)
 
 ## Архитектура и Модули
 * [[Modules_Accounting|Модуль Финансов (Accounting)]] — логика транзакций. **P2: API для курьера реализовано**
@@ -31,6 +31,8 @@
 * [[Concepts_TelegramMiniApp|Telegram Mini App (TWA)]] — фронтенд для бэкендера, React + Vite + Tailwind, авторизация через initData
 * [[Concepts_OrderItem|Многопозиционные заказы (OrderItem)]] — архитектура заказов с несколькими продуктами, учёт тары через exchange_qty, sell_with_qty, defective_qty
 * [[Concepts_ContainerOperations|Контейнерные операции (Container Operations)]] — бизнес-логика учета тары (обмен, продажа с тарой, брак), списание со склада, обновленные API эндпоинты
+* [[Concepts_PostgreSQLTransactions|PostgreSQL транзакции и select_for_update]] — блокировка строк, race conditions, атомарные счётчики, паттерны в WERP
+* [[Concepts_TWACaching|Кэширование TWA при пересборке Vite]] — почему после `npx vite build` не видно изменений в Telegram WebView и как это чинить через `?v=N`
 
 ## Функциональные возможности
 * [[Feature_MultiProductOrderForm|Форма создания заказа с несколькими продуктами]] — улучшенная админ-форма для быстрого создания заказов с динамическим добавлением продуктов
