@@ -16,7 +16,7 @@ from apps.bot_bridge.serializers import (
     OrderQuantityUpdateSerializer,
     OrderCreateModelSerializer,
 )
-from apps.bot_bridge.permissions import IsCourier, IsAdmin
+from apps.bot_bridge.permissions import IsCourier, IsCourierOrOperator, IsAdmin, IsOperator
 from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem
 from apps.products.models import Product
 from apps.clients.models import Client
@@ -78,10 +78,12 @@ class IdentifyView(APIView):
             return Response({'error': 'Необходим параметр tg_id или заголовок X-Telegram-Init-Data'}, status=status.HTTP_400_BAD_REQUEST)
         worker = Worker.objects.filter(tg_id=tg_id_int).first()
         if worker:
-            # Роль 'courier' только для worker_type=COURIER.
+            # Роль 'courier' — для курьеров, 'operator' — для операторов.
             # Packer'ы и другие типы не получают доступ к Mini App.
             if worker.worker_type == Worker.WorkerType.COURIER:
                 role = 'admin' if worker.is_admin else 'courier'
+            elif worker.worker_type == Worker.WorkerType.OPERATOR:
+                role = 'admin' if worker.is_admin else 'operator'
             else:
                 role = 'other'
             return Response({
@@ -106,7 +108,7 @@ class IdentifyView(APIView):
 
 class CourierProfileView(APIView):
     """GET /api/bot/courier/profile/"""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         courier = request.courier
@@ -372,7 +374,7 @@ class CourierTripListView(APIView):
 
 class CourierCurrentTripView(APIView):
     """GET /api/bot/courier/trip/current/ — активный рейс + заказы + summary"""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         courier = request.courier
@@ -725,7 +727,7 @@ class OrderQuantityUpdateView(APIView):
 
 class CreateOrderView(APIView):
     """POST /api/bot/courier/orders/create/ — создание заказа курьером"""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def post(self, request):
         serializer = OrderCreateModelSerializer(data=request.data, context={'request': request})
@@ -758,7 +760,7 @@ class CourierPoolView(APIView):
     GET  /api/bot/courier/pool/?courier_id=<id>    — список PENDING заказов конкретного курьера
     POST /api/bot/courier/pool/<order_id>/assign/  — взять заказ
     """
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         courier_id = request.query_params.get('courier_id')
@@ -784,7 +786,7 @@ class CourierPoolView(APIView):
 
 class CourierPoolDetailView(APIView):
     """GET /api/bot/courier/pool/<order_id>/ — детали заказа из пула."""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request, order_id):
         order = get_object_or_404(Order, id=order_id)
@@ -855,7 +857,7 @@ class CourierReturnToPoolView(APIView):
 
 class CourierColleaguesView(APIView):
     """GET /api/bot/courier/colleagues/"""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         colleagues = Worker.objects.filter(
@@ -897,8 +899,8 @@ class CourierColleaguesView(APIView):
 
 
 class ProductListView(APIView):
-    """GET /api/bot/products/ — все продукты (для курьера)"""
-    permission_classes = [IsCourier]
+    """GET /api/bot/products/ — все продукты (для курьера/оператора)"""
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         # Возвращаем все типы продуктов для формы создания заказа
@@ -918,7 +920,7 @@ class ProductListView(APIView):
 
 class ClientInfoView(APIView):
     """GET /api/bot/clients/?phone=&address= — поиск клиентов"""
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
 
     def get(self, request):
         phone = request.query_params.get('phone', '')
@@ -1282,6 +1284,183 @@ class AdminOrdersRecentView(APIView):
             })
         return Response(data)
 
+# ─── Оператор: заказы ──────────────────────────────────────────────────────────
+
+
+class OperatorOrdersListView(APIView):
+    """
+    GET /api/bot/operator/orders/
+    Возвращает заказы за последние 24 часа (PENDING, DELIVERED, CANCELLED)
+    с полной информацией. Поддерживает фильтрацию по статусу: ?status=PD&status=DL
+    """
+    permission_classes = [IsOperator]
+
+    def get(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+
+        status_filter = request.query_params.getlist('status')
+        # Заказы за последние 24 часа
+        since = timezone.now() - timedelta(hours=24)
+        orders = Order.objects.filter(
+            created_at__gte=since
+        ).select_related(
+            'client', 'assigned_courier', 'created_by_worker', 'trip__shift__courier'
+        ).prefetch_related('items__product').order_by('-created_at')
+
+        if status_filter:
+            orders = orders.filter(status__in=status_filter)
+
+        serializer = OrderSerializer(orders, many=True)
+        return Response(serializer.data)
+
+
+class OperatorOrderDetailView(APIView):
+    """
+    GET /api/bot/operator/orders/<id>/
+    Детали заказа для редактирования.
+    """
+    permission_classes = [IsOperator]
+
+    def get(self, request, order_id):
+        order = get_object_or_404(Order, id=order_id)
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+
+
+class OperatorOrderUpdateView(APIView):
+    """
+    PATCH /api/bot/operator/orders/<id>/
+    Редактирование заказа. Доступно только для статуса PENDING.
+    Можно изменить: телефон, адрес, товары.
+    """
+    permission_classes = [IsOperator]
+
+    def patch(self, request, order_id):
+        from apps.clients.models import Client, ClientAddress
+        from apps.bot_bridge.phone_validator import validate_uzbek_phone
+        from apps.logistics.services import create_order_with_display_number
+        from django.utils import timezone
+
+        order = get_object_or_404(Order, id=order_id)
+
+        if order.status != Order.Status.PENDING:
+            return Response(
+                {'error': 'Редактирование доступно только для заказов в статусе "Ожидает"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ─── Обработка телефона клиента ──────────────────────────────────────
+        client_phone = request.data.get('client_phone')
+        if client_phone:
+            try:
+                validated_phone = validate_uzbek_phone(client_phone)
+            except ValueError as e:
+                return Response({'error': f'Некорректный телефон: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Ищем клиента по телефону
+            client = Client.objects.filter(phone=validated_phone).first()
+            if not client:
+                # Создаём нового клиента
+                client_name = request.data.get('client_name') or f'Клиент {validated_phone[-4:]}'
+                client = Client.objects.create(
+                    phone=validated_phone,
+                    name=client_name,
+                    address=''
+                )
+            order.client = client
+
+        # ─── Обработка адреса ────────────────────────────────────────────────
+        client_address = request.data.get('client_address')
+        client_lat = request.data.get('client_lat')
+        client_lon = request.data.get('client_lon')
+
+        if client_address is not None or client_lat is not None or client_lon is not None:
+            address_text = (client_address or '').strip()
+            delivery_address = None
+
+            if order.client and (address_text or client_lat or client_lon):
+                # Ищем существующий адрес
+                existing = None
+                if address_text:
+                    existing = order.client.addresses.filter(address_text=address_text).first()
+                if not existing and client_lat and client_lon:
+                    existing = order.client.addresses.filter(
+                        latitude=client_lat, longitude=client_lon
+                    ).first()
+                if existing:
+                    delivery_address = existing
+                    if address_text and existing.address_text != address_text:
+                        existing.address_text = address_text
+                    if client_lat and existing.latitude != client_lat:
+                        existing.latitude = client_lat
+                    if client_lon and existing.longitude != client_lon:
+                        existing.longitude = client_lon
+                    existing.last_used_at = timezone.now()
+                    existing.save()
+                else:
+                    delivery_address = ClientAddress.objects.create(
+                        client=order.client,
+                        address_text=address_text,
+                        latitude=client_lat,
+                        longitude=client_lon,
+                        last_used_at=timezone.now(),
+                    )
+
+            order.delivery_address = delivery_address
+            order.delivery_address_text = delivery_address.address_text if delivery_address else (address_text or '')
+            order.delivery_latitude = delivery_address.latitude if delivery_address else client_lat
+            order.delivery_longitude = delivery_address.longitude if delivery_address else client_lon
+
+        # ─── Обработка товаров ───────────────────────────────────────────────
+        items_data = request.data.get('items')
+        if items_data:
+            order.items.all().delete()
+            for item_data in items_data:
+                product_id = item_data.get('product_id')
+                quantity = item_data.get('quantity', 1)
+                if not product_id:
+                    return Response({'error': 'Укажите product_id для каждого товара'}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    product = Product.objects.get(id=product_id)
+                except Product.DoesNotExist:
+                    return Response({'error': f'Продукт с id={product_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
+                OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=quantity
+                )
+
+        # ─── Обработка примечания ────────────────────────────────────────────
+        note = request.data.get('note')
+        if note is not None:
+            order.note = note
+
+        order.save()
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+
+
+class OperatorOrderDeleteView(APIView):
+    """
+    DELETE /api/bot/operator/orders/<id>/
+    Удаление заказа. Доступно только для статуса PENDING.
+    """
+    permission_classes = [IsOperator]
+
+    def delete(self, request, order_id):
+        order = get_object_or_404(Order, id=order_id)
+
+        if order.status != Order.Status.PENDING:
+            return Response(
+                {'error': 'Удаление доступно только для заказов в статусе "Ожидает"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.delete()
+        return Response({'status': 'deleted', 'message': f'Заказ #{order_id} удалён'})
+
+
 # ─── Устаревшие endpoints (410 Gone) ─────────────────────────────────────────
 
 
@@ -1351,7 +1530,7 @@ class CourierColleaguesView(APIView):
     - orders_completed (выполненные заказы за смену)
     - orders_pending (взятые заказы в статусе PENDING)
     """
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
     
     def get(self, request):
         # Получаем всех курьеров
@@ -1416,7 +1595,7 @@ class ClientSearchView(APIView):
     Поиск клиента по номеру телефона или имени.
     Возвращает первого найденного клиента или 404.
     """
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
     
     def get(self, request):
         query = request.query_params.get('q', '').strip()
@@ -1472,7 +1651,7 @@ class CourierCreateOrderView(APIView):
         ]
     }
     """
-    permission_classes = [IsCourier]
+    permission_classes = [IsCourierOrOperator]
     
     def post(self, request):
         # Получаем курьера (кто создал заказ)

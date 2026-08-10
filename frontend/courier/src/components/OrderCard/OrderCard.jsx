@@ -9,18 +9,24 @@ import './OrderCard.css'
  * @param {boolean} isPoolOrder - Показывать кнопку "Взять заказ"
  * @param {boolean} isTripOrder - Показывать кнопку "Подтвердить доставку"
  * @param {boolean} isDelivered - Заказ доставлен (визуальное состояние)
+ * @param {boolean} isOperatorView - Режим оператора (показывать кнопки ред./удал.)
  * @param {Function} onAccept - Callback для взятия заказа
  * @param {Function} onConfirm - Callback для подтверждения доставки
  * @param {Function} onReturnToPool - Callback для возврата заказа в пул (снять с рейса)
+ * @param {Function} onEdit - Callback для редактирования заказа (оператор)
+ * @param {Function} onDelete - Callback для удаления заказа (оператор)
  */
 export default function OrderCard({
   order,
   isPoolOrder = false,
   isTripOrder = false,
   isDelivered = false,
+  isOperatorView = false,
   onAccept,
   onConfirm,
-  onReturnToPool
+  onReturnToPool,
+  onEdit,
+  onDelete
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -64,6 +70,12 @@ export default function OrderCard({
     const hours = String(date.getHours()).padStart(2, '0')
     const minutes = String(date.getMinutes()).padStart(2, '0')
     return `${day} ${month}, ${hours}:${minutes}`
+  }
+
+  // Форматирование телефона с +
+  const formatPhone = (phone) => {
+    if (!phone) return null
+    return phone.startsWith('+') ? phone : `+${phone}`
   }
 
   // Обработка клика на карточку
@@ -129,9 +141,9 @@ export default function OrderCard({
             <div className="detail-section detail-row">
               <div className="detail-col">
                 <div className="detail-label">Телефон</div>
-                <div className="detail-value">{order.client.phone}</div>
+                <div className="detail-value">{formatPhone(order.client.phone)}</div>
               </div>
-              <a href={`tel:${order.client.phone}`} className="call-button">
+              <a href={`tel:${formatPhone(order.client.phone)}`} className="call-button">
                 📞 Позвонить
               </a>
             </div>
@@ -163,6 +175,16 @@ export default function OrderCard({
               </div>
             )}
           </div>
+
+          {/* Курьер (только для оператора) */}
+          {isOperatorView && order.assigned_courier_name && (
+            <div className="detail-section detail-row">
+              <div className="detail-col">
+                <div className="detail-label">Курьер</div>
+                <div className="detail-value">{order.assigned_courier_name}</div>
+              </div>
+            </div>
+          )}
 
           {/* Статус доставки или кнопки действий */}
           {isDelivered ? (
@@ -196,6 +218,22 @@ export default function OrderCard({
                 >
                   ↩
                 </button>
+              )}
+
+              {/* Кнопки оператора — только для PENDING заказов */}
+              {isOperatorView && (
+                <div className="operator-actions">
+                  {onEdit && (
+                    <button className="action-btn edit-btn" onClick={onEdit}>
+                      ✏️ Ред.
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button className="action-btn delete-btn" onClick={onDelete}>
+                      🗑️ Уд.
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}

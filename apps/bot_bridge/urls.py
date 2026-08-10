@@ -60,6 +60,12 @@ urlpatterns = [
     path('client/register/', views.ClientRegisterView.as_view(), name='client_register'),
     path('client/profile/', views.ClientProfileView.as_view(), name='client_profile'),
 
+    # ── Оператор ─────────────────────────────────────────────────────────────
+    path('operator/orders/', views.OperatorOrdersListView.as_view(), name='operator_orders'),
+    path('operator/orders/<int:order_id>/', views.OperatorOrderDetailView.as_view(), name='operator_order_detail'),
+    path('operator/orders/<int:order_id>/update/', views.OperatorOrderUpdateView.as_view(), name='operator_order_update'),
+    path('operator/orders/<int:order_id>/delete/', views.OperatorOrderDeleteView.as_view(), name='operator_order_delete'),
+
     # ── Администратор ────────────────────────────────────────────────────────
     path('admin/stats/today/', views.AdminStatsTodayView.as_view(), name='admin_stats_today'),
     path('admin/shifts/', views.AdminShiftsView.as_view(), name='admin_shifts'),

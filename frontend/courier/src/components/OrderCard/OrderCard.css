@@ -407,3 +407,34 @@
   font-weight: 500;
   line-height: 1.3;
 }
+
+/* ── Кнопки оператора ──────────────────────────────────────────────────── */
+.operator-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.action-btn.edit-btn {
+  flex: 1;
+  background: var(--blue-bg);
+  color: var(--blue-text);
+  border: 1px solid var(--blue);
+}
+
+.action-btn.edit-btn:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
+.action-btn.delete-btn {
+  flex: 1;
+  background: var(--red-bg);
+  color: var(--red-text);
+  border: 1px solid var(--red);
+}
+
+.action-btn.delete-btn:hover {
+  background: var(--red);
+  color: #fff;
+}

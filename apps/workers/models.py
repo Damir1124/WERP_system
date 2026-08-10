@@ -7,6 +7,7 @@ class Worker(models.Model):
     class WorkerType(models.TextChoices):
         PACKER = "packer", "Упаковщик"
         COURIER = "courier", "Курьер"
+        OPERATOR = "operator", "Оператор"
         OTHER = "other", "Прочие"
     full_name = models.CharField(max_length=255, verbose_name="ФИО")
     phone = models.CharField(

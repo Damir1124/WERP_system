@@ -162,70 +162,137 @@
 {% block after_field_sets %}
 {{ block.super }}
 
+{% if order_readonly %}
+<!-- ═══ РЕЖИМ ТОЛЬКО-ЧТЕНИЕ (DELIVERED / CANCELLED) ═════════ -->
+<div class="info-box" style="background:#fff3cd; border-color:#ffc107; color:#856404;">
+    <strong>🔒 Заказ защищён от редактирования</strong>
+    Заказ находится в статусе «{{ original.get_status_display }}». Изменение позиций, цен, оплаты,
+    клиента или рейса повлияет на склад, финансы и итоги смены. Разрешено только примечание.
+    Для исправления ошибки используйте специальный сценарий (владелец).
+</div>
+{% endif %}
+
 <!-- Секция информации о клиенте -->
 <div class="order-form-section">
     <h2>📞 Информация о клиенте</h2>
-    
+
+    {% if order_readonly %}
+    <div class="form-row">
+        <label>Телефон клиента:</label>
+        <div style="padding:6px 0; font-weight:500;">{{ original.client.phone|default:'—' }}</div>
+    </div>
+    <div class="form-row">
+        <label>Адрес доставки (снимок):</label>
+        <div style="padding:6px 0; font-weight:500;">{{ original.delivery_address_text|default:'—' }}</div>
+    </div>
+    <div class="form-row">
+        <label>ФИО клиента:</label>
+        <div style="padding:6px 0; font-weight:500;">{{ original.client.name|default:'—' }}</div>
+    </div>
+    {% else %}
     <div class="info-box">
         <strong>💡 Подсказка:</strong>
         Введите номер телефона клиента. Если клиент уже есть в базе, его данные подгрузятся автоматически.
         Если клиента нет - он будет создан автоматически при сохранении заказа.
     </div>
-    
+
     <div class="form-row">
         {{ adminform.form.client_phone.label_tag }}
         {{ adminform.form.client_phone }}
         {{ adminform.form.client_phone.errors }}
         <span class="helptext">{{ adminform.form.client_phone.help_text }}</span>
     </div>
-    
+
     <div class="form-row">
         {{ adminform.form.client_address.label_tag }}
         {{ adminform.form.client_address }}
         {{ adminform.form.client_address.errors }}
         <span class="helptext">{{ adminform.form.client_address.help_text }}</span>
     </div>
-    
+
     <div class="form-row">
         {{ adminform.form.client_name.label_tag }}
         {{ adminform.form.client_name }}
         {{ adminform.form.client_name.errors }}
         <span class="helptext">{{ adminform.form.client_name.help_text }}</span>
     </div>
+    {% endif %}
 </div>
 
+{% if order_readonly %}
+<!-- Позиции заказа (readonly) -->
+<div class="order-form-section">
+    <h2>🛒 Позиции заказа</h2>
+    {% if original.items.all %}
+    <table class="order-items-table" style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background:#f8f9fa; text-align:left;">
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">Товар</th>
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">Кол-во</th>
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">Цена</th>
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">Обмен</th>
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">С тарой</th>
+                <th style="padding:8px; border-bottom:2px solid #dee2e6;">Брак</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in original.items.all %}
+            <tr>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.product }}</td>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.quantity }}</td>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.price }} сум</td>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.exchange_qty }}</td>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.sell_with_qty }}</td>
+                <td style="padding:8px; border-bottom:1px solid #f0f0f0;">{{ item.defective_qty }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+                <td colspan="6" style="padding:10px 8px; font-weight:700; text-align:right;">
+                    Итого: {{ original.get_total_price }} сум
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding:12px; color:#636e72;">Нет позиций в заказе</div>
+    {% endif %}
+</div>
+{% else %}
 <!-- Секция продуктов -->
 <div class="products-section">
     <h2>🛒 Продукты в заказе</h2>
-    
+
     <div id="products-container">
         <!-- Продукты будут добавляться сюда через JavaScript -->
     </div>
-    
+
     <button type="button" class="add-product-btn" id="add-product-btn">
         ➕ Добавить продукт
     </button>
-    
+
+    {% if inline_admin_formsets %}
     <!-- Скрытый formset management form -->
     {{ inline_admin_formsets.0.formset.management_form }}
+    {% endif %}
 </div>
+{% endif %}
 
 <!-- Секция дополнительных параметров -->
 <div class="order-form-section">
     <h2>⚙️ Параметры заказа</h2>
-    
+
     <div class="form-row">
         {{ adminform.form.payment_type.label_tag }}
         {{ adminform.form.payment_type }}
         {{ adminform.form.payment_type.errors }}
     </div>
-    
+
     <div class="form-row">
         {{ adminform.form.assigned_courier.label_tag }}
         {{ adminform.form.assigned_courier }}
         {{ adminform.form.assigned_courier.errors }}
     </div>
-    
+
     <div class="form-row">
         {{ adminform.form.note.label_tag }}
         {{ adminform.form.note }}

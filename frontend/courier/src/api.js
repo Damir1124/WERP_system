@@ -128,4 +128,24 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // ── Оператор: заказы ─────────────────────────────────────────────────────
+  getOperatorOrders: (statuses = []) => {
+    const params = statuses.map(s => `status=${s}`).join('&')
+    return apiFetch(`/operator/orders/${params ? '?' + params : ''}`)
+  },
+
+  getOperatorOrder: (orderId) =>
+    apiFetch(`/operator/orders/${orderId}/`),
+
+  updateOperatorOrder: (orderId, data) =>
+    apiFetch(`/operator/orders/${orderId}/update/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteOperatorOrder: (orderId) =>
+    apiFetch(`/operator/orders/${orderId}/delete/`, {
+      method: 'DELETE',
+    }),
 }

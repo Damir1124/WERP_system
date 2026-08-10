@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import OrderCard from '../components/OrderCard/OrderCard.jsx'
 
-export default function Pool() {
+export default function Pool({ role }) {
   const navigate = useNavigate()
+  const isOperator = role === 'operator'
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -20,10 +21,12 @@ export default function Pool() {
       console.log('[Pool] Получены заказы:', data)
       setOrders(Array.isArray(data) ? data : [])
       
-      // Проверяем наличие активного рейса
-      const trip = await api.getCurrentTrip()
-      console.log('[Pool] Данные рейса:', trip)
-      setTripData(trip)
+      // Проверяем наличие активного рейса (только для курьера)
+      if (!isOperator) {
+        const trip = await api.getCurrentTrip()
+        console.log('[Pool] Данные рейса:', trip)
+        setTripData(trip)
+      }
     } catch (e) {
       console.error('[Pool] Ошибка загрузки:', e)
       setError(e.message)
@@ -34,7 +37,7 @@ export default function Pool() {
       setLoading(false)
       console.log('[Pool] Загрузка завершена')
     }
-  }, [])
+  }, [isOperator])
 
   useEffect(() => { load() }, [load])
 
@@ -97,8 +100,8 @@ export default function Pool() {
         <div className="page-header-fixed">
           {error && <div className="error-box">{error}</div>}
           
-          {/* Предупреждение если нет активного рейса */}
-          {!hasActiveTrip && (
+          {/* Предупреждение если нет активного рейса (только для курьера) */}
+          {!isOperator && !hasActiveTrip && (
             <div style={{
               background: 'rgba(251, 146, 60, 0.1)',
               border: '1px solid rgba(251, 146, 60, 0.3)',
@@ -138,9 +141,9 @@ export default function Pool() {
               <OrderCard
                 key={order.id}
                 order={transformOrder(order)}
-                isPoolOrder={true}
-                onAccept={() => handleAssign(order.id)}
-                disabled={!hasActiveTrip}
+                isPoolOrder={!isOperator}
+                onAccept={!isOperator ? () => handleAssign(order.id) : undefined}
+                disabled={!isOperator && !hasActiveTrip}
               />
             ))
           )}

@@ -48,6 +48,7 @@ export default function OrderCreate() {
   
   // UI
   const [loading, setLoading] = useState(false)
+  const [loadingAddresses, setLoadingAddresses] = useState(false)
   const [error, setError] = useState(null)
   const [showMapPicker, setShowMapPicker] = useState(false)
   
@@ -167,70 +168,61 @@ export default function OrderCreate() {
     setSavedAddresses([])
     setSelectedAddressId(null)
     
-    try {
-      const result = await api.searchClientByPhone(normalized)
+    // Запускаем поиск клиента и загрузку адресов ПАРАЛЛЕЛЬНО
+    // чтобы не было задержки между появлением select и его наполнением
+    setLoadingAddresses(true)
+    
+    const [searchResult, addressesResult] = await Promise.allSettled([
+      api.searchClientByPhone(normalized),
+      api.getClientAddresses(normalized)
+    ])
+    
+    const result = searchResult.status === 'fulfilled' ? searchResult.value : null
+    const addressesData = addressesResult.status === 'fulfilled' ? addressesResult.value : null
+    
+    // Backend возвращает либо объект клиента, либо {error: ...}
+    if (result && result.id) {
+      // Клиент найден
+      setClientFound(true)
+      setClientData(result)
+      setClientName(result.name || '')
       
-      // Backend возвращает либо объект клиента, либо {error: ...}
-      if (result && result.id) {
-        // Клиент найден
-        setClientFound(true)
-        setClientData(result)
-        setClientName(result.name || '')
-        
-        // Загружаем сохранённые адреса клиента
-        try {
-          const addressesData = await api.getClientAddresses(normalized)
-          const addresses = addressesData.addresses || []
-          setSavedAddresses(addresses)
-          
-          // Сохранённые адреса загружены. Основное поле ввода остаётся ПУСТЫМ —
-          // адрес подставляется только при явном выборе из выпадающего списка
-          // (см. обработчик <select> ниже). По умолчанию выбран пункт "➕ Новый адрес".
-          setAddress('')
-          setGeoLocation(null)
-          setSelectedAddressId(null)
-        } catch (addrError) {
-          console.error('Ошибка загрузки адресов:', addrError)
-          // Fallback на старый адрес
-          setAddress(result.address || '')
-          if (result.latitude && result.longitude) {
-            setGeoLocation({ lat: result.latitude, lon: result.longitude })
-          }
-        }
+      if (addressesData) {
+        const addresses = addressesData.addresses || []
+        setSavedAddresses(addresses)
       } else {
-        // Клиент не найден
-        setClientFound(false)
-        setClientData(null)
-        setSavedAddresses([])
-        
-        // Автогенерация имени: "Клиент " + последние 4 цифры
-        const last4 = normalized.slice(-4)
-        setClientName(`Клиент ${last4}`)
-        
-        // Очищаем адрес для нового клиента
-        setAddress('')
-        setGeoLocation(null)
+        // Fallback на старый адрес, если адреса не загрузились
+        setAddress(result.address || '')
+        if (result.latitude && result.longitude) {
+          setGeoLocation({ lat: result.latitude, lon: result.longitude })
+        }
       }
+      setLoadingAddresses(false)
       
-      setPhoneChecked(true)
-    } catch (e) {
-      console.error('Ошибка поиска клиента:', e)
-      // Если 404 или другая ошибка — считаем что не найден
+      // Сохранённые адреса загружены. Основное поле ввода остаётся ПУСТЫМ —
+      // адрес подставляется только при явном выборе из выпадающего списка
+      // (см. обработчик <select> ниже). По умолчанию выбран пункт "➕ Новый адрес".
+      setAddress('')
+      setGeoLocation(null)
+      setSelectedAddressId(null)
+    } else {
+      // Клиент не найден
       setClientFound(false)
       setClientData(null)
       setSavedAddresses([])
+      setLoadingAddresses(false)
       
+      // Автогенерация имени: "Клиент " + последние 4 цифры
       const last4 = normalized.slice(-4)
       setClientName(`Клиент ${last4}`)
       
       // Очищаем адрес для нового клиента
       setAddress('')
       setGeoLocation(null)
-      
-      setPhoneChecked(true)
-    } finally {
-      setSearchingClient(false)
     }
+    
+    setPhoneChecked(true)
+    setSearchingClient(false)
   }
   
   // ─── Запрос геолокации ──────────────────────────────────────────────────────
@@ -603,8 +595,8 @@ export default function OrderCreate() {
               Адрес доставки *
             </label>
             
-            {/* Dropdown выбора адреса (если есть сохранённые) */}
-            {savedAddresses.length > 0 && (
+            {/* Dropdown выбора адреса (показываем всегда, когда клиент найден) */}
+            {clientFound && (
               <select
                 value={selectedAddressId || 'new'}
                 onChange={(e) => {
@@ -642,12 +634,20 @@ export default function OrderCreate() {
                   marginBottom: '8px'
                 }}
               >
-                <option value="new">➕ Новый адрес</option>
-                {savedAddresses.map((addr, idx) => (
-                  <option key={addr.id} value={addr.id}>
-                    {idx === 0 ? '🕐 Последний' : `Адрес ${idx + 1}`}: {addr.address_text || 'Только координаты'}
-                  </option>
-                ))}
+                {loadingAddresses ? (
+                  <option value="new" disabled>⏳ Загрузка адресов...</option>
+                ) : savedAddresses.length === 0 ? (
+                  <option value="new">➕ Новый адрес</option>
+                ) : (
+                  <>
+                    <option value="new">➕ Новый адрес</option>
+                    {savedAddresses.map((addr, idx) => (
+                      <option key={addr.id} value={addr.id}>
+                        {idx === 0 ? '🕐 Последний' : `Адрес ${idx + 1}`}: {addr.address_text || 'Только координаты'}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             )}
             
