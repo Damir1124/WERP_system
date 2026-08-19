@@ -167,3 +167,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # False (default): header is optional, fallback identity is used.
 # True: strict header check (enable for production).
 BOT_BRIDGE_REQUIRE_TG_HEADER = os.getenv('BOT_BRIDGE_REQUIRE_TG_HEADER', 'False') == 'True'
+
+# --- Verification of Telegram initData signature ---
+# False (default): подпись initData НЕ проверяется (для разработки).
+# True: строгая проверка HMAC-подписи (enable for production).
+BOT_BRIDGE_VERIFY_INIT_DATA = os.getenv('BOT_BRIDGE_VERIFY_INIT_DATA', 'False') == 'True'
+
+# --- Telegram admin chat for shift/trip closure reports ---
+# Дополнительный чат (например, группа), куда автоматически отправляются отчёты
+# о закрытии рейсов и смен курьеров. Отчёты всегда уходят ВСЕМ сотрудникам с
+# worker_type=OWNER и заполненным tg_id; ADMIN_CHAT_ID добавляется к ним.
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')

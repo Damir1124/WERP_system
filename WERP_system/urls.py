@@ -6,7 +6,10 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.shortcuts import redirect
+from apps.workers.models import Worker
+from apps.bot_bridge.utils import verify_telegram_init_data, extract_user_id_from_init_data
 import os
 
 # Кастомизация заголовка Django Admin
@@ -23,6 +26,50 @@ def serve_spa(spa_name):
             raise Http404(f"Mini App '{spa_name}' не найден. Выполните npm run build.")
         return FileResponse(open(index_path, 'rb'), content_type='text/html')
     return view
+
+
+def mini_app_router(request):
+    """
+    Legacy-роутер. Определяет роль и редиректит в нужный SPA.
+    Основная логика теперь в IdentifyView / resolve_user_role.
+    """
+    import urllib.parse
+
+    init_data = request.GET.get('tgWebAppData', '')
+    tg_id = None
+
+    if init_data:
+        init_data = urllib.parse.unquote(init_data)
+        if verify_telegram_init_data(init_data):
+            tg_id = extract_user_id_from_init_data(init_data)
+
+    if tg_id is None:
+        init_data = request.headers.get('X-Telegram-Init-Data', '')
+        if init_data:
+            if verify_telegram_init_data(init_data):
+                tg_id = extract_user_id_from_init_data(init_data)
+
+    if tg_id is None:
+        try:
+            tg_id = int(request.GET.get('tg_id', ''))
+        except (ValueError, TypeError):
+            tg_id = None
+
+    if tg_id:
+        try:
+            worker = Worker.objects.filter(tg_id=tg_id).first()
+            if worker:
+                if worker.worker_type == Worker.WorkerType.OWNER:
+                    return redirect('/miniapp/owner/')
+                elif worker.worker_type == Worker.WorkerType.OPERATOR:
+                    return redirect('/miniapp/operator/')
+                elif worker.worker_type == Worker.WorkerType.COURIER:
+                    return redirect('/miniapp/courier/')
+        except (ValueError, TypeError):
+            pass
+
+    # По умолчанию — Launcher (единая точка входа)
+    return redirect('/static/miniapp/launcher/index.html')
 
 
 urlpatterns = [
@@ -48,6 +95,10 @@ urlpatterns = [
     # Веб-дашборд (P6)
     path('dashboard/', include('apps.dashboard.urls')),
 
+    # Launcher Mini App — единая точка входа для всех пользователей
+    path('miniapp/launcher/', serve_spa('launcher'), name='launcher_miniapp'),
+    re_path(r'^miniapp/launcher/.*$', serve_spa('launcher'), name='launcher_miniapp_spa'),
+
     # Mini App для курьера — SPA (все пути отдают index.html)
     path('miniapp/courier/', serve_spa('courier'), name='courier_miniapp'),
     re_path(r'^miniapp/courier/.*$', serve_spa('courier'), name='courier_miniapp_spa'),
@@ -56,8 +107,19 @@ urlpatterns = [
     path('miniapp/client/', serve_spa('client'), name='client_miniapp'),
     re_path(r'^miniapp/client/.*$', serve_spa('client'), name='client_miniapp_spa'),
 
-    # Корневой URL — редирект на курьерский Mini App
-    path('', RedirectView.as_view(url='/miniapp/courier/', permanent=False), name='root'),
+    # Mini App для Owner — SPA
+    path('miniapp/owner/', serve_spa('owner'), name='owner_miniapp'),
+    re_path(r'^miniapp/owner/.*$', serve_spa('owner'), name='owner_miniapp_spa'),
+
+    # Mini App для Оператора — SPA
+    path('miniapp/operator/', serve_spa('operator'), name='operator_miniapp'),
+    re_path(r'^miniapp/operator/.*$', serve_spa('operator'), name='operator_miniapp_spa'),
+
+    # Mini App роутер — определяет роль и редиректит на нужный SPA (legacy)
+    path('miniapp/', mini_app_router, name='mini_app_router'),
+
+    # Корневой URL — редирект на Launcher
+    path('', RedirectView.as_view(url='/static/miniapp/launcher/index.html', permanent=False), name='root'),
 ]
 
 # Статика и медиа в режиме DEBUG

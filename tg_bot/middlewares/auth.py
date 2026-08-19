@@ -47,25 +47,38 @@ class AuthMiddleware(BaseMiddleware):
                 ) as resp:
                     if resp.status == 200:
                         result = await resp.json()
-                        role = result.get('role', 'unknown')
+                        # Единая логика: bot_role для фильтрации роутеров бота
+                        role = result.get('bot_role', result.get('role', 'unknown'))
+                        target_app = result.get('target_app')
                         name = result.get('name', '')
-                        user_id = result.get('id')
+                        worker_id = result.get('worker_id')
+                        client_id = result.get('client_id')
+                        user_id = worker_id or client_id
                     else:
                         role = 'unknown'
+                        target_app = None
                         name = ''
                         user_id = None
+                        worker_id = None
+                        client_id = None
         except Exception as e:
             logger.warning(f"Ошибка при идентификации tg_id={tg_id}: {e}")
             role = 'unknown'
+            target_app = None
             name = ''
             user_id = None
+            worker_id = None
+            client_id = None
 
         # Сохраняем данные пользователя
         data['user'] = {
             'tg_id': tg_id,
             'role': role,
+            'target_app': target_app,
             'name': name,
             'id': user_id,
+            'worker_id': worker_id,
+            'client_id': client_id,
             'is_authenticated': role != 'unknown'
         }
 

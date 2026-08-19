@@ -1,8 +1,11 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.http import HttpResponseRedirect
+from django.urls import reverse
 from .models import (
     Contract, SubjectContract, Installment, PaymentsInstallment,
     Salary, SalaryPayment, FinancialTransactions, Finance,
+    HistoricalStats,
 )
 from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
 
@@ -271,3 +274,78 @@ class FinanceAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# =============================================================================
+# Историческая база (до запуска WERP)
+# =============================================================================
+
+@admin.register(HistoricalStats)
+class HistoricalStatsAdmin(admin.ModelAdmin):
+    """
+    Единственная запись стартовых исторических показателей.
+
+    Доступ к изменению — только Owner / superuser.
+    Обычный Dispatcher (is_staff без is_superuser) не может изменять/удалять.
+    """
+    list_display = [
+        'historical_orders_created_total',
+        'historical_water_sold_total',
+        'werp_start_date',
+        'source',
+        'updated_at',
+    ]
+    readonly_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+
+    fieldsets = [
+        ('Исторические показатели «За всё время»', {
+            'fields': [
+                'historical_orders_created_total',
+                'historical_water_sold_total',
+            ],
+            'description': (
+                '⚠️ <b>Внимание!</b> Изменение этих значений повлияет на показатели '
+                '«За всё время» на Dashboard и в Admin Mini App. '
+                'Исторические данные прибавляются ТОЛЬКО к итогам «За всё время» '
+                'и не влияют на сегодня / неделю / месяц / смены / рейсы / кассу / финансы / склад.'
+            ),
+        }),
+        ('Параметры запуска', {
+            'fields': ['werp_start_date', 'source'],
+        }),
+        ('Служебная информация', {
+            'fields': ['created_at', 'updated_at', 'created_by', 'updated_by'],
+            'classes': ['collapse'],
+        }),
+    ]
+
+    def has_view_permission(self, request, obj=None):
+        # Видеть запись могут только Owner / superuser
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        # Создание второй записи запрещено (singleton). Только superuser.
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        # Удаление запрещено без отдельного привилегированного действия.
+        return False
+
+    def save_model(self, request, obj, form, change):
+        # Автофиксация автора изменения
+        if not obj.pk:
+            obj.created_by = getattr(request.user, 'worker', None)
+        obj.updated_by = getattr(request.user, 'worker', None)
+        super().save_model(request, obj, form, change)
+
+    def changelist_view(self, request, extra_context=None):
+        # Singleton: если запись уже есть — сразу открываем её на редактирование.
+        obj = HistoricalStats.objects.first()
+        if obj:
+            return HttpResponseRedirect(
+                reverse('admin:accounting_historicalstats_change', args=[obj.pk])
+            )
+        return super().changelist_view(request, extra_context=extra_context)

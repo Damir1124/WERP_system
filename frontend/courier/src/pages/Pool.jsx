@@ -5,7 +5,7 @@ import OrderCard from '../components/OrderCard/OrderCard.jsx'
 
 export default function Pool({ role }) {
   const navigate = useNavigate()
-  const isOperator = role === 'operator'
+  const isOperator = role === 'OPERATOR'
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

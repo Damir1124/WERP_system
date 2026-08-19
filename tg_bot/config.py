@@ -34,6 +34,9 @@ DJANGO_API_URL = os.getenv('DJANGO_API_URL', 'http://localhost:8000/api/bot')
 # URL Mini App (Telegram Web App)
 MINI_APP_URL = os.getenv('MINI_APP_URL', 'https://yourdomain.com/static/miniapp')
 
+# URL Launcher — единая точка входа для всех пользователей
+LAUNCHER_URL = f"{MINI_APP_URL}/launcher/index.html"
+
 # Список администраторов (Telegram ID через запятую)
 ADMIN_IDS = [int(x.strip()) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
 

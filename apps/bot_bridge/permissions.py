@@ -1,214 +1,181 @@
+"""
+Permissions для API бота.
+Основаны на поле Worker.worker_type.
+
+Правила:
+- COURIER    → доступ к курьерским API
+- OPERATOR   → доступ к Admin API
+- OWNER      → доступ к Admin API + Owner Dashboard
+- OPERATOR   → доступ к операторским API
+- is_admin=True → дополнительный доступ к Admin API (обратная совместимость)
+- Client     → НЕ имеет доступа к worker API (403)
+- Никто не может назначить себе роль через API
+
+Валидация всегда через initData (X-Telegram-Init-Data).
+Fallback на X-Telegram-ID только для разработки.
+"""
 from django.conf import settings
 from rest_framework.permissions import BasePermission
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from apps.workers.models import Worker
 
 
-def _require_tg_header() -> bool:
+def _resolve_tg_id(request):
     """
-    Строгая проверка заголовка X-Telegram-ID.
-    По умолчанию ОТКЛЮЧЕНА (False): система работает без заголовка,
-    используя резервную идентификацию (первый курьер / админ).
-    Включить позже: BOT_BRIDGE_REQUIRE_TG_HEADER = True (или env-переменная).
+    Извлекает tg_id из запроса.
+    Приоритет: initData → X-Telegram-ID.
+    Возвращает (tg_id, is_init_data) или (None, False).
     """
-    return getattr(settings, 'BOT_BRIDGE_REQUIRE_TG_HEADER', False)
+    init_data = request.headers.get('X-Telegram-Init-Data')
+    if init_data:
+        from apps.bot_bridge.utils import verify_telegram_init_data, extract_user_id_from_init_data
+        if verify_telegram_init_data(init_data):
+            tg_id = extract_user_id_from_init_data(init_data)
+            if tg_id:
+                return tg_id, True
+
+    tg_id_header = request.headers.get('X-Telegram-ID')
+    if tg_id_header:
+        try:
+            return int(tg_id_header), False
+        except ValueError:
+            pass
+
+    return None, False
+
+
+def _get_worker(request):
+    """Извлекает Worker из запроса по tg_id. Возвращает Worker или None."""
+    tg_id, _ = _resolve_tg_id(request)
+    if tg_id is None:
+        return None
+    try:
+        return Worker.objects.get(tg_id=tg_id)
+    except Worker.DoesNotExist:
+        return None
 
 
 class IsCourier(BasePermission):
     """
-    Аутентификация курьера по Telegram ID (заголовок X-Telegram-ID).
-    Заголовок опционален (см. _require_tg_header). Если его нет/он
-    некорректен и строгая проверка выключена — используется резервный
-    курьер (первый в списке), чтобы request.courier всегда был задан.
+    Доступ только для Worker с worker_type=COURIER.
+    Устанавливает request.courier.
     """
 
     def has_permission(self, request, view):
-        require = _require_tg_header()
-        tg_id = request.headers.get('X-Telegram-ID')
+        worker = _get_worker(request)
+        if worker is None:
+            raise AuthenticationFailed('Пользователь не найден или не авторизован')
 
-        if tg_id:
-            try:
-                courier = Worker.objects.get(tg_id=int(tg_id))
-            except (ValueError, Worker.DoesNotExist):
-                courier = None
-            if courier is not None and courier.worker_type == Worker.WorkerType.COURIER:
-                request.courier = courier
-                return True
-            # Работник есть, но он не курьер — доступ запрещён
-            if courier is not None:
-                raise AuthenticationFailed(
-                    'Доступ к Mini App только для курьеров. '
-                    'Ваш тип сотрудника: ' + courier.get_worker_type_display()
-                )
-            # Заголовок есть, но не соответствует ни одному работнику
-            if require:
-                raise AuthenticationFailed(
-                    'Курьер с таким Telegram ID не найден'
-                )
-            # иначе — резервная идентификация
-        else:
-            if require:
-                raise AuthenticationFailed('Заголовок X-Telegram-ID обязателен')
+        if worker.worker_type != Worker.WorkerType.COURIER:
+            raise PermissionDenied(
+                f'Доступ только для курьеров. Ваш тип: {worker.get_worker_type_display()}'
+            )
 
-        # Резервная идентификация — только для разработки
-        request.courier = self._fallback_courier()
+        request.courier = worker
         return True
 
-    @staticmethod
-    def _fallback_courier():
-        courier = Worker.objects.filter(worker_type=Worker.WorkerType.COURIER).first()
-        if courier is None:
-            raise AuthenticationFailed('Нет зарегистрированных курьеров')
-        return courier
+
+class IsCourierOrOperator(BasePermission):
+    """
+    Доступ для COURIER, OPERATOR или OWNER.
+    Устанавливает request.courier.
+    """
+
+    def has_permission(self, request, view):
+        worker = _get_worker(request)
+        if worker is None:
+            raise AuthenticationFailed('Пользователь не найден или не авторизован')
+
+        if worker.worker_type not in (
+            Worker.WorkerType.COURIER,
+            Worker.WorkerType.OPERATOR,
+            Worker.WorkerType.OWNER,
+        ):
+            raise PermissionDenied('Доступ только для курьеров и операторов')
+
+        request.courier = worker
+        return True
 
 
 class IsAdmin(BasePermission):
     """
-    Аутентификация администратора по Telegram ID (заголовок X-Telegram-ID).
-    Заголовок опционален (см. _require_tg_header).
+    Доступ для Worker с worker_type=OPERATOR, OWNER или is_admin=True.
+    Устанавливает request.admin.
     """
 
     def has_permission(self, request, view):
-        require = _require_tg_header()
-        tg_id = request.headers.get('X-Telegram-ID')
+        worker = _get_worker(request)
+        if worker is None:
+            raise AuthenticationFailed('Пользователь не найден или не авторизован')
 
-        if tg_id:
-            try:
-                worker = Worker.objects.get(tg_id=int(tg_id))
-            except (ValueError, Worker.DoesNotExist):
-                worker = None
-            if worker is not None and worker.is_admin:
-                request.admin = worker
-                return True
-            if require:
-                raise AuthenticationFailed(
-                    'Сотрудник с таким Telegram ID не найден или не является администратором'
-                )
-        else:
-            if require:
-                raise AuthenticationFailed('Заголовок X-Telegram-ID обязателен')
+        is_staff_type = worker.worker_type in (Worker.WorkerType.OPERATOR, Worker.WorkerType.OWNER)
+        if not is_staff_type and not worker.is_admin:
+            raise PermissionDenied(
+                f'Доступ только для диспетчеров и админов. Ваш тип: {worker.get_worker_type_display()}'
+            )
 
-        request.admin = self._fallback_admin()
+        request.admin = worker
         return True
 
+
+class IsOwner(BasePermission):
+    """
+    Доступ для Worker с worker_type=OWNER, OPERATOR или is_admin=True.
+    (Все admin-роли, которые могут открыть Admin Mini App.)
+    Устанавливает request.owner.
+    """
+
     @staticmethod
-    def _fallback_admin():
-        admin = Worker.objects.filter(is_admin=True).first()
-        if admin is None:
-            raise AuthenticationFailed('Нет зарегистрированных администраторов')
-        return admin
+    def _is_owner(worker):
+        return (
+            worker.is_admin
+            or worker.worker_type == Worker.WorkerType.OWNER
+            or worker.worker_type == Worker.WorkerType.OPERATOR
+        )
+
+    def has_permission(self, request, view):
+        worker = _get_worker(request)
+        if worker is None:
+            raise AuthenticationFailed('Пользователь не найден или не авторизован')
+
+        if not self._is_owner(worker):
+            raise PermissionDenied(
+                f'Доступ только для администраторов. Ваш тип: {worker.get_worker_type_display()}'
+            )
+
+        request.owner = worker
+        return True
+
+
+class IsOperator(BasePermission):
+    """
+    Доступ для Worker с worker_type=OPERATOR или OWNER.
+    Устанавливает request.operator.
+    """
+
+    def has_permission(self, request, view):
+        worker = _get_worker(request)
+        if worker is None:
+            raise AuthenticationFailed('Пользователь не найден или не авторизован')
+
+        if worker.worker_type not in (Worker.WorkerType.OPERATOR, Worker.WorkerType.OWNER):
+            raise PermissionDenied('Доступ только для операторов')
+
+        request.operator = worker
+        return True
 
 
 class IsCourierOrReadOnly(BasePermission):
     """
-    Курьерам — любые действия, остальным — только чтение.
-    Когда строгая проверка заголовка выключена, запись тоже разрешена
-    без аутентификации.
+    Любому сотруднику — чтение, COURIER — запись.
     """
 
     def has_permission(self, request, view):
         if request.method in ['GET', 'HEAD', 'OPTIONS']:
             return True
 
-        if not _require_tg_header():
-            return True
-
-        tg_id = request.headers.get('X-Telegram-ID')
-        if not tg_id:
-            return False
-
-        try:
-            tg_id = int(tg_id)
-            courier = Worker.objects.get(tg_id=tg_id)
-            return courier.worker_type == Worker.WorkerType.COURIER
-        except (ValueError, Worker.DoesNotExist):
-            return False
-
-
-class IsCourierOrOperator(BasePermission):
-    """
-    Аутентификация курьера ИЛИ оператора по Telegram ID.
-    Используется для общих эндпоинтов (пул, коллеги, создание заказа и т.д.),
-    к которым должны иметь доступ оба типа сотрудников.
-    """
-
-    def has_permission(self, request, view):
-        require = _require_tg_header()
-        tg_id = request.headers.get('X-Telegram-ID')
-
-        if tg_id:
-            try:
-                worker = Worker.objects.get(tg_id=int(tg_id))
-            except (ValueError, Worker.DoesNotExist):
-                worker = None
-            if worker is not None and worker.worker_type in (Worker.WorkerType.COURIER, Worker.WorkerType.OPERATOR):
-                request.courier = worker
-                return True
-            if worker is not None:
-                raise AuthenticationFailed(
-                    'Доступ к Mini App только для курьеров и операторов. '
-                    'Ваш тип сотрудника: ' + worker.get_worker_type_display()
-                )
-            if require:
-                raise AuthenticationFailed(
-                    'Сотрудник с таким Telegram ID не найден'
-                )
-        else:
-            if require:
-                raise AuthenticationFailed('Заголовок X-Telegram-ID обязателен')
-
-        # Резервная идентификация — только для разработки
-        request.courier = self._fallback_worker()
-        return True
-
-    @staticmethod
-    def _fallback_worker():
-        worker = Worker.objects.filter(
-            worker_type__in=(Worker.WorkerType.COURIER, Worker.WorkerType.OPERATOR)
-        ).first()
+        worker = _get_worker(request)
         if worker is None:
-            raise AuthenticationFailed('Нет зарегистрированных курьеров или операторов')
-        return worker
+            return False
 
-
-class IsOperator(BasePermission):
-    """
-    Аутентификация оператора по Telegram ID (заголовок X-Telegram-ID).
-    Аналогично IsCourier, но для worker_type=OPERATOR.
-    """
-
-    def has_permission(self, request, view):
-        require = _require_tg_header()
-        tg_id = request.headers.get('X-Telegram-ID')
-
-        if tg_id:
-            try:
-                operator = Worker.objects.get(tg_id=int(tg_id))
-            except (ValueError, Worker.DoesNotExist):
-                operator = None
-            if operator is not None and operator.worker_type == Worker.WorkerType.OPERATOR:
-                request.operator = operator
-                return True
-            if operator is not None:
-                raise AuthenticationFailed(
-                    'Доступ к панели оператора только для операторов. '
-                    'Ваш тип сотрудника: ' + operator.get_worker_type_display()
-                )
-            if require:
-                raise AuthenticationFailed(
-                    'Оператор с таким Telegram ID не найден'
-                )
-        else:
-            if require:
-                raise AuthenticationFailed('Заголовок X-Telegram-ID обязателен')
-
-        # Резервная идентификация — только для разработки
-        request.operator = self._fallback_operator()
-        return True
-
-    @staticmethod
-    def _fallback_operator():
-        operator = Worker.objects.filter(worker_type=Worker.WorkerType.OPERATOR).first()
-        if operator is None:
-            raise AuthenticationFailed('Нет зарегистрированных операторов')
-        return operator
+        return worker.worker_type == Worker.WorkerType.COURIER

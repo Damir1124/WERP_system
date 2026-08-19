@@ -46,6 +46,7 @@ class WorkerAdmin(admin.ModelAdmin):
         """Фильтруем типы сотрудников для удобства"""
         if db_field.name == 'worker_type':
             kwargs['choices'] = [
+                (Worker.WorkerType.OWNER, 'Владелец'),
                 (Worker.WorkerType.COURIER, 'Курьер'),
                 (Worker.WorkerType.PACKER, 'Упаковщик'),
                 (Worker.WorkerType.OPERATOR, 'Оператор'),

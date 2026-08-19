@@ -175,3 +175,84 @@ class Finance(models.Model):
     pass
 
 
+class HistoricalStats(models.Model):
+    """
+    Единственная запись стартовых исторических показателей «до запуска WERP».
+
+    Хранит два итога из старой системы:
+    - historical_orders_created_total — общее количество созданных заказов;
+    - historical_water_sold_total — общее количество проданной основной воды.
+
+    Эти значения прибавляются ТОЛЬКО к показателям «За всё время»
+    и НЕ влияют на today / week / month / custom / смены / рейсы / кассу / финансы / склад.
+
+    Singleton: в системе может быть только одна активная запись.
+    """
+    historical_orders_created_total = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Заказов создано (история)',
+        help_text='Общее количество заказов, созданных в старой системе до запуска WERP.'
+    )
+    historical_water_sold_total = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Продано основной воды (история)',
+        help_text='Общее количество проданной основной воды (в штуках) в старой системе до запуска WERP.'
+    )
+    werp_start_date = models.DateField(
+        verbose_name='Дата запуска WERP',
+        help_text='Дата, с которой начат учёт в WERP. Используется для подписи «Включая данные до запуска WERP».',
+        null=True, blank=True,
+    )
+    source = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Источник / комментарий',
+        help_text='Откуда взяты исторические данные (например, «Перенос из 1С, акт №...»)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Изменено')
+    created_by = models.ForeignKey(
+        'workers.Worker', on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Кто создал', related_name='historical_stats_created'
+    )
+    updated_by = models.ForeignKey(
+        'workers.Worker', on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Кто изменил', related_name='historical_stats_updated'
+    )
+
+    class Meta:
+        verbose_name = 'Историческая база (до WERP)'
+        verbose_name_plural = 'Историческая база (до WERP)'
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(historical_orders_created_total__gte=0),
+                name='historical_orders_created_total_gte_0',
+            ),
+            models.CheckConstraint(
+                check=models.Q(historical_water_sold_total__gte=0),
+                name='historical_water_sold_total_gte_0',
+            ),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.pk is None and HistoricalStats.objects.exists():
+            raise ValidationError(
+                'Запись исторической базы уже существует. '
+                'Нельзя создать вторую. Отредактируйте существующую.'
+            )
+
+    def save(self, *args, **kwargs):
+        if self.pk is None and HistoricalStats.objects.exists():
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                'Запись исторической базы уже существует. '
+                'Нельзя создать вторую. Отредактируйте существующую.'
+            )
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f'Историческая база: заказов {self.historical_orders_created_total}, '
+            f'воды {self.historical_water_sold_total}'
+            f'{" с " + self.werp_start_date.isoformat() if self.werp_start_date else ""}'
+        )

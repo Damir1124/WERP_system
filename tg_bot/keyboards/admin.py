@@ -1,8 +1,9 @@
 """
 Клавиатуры для администратора (reply и inline).
 """
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from tg_bot.config import LAUNCHER_URL
 
 
 def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
@@ -13,7 +14,8 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
     builder.add(KeyboardButton(text="📦 Склад (алерты)"))
     builder.add(KeyboardButton(text="📋 Последние заказы"))
     builder.add(KeyboardButton(text="🆘 Помощь"))
-    builder.adjust(2, 2, 1)
+    builder.add(KeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL)))
+    builder.adjust(2, 2, 1, 1)
     return builder.as_markup(resize_keyboard=True)
 
 

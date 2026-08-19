@@ -16,6 +16,7 @@ from tg_bot.middlewares.auth import AuthMiddleware
 from tg_bot.routers import courier, client, admin
 from tg_bot.routers import courier_create_order
 from tg_bot.routers import operator as operator_router
+from tg_bot.routers import owner as owner_router
 
 # Настройка логирования
 logging.basicConfig(level=LOG_LEVEL)
@@ -71,27 +72,31 @@ async def unknown_any_message(message: Message):
 # Каждый роутер фильтрует только своих пользователей через фильтр user['role'].
 
 # Фильтры по роли (применяются к роутерам через middleware data['user'])
-# Используем lambda с правильной сигнатурой: (message, **kwargs)
-# ВАЖНО: Админ имеет доступ ко всем роутерам (admin, courier, client, operator)
-courier.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
-courier.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['courier', 'admin'])
+# Строго одна роль = один роутер. Никаких пересечений.
+# bot_role: courier / operator / owner / client / unknown
+courier.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'courier')
+courier.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'courier')
 
-courier_create_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['courier', 'admin', 'operator'])
-courier_create_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['courier', 'admin', 'operator'])
+courier_create_order.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'courier')
+courier_create_order.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'courier')
 
 operator_router.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'operator')
 operator_router.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'operator')
 
+owner_router.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'owner')
+owner_router.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'owner')
+
 admin.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'admin')
 admin.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'admin')
 
-# Клиентский роутер обрабатывает ЛЮБОГО пользователя (сам определяет роль через ORM):
-# /start → выбор языка → регистрация через телефон при заказе.
-# Фильтр не нужен, но ставим минимальный, чтобы не перехватывать служебные апдейты.
+# Клиентский роутер обрабатывает client и unknown
+client.router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') in ['client', 'unknown'])
+client.router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') in ['client', 'unknown'])
 
 unknown_router.message.filter(lambda message, user=None, **kwargs: user and user.get('role') == 'unknown')
 unknown_router.callback_query.filter(lambda callback, user=None, **kwargs: user and user.get('role') == 'unknown')
 
+dp.include_router(owner_router.router)
 dp.include_router(admin.router)
 dp.include_router(operator_router.router)
 dp.include_router(courier.router)

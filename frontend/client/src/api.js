@@ -1,4 +1,12 @@
-import { effectiveTgId, initData } from './tg.js'
+import { effectiveTgId as tgEffectiveTgId, initData as tgInitData } from './tg.js'
+
+// initData: из Telegram WebApp или из sessionStorage (передан от Launcher)
+const initData = tgInitData || sessionStorage.getItem('tg_init_data') || ''
+
+// effectiveTgId: из Telegram WebApp или из sessionStorage (передан от Launcher)
+const effectiveTgId =
+  tgEffectiveTgId ||
+  (sessionStorage.getItem('tg_id') ? parseInt(sessionStorage.getItem('tg_id')) : null)
 
 let BASE_URL = import.meta.env.VITE_API_URL
 if (!BASE_URL || BASE_URL === 'undefined') {

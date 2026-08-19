@@ -72,6 +72,9 @@ urlpatterns = [
     path('admin/stock/alerts/', views.AdminStockAlertsView.as_view(), name='admin_stock_alerts'),
     path('admin/orders/recent/', views.AdminOrdersRecentView.as_view(), name='admin_orders_recent'),
 
+    # ── Owner Dashboard (Mini App) ───────────────────────────────────────────
+    path('owner/stats/', views.OwnerStatsView.as_view(), name='owner_stats'),
+
     # ── Устаревшие (410 Gone) ────────────────────────────────────────────────
     path('courier/deliveries/', views.CourierDeliveryListView.as_view(), name='courier_deliveries'),
     path('courier/deliveries/today/', views.TodayDeliveriesView.as_view(), name='today_deliveries'),

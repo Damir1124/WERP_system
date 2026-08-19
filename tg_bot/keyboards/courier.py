@@ -3,15 +3,15 @@
 Стратегия «гибрид»:
 - Основное меню (reply) дублирует все действия кнопками — курьер может работать
   вообще без Mini App.
-- В меню всегда есть кнопка «🌐 Mini App» (WebApp), чтобы при желании открыть
-  привычный интерфейс. Mini App при этом остаётся полностью рабочим.
+- В меню всегда есть кнопка «🌐 Открыть приложение» (WebApp), ведущая на Launcher.
+  Launcher сам определит роль и перенаправит в нужный Mini App.
 """
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, WebAppInfo,
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from tg_bot.config import MINI_APP_URL
+from tg_bot.config import LAUNCHER_URL
 
 
 def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -> ReplyKeyboardMarkup:
@@ -19,9 +19,10 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
     Главное меню курьера (адаптивное).
     Состав кнопок зависит от состояния: нет смены -> открыть смену,
     смена без рейса -> начать рейс, рейс активен -> рабочие действия.
-    Кнопки «📦 Заказы» и «📋 В процессе» доступны во всех состояниях.
+    Кнопка «🌐 Открыть приложение» доступна всегда и ведёт на Launcher.
     """
     builder = ReplyKeyboardBuilder()
+    app_btn = KeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL))
     if has_trip:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="📦 Заказы"))
@@ -29,7 +30,8 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
-        row_sizes = [1, 2, 2, 1]
+        builder.add(app_btn)
+        row_sizes = [1, 2, 2, 1, 1]
     elif has_shift:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="📦 Заказы"))
@@ -37,7 +39,8 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
-        row_sizes = [1, 2, 2, 1]
+        builder.add(app_btn)
+        row_sizes = [1, 2, 2, 1, 1]
     else:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="🟢 Открыть смену"))
@@ -45,7 +48,8 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
-        row_sizes = [1, 1, 2, 2, 1]
+        builder.add(app_btn)
+        row_sizes = [1, 1, 2, 2, 1, 1]
     builder.adjust(*row_sizes)
     return builder.as_markup(resize_keyboard=True)
 # Типы продуктов, считающиеся «водой 19л» (для подсчёта в пуле заказов)
@@ -61,8 +65,8 @@ def get_order_water_qty(order: dict) -> int:
     )
 
 
-def get_pool_inline_keyboard(orders: list, mini_app_url: str = MINI_APP_URL) -> InlineKeyboardMarkup:
-    """Пул заказов: кнопка на каждый заказ (#id | вода 19 | адрес) + создать + Mini App."""
+def get_pool_inline_keyboard(orders: list) -> InlineKeyboardMarkup:
+    """Пул заказов: кнопка на каждый заказ (#id | вода 19 | адрес) + создать + Launcher."""
     builder = InlineKeyboardBuilder()
     for order in orders[:30]:
         water_qty = get_order_water_qty(order)
@@ -71,7 +75,7 @@ def get_pool_inline_keyboard(orders: list, mini_app_url: str = MINI_APP_URL) -> 
         label = order.get('human_number', f"#{order['id']}")
         text = f"{label} | {water_qty} | {address_short}"
         builder.add(InlineKeyboardButton(text=text, callback_data=f"order_details_{order['id']}"))
-    builder.add(InlineKeyboardButton(text="🌐 Открыть Mini App (пул)", web_app=WebAppInfo(url=f"{mini_app_url}/courier/")))
+    builder.add(InlineKeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL)))
     builder.adjust(1)
     return builder.as_markup()
 

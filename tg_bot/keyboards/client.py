@@ -2,11 +2,12 @@
 Клавиатуры для клиента.
 """
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, WebAppInfo,
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
+from tg_bot.config import LAUNCHER_URL
 from tg_bot.constants import (
     LANGUAGES, t,
     BTN_BACK, BTN_SKIP, BTN_ADD_ADDRESS, BTN_NEW_ADDRESS,
@@ -37,7 +38,8 @@ def get_main_keyboard(lang: str = 'ru') -> ReplyKeyboardMarkup:
     builder.add(KeyboardButton(text=t(MY_ADDRESSES_BTN, lang)))
     builder.add(KeyboardButton(text=t(LANG_BTN, lang)))
     builder.add(KeyboardButton(text=t(COOLERS_BTN, lang)))
-    builder.adjust(1, 1, 2)
+    builder.add(KeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL)))
+    builder.adjust(1, 1, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 

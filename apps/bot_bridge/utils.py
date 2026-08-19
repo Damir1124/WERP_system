@@ -3,80 +3,171 @@
 """
 import hashlib
 import hmac
+import json
 import os
-from urllib.parse import parse_qs, urlencode
+import urllib.parse
+
 from django.conf import settings
+from apps.workers.models import Worker
+from apps.clients.models import Client
+
+
+def _parse_init_data(init_data: str) -> dict:
+    """
+    Разбирает initData на пары key=value БЕЗ декодирования значений.
+    """
+    result = {}
+    if not init_data:
+        return result
+    for chunk in init_data.split('&'):
+        if '=' in chunk:
+            key, value = chunk.split('=', 1)
+            result[key] = value
+    return result
 
 
 def verify_telegram_init_data(init_data: str) -> bool:
     """
     Проверяет подпись initData от Telegram Mini App.
-    Алгоритм: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-    
-    Параметры:
-        init_data: строка вида "query_id=...&user=...&auth_date=...&hash=..."
-    
-    Возвращает:
-        True если подпись верна, иначе False.
     """
     if not init_data:
         return False
-    
-    # Разбираем строку на параметры
-    parsed = parse_qs(init_data, keep_blank_values=False)
-    
-    # Извлекаем hash
-    hash_value = parsed.get('hash', [None])[0]
+
+    if not getattr(settings, 'BOT_BRIDGE_VERIFY_INIT_DATA', False):
+        return True
+
+    parsed = _parse_init_data(init_data)
+    hash_value = parsed.get('hash')
     if not hash_value:
         return False
-    
-    # Удаляем hash из параметров для вычисления HMAC
+
     del parsed['hash']
-    
-    # Сортируем ключи в алфавитном порядке
     sorted_params = sorted(parsed.items(), key=lambda x: x[0])
-    
-    # Формируем строку данных в формате "key=value" с разделителем "\n"
     data_check_string = '\n'.join(
-        f"{key}={value[0]}" for key, value in sorted_params
+        f"{k}={v}" for k, v in sorted_params
     )
-    
-    # Секретный ключ: HMAC_SHA256(BOT_TOKEN, "WebAppData")
-    bot_token = os.getenv('BOT_TOKEN')
+
+    bot_token = os.getenv('BOT_TOKEN') or getattr(settings, 'BOT_TOKEN', None)
     if not bot_token:
-        # Если BOT_TOKEN не установлен, пропускаем проверку (для разработки)
         return True
-    
+
     secret_key = hmac.new(
         key=b"WebAppData",
         msg=bot_token.encode(),
         digestmod=hashlib.sha256
     ).digest()
-    
-    # Вычисляем HMAC_SHA256(secret_key, data_check_string)
+
     computed_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode(),
         digestmod=hashlib.sha256
     ).hexdigest()
-    
-    # Сравниваем хеши
+
     return hmac.compare_digest(computed_hash, hash_value)
 
 
 def extract_user_id_from_init_data(init_data: str) -> int | None:
-    """
-    Извлекает Telegram ID пользователя из initData.
-    Возвращает None, если не удалось извлечь.
-    """
+    """Извлекает Telegram ID пользователя из initData."""
     try:
-        parsed = parse_qs(init_data, keep_blank_values=False)
-        user_str = parsed.get('user', [None])[0]
+        parsed = _parse_init_data(init_data)
+        user_str = parsed.get('user')
         if not user_str:
             return None
-        # user_str - JSON строка, но мы можем извлечь id простым способом
-        import json
-        user = json.loads(user_str)
+        user = json.loads(urllib.parse.unquote(user_str))
         return user.get('id')
     except Exception:
         return None
+
+
+def resolve_user_role(tg_id: int) -> dict:
+    """
+    Единая функция определения роли пользователя.
+
+    Порядок:
+    1. Worker по tg_id (всегда приоритет)
+    2. Client по tg_id
+    3. Неизвестный
+
+    Возвращает словарь:
+    - role: COURIER / OWNER / OPERATOR / CLIENT / UNKNOWN
+    - target_app: courier / admin / client / registration / None
+    - bot_role: courier / admin / operator / owner / client / unknown (для бота)
+    - name: str
+    - worker_id: int | None
+    - client_id: int | None
+    - authenticated: bool
+    """
+    worker = Worker.objects.filter(tg_id=tg_id).first()
+    if worker:
+        if worker.worker_type == Worker.WorkerType.COURIER:
+            return {
+                'role': 'COURIER',
+                'target_app': 'courier',
+                'bot_role': 'courier',
+                'name': worker.full_name,
+                'worker_id': worker.id,
+                'client_id': None,
+                'authenticated': True,
+            }
+        elif worker.worker_type == Worker.WorkerType.OWNER:
+            return {
+                'role': 'OWNER',
+                'target_app': 'admin',
+                'bot_role': 'owner',
+                'name': worker.full_name,
+                'worker_id': worker.id,
+                'client_id': None,
+                'authenticated': True,
+            }
+        elif worker.worker_type == Worker.WorkerType.OPERATOR:
+            return {
+                'role': 'OPERATOR',
+                'target_app': 'operator',
+                'bot_role': 'operator',
+                'name': worker.full_name,
+                'worker_id': worker.id,
+                'client_id': None,
+                'authenticated': True,
+            }
+        elif worker.is_admin:
+            return {
+                'role': 'ADMIN',
+                'target_app': 'admin',
+                'bot_role': 'admin',
+                'name': worker.full_name,
+                'worker_id': worker.id,
+                'client_id': None,
+                'authenticated': True,
+            }
+        else:
+            return {
+                'role': 'WORKER',
+                'target_app': None,
+                'bot_role': None,
+                'name': worker.full_name,
+                'worker_id': worker.id,
+                'client_id': None,
+                'authenticated': True,
+            }
+
+    client = Client.objects.filter(tg_id=tg_id).first()
+    if client:
+        return {
+            'role': 'CLIENT',
+            'target_app': 'client',
+            'bot_role': 'client',
+            'name': client.name,
+            'worker_id': None,
+            'client_id': client.id,
+            'authenticated': True,
+        }
+
+    return {
+        'role': 'UNKNOWN',
+        'target_app': 'registration',
+        'bot_role': 'unknown',
+        'name': None,
+        'worker_id': None,
+        'client_id': None,
+        'authenticated': False,
+    }

@@ -16,7 +16,9 @@ from apps.bot_bridge.serializers import (
     OrderQuantityUpdateSerializer,
     OrderCreateModelSerializer,
 )
-from apps.bot_bridge.permissions import IsCourier, IsCourierOrOperator, IsAdmin, IsOperator
+from apps.bot_bridge.permissions import IsCourier, IsCourierOrOperator, IsAdmin, IsOperator, IsOwner
+from apps.bot_bridge.utils import resolve_user_role, verify_telegram_init_data, extract_user_id_from_init_data
+from apps.bot_bridge.reports import notify_shift_closed, notify_trip_closed
 from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem
 from apps.products.models import Product
 from apps.clients.models import Client
@@ -53,8 +55,10 @@ class APIRootView(APIView):
 
 class IdentifyView(APIView):
     """
-    GET /api/bot/identify/?tg_id=<id>
-    Возвращает роль: courier / client / admin / unknown
+    GET /api/bot/identify/
+
+    Единая точка идентификации. Использует resolve_user_role().
+    Поддерживает initData и tg_id параметр (для разработки).
     """
     permission_classes = []
 
@@ -63,7 +67,6 @@ class IdentifyView(APIView):
         tg_id_param = request.query_params.get('tg_id')
         tg_id_int = None
         if init_data:
-            from apps.bot_bridge.utils import verify_telegram_init_data, extract_user_id_from_init_data
             if not verify_telegram_init_data(init_data):
                 return Response({'error': 'Неверная подпись initData'}, status=status.HTTP_401_UNAUTHORIZED)
             tg_id_int = extract_user_id_from_init_data(init_data)
@@ -75,33 +78,15 @@ class IdentifyView(APIView):
             except ValueError:
                 return Response({'error': 'tg_id должен быть числом'}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            return Response({'error': 'Необходим параметр tg_id или заголовок X-Telegram-Init-Data'}, status=status.HTTP_400_BAD_REQUEST)
-        worker = Worker.objects.filter(tg_id=tg_id_int).first()
-        if worker:
-            # Роль 'courier' — для курьеров, 'operator' — для операторов.
-            # Packer'ы и другие типы не получают доступ к Mini App.
-            if worker.worker_type == Worker.WorkerType.COURIER:
-                role = 'admin' if worker.is_admin else 'courier'
-            elif worker.worker_type == Worker.WorkerType.OPERATOR:
-                role = 'admin' if worker.is_admin else 'operator'
-            else:
-                role = 'other'
-            return Response({
-                'role': role,
-                'name': worker.full_name,
-                'id': worker.id,
-                'worker_type': worker.worker_type,
-            })
-        client = Client.objects.filter(tg_id=tg_id_int).first()
-        if client:
-            return Response({
-                'role': 'client',
-                'name': client.name,
-                'id': client.id,
-                'phone': client.phone,
-                'address': client.address,
-            })
-        return Response({'role': 'unknown', 'message': 'Пользователь не зарегистрирован'})
+            return Response({'error': 'Необходим заголовок X-Telegram-Init-Data или параметр tg_id'}, status=status.HTTP_400_BAD_REQUEST)
+        result = resolve_user_role(tg_id_int)
+        # Поля для обратной совместимости со старым ботом
+        result['id'] = result.get('worker_id') or result.get('client_id')
+        if result['role'] == 'CLIENT':
+            client = Client.objects.filter(tg_id=tg_id_int).first()
+            result['phone'] = client.phone if client else ''
+            result['address'] = client.address if client else ''
+        return Response(result)
 
 # ─── Профиль курьера ──────────────────────────────────────────────────────────
 
@@ -162,6 +147,8 @@ class CourierShiftCloseView(APIView):
         if shift.status == CourierShift.Status.CLOSED:
             return Response({'error': 'Смена уже закрыта'}, status=status.HTTP_400_BAD_REQUEST)
         shift.close()
+        # Автоматически отправляем отчёт о закрытии смены в админ-чат
+        notify_shift_closed(shift)
         return Response({'message': f'Смена #{shift.id} закрыта', 'shift_id': shift.id})
 
 
@@ -465,7 +452,10 @@ class TripCloseView(APIView):
         trip.status = CourierTrip.Status.DONE
         trip.finished_at = timezone.now()
         trip.save()
-        
+
+        # Автоматически отправляем отчёт о закрытии рейса в админ-чат
+        notify_trip_closed(trip)
+
         return Response({
             'success': True,
             'finished_at': trip.finished_at.isoformat(),
@@ -1183,6 +1173,7 @@ class AdminStatsTodayView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
+        today = timezone.localdate()
         finance = Finance.objects.filter(date=today).first()
         active_shifts_count = CourierShift.objects.filter(
             date=today, status=CourierShift.Status.OPEN
@@ -1210,6 +1201,7 @@ class AdminShiftsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
+        today = timezone.localdate()
         shifts = CourierShift.objects.filter(
             date=today, status=CourierShift.Status.OPEN
         ).select_related('courier').order_by('courier__full_name')
@@ -1812,3 +1804,108 @@ class CourierCreateOrderView(APIView):
                 'name': client.name
             }
         }, status=status.HTTP_201_CREATED)
+
+
+class OwnerStatsView(APIView):
+    """
+    GET /api/bot/owner/stats/
+
+    Возвращает сводную статистику для Owner Mini App.
+    Доступ: только Owner (worker_type=OWNER или is_admin=True).
+    """
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        today = timezone.localdate()
+
+        # Доход из Finance
+        finance_today = Finance.objects.filter(date=today).first()
+        income = finance_today.income if finance_today else 0
+        card_profit = finance_today.card_profit if finance_today else 0
+
+        # Доставленные заказы сегодня
+        delivered_qs = Order.objects.filter(
+            status=Order.Status.DELIVERED,
+            delivered_at__date=today,
+        )
+        delivered_orders = delivered_qs.count()
+
+        # Вода в доставленных заказах сегодня
+        water_delivered = OrderItem.objects.filter(
+            order__in=delivered_qs,
+            product__type_product__in=[
+                Product.TypeProduct.WATER,
+                Product.TypeProduct.BOTTLE_20L,
+            ],
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        # Наличные по доставленным заказам сегодня
+        cash = OrderItem.objects.filter(
+            order__in=delivered_qs,
+            order__payment_type=Order.PaymentType.CASH,
+        ).aggregate(total=Sum('price'))['total'] or 0
+
+        # Карта по доставленным заказам сегодня
+        card = OrderItem.objects.filter(
+            order__in=delivered_qs,
+            order__payment_type=Order.PaymentType.CARD,
+        ).aggregate(total=Sum('price'))['total'] or 0
+
+        # Pending заказы сейчас
+        pending_qs = Order.objects.filter(status=Order.Status.PENDING)
+        pending_orders = pending_qs.count()
+
+        # Вода в pending заказах
+        pending_water = OrderItem.objects.filter(
+            order__in=pending_qs,
+            product__type_product__in=[
+                Product.TypeProduct.WATER,
+                Product.TypeProduct.BOTTLE_20L,
+            ],
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        # Активные рейсы сейчас
+        active_trips_qs = CourierTrip.objects.filter(status=CourierTrip.Status.ACTIVE)
+        active_trips = active_trips_qs.count()
+
+        # Сколько воды в развозе
+        in_transit_water = 0
+        for trip in active_trips_qs:
+            summary = trip.get_trip_summary()
+            in_transit_water += summary.get('full_remain', 0)
+
+        # За всё время
+        werp_orders_total = Order.objects.count()
+        werp_water_sold = OrderItem.objects.filter(
+            order__status=Order.Status.DELIVERED,
+            product__type_product__in=[
+                Product.TypeProduct.WATER,
+                Product.TypeProduct.BOTTLE_20L,
+            ],
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        from apps.dashboard.services.historical import get_historical_totals
+        hist = get_historical_totals()
+
+        total_orders = werp_orders_total + hist.orders_created_total
+        total_water_sold = werp_water_sold + hist.water_sold_total
+
+        return Response({
+            'today': {
+                'income': income,
+                'delivered_orders': delivered_orders,
+                'water_delivered': water_delivered,
+                'pending_orders': pending_orders,
+                'pending_water': pending_water,
+                'active_trips': active_trips,
+                'in_transit_water': in_transit_water,
+                'cash': cash,
+                'card': card,
+            },
+            'all_time': {
+                'total_orders': total_orders,
+                'total_water_sold': total_water_sold,
+                'historical_included': hist.exists,
+                'werp_start_date': hist.werp_start_date.isoformat() if hist.werp_start_date else None,
+            },
+        })

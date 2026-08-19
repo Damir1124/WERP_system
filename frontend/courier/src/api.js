@@ -1,4 +1,10 @@
-import { initData, tgId } from './tg.js'
+import { initData as tgInitData, tgId as tgWebTgId } from './tg.js'
+
+// initData: из Telegram WebApp или из sessionStorage (передан от Launcher)
+const initData = tgInitData || sessionStorage.getItem('tg_init_data') || ''
+
+// tgId: из Telegram WebApp или из sessionStorage (передан от Launcher)
+const tgId = tgWebTgId || sessionStorage.getItem('tg_id') || ''
 
 // Базовый URL API, берется из переменной окружения VITE_API_URL
 let BASE_URL = import.meta.env.VITE_API_URL
@@ -9,7 +15,7 @@ if (!BASE_URL || BASE_URL === 'undefined') {
 BASE_URL = BASE_URL.replace(/\/$/, '')
 console.log('API BASE_URL:', BASE_URL)
 
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const url = `${BASE_URL}${path}`
   console.log(`[API] ${options.method || 'GET'} ${url}`)
 
@@ -127,25 +133,5 @@ export const api = {
     apiFetch('/clients/addresses/save/', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
-
-  // ── Оператор: заказы ─────────────────────────────────────────────────────
-  getOperatorOrders: (statuses = []) => {
-    const params = statuses.map(s => `status=${s}`).join('&')
-    return apiFetch(`/operator/orders/${params ? '?' + params : ''}`)
-  },
-
-  getOperatorOrder: (orderId) =>
-    apiFetch(`/operator/orders/${orderId}/`),
-
-  updateOperatorOrder: (orderId, data) =>
-    apiFetch(`/operator/orders/${orderId}/update/`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-
-  deleteOperatorOrder: (orderId) =>
-    apiFetch(`/operator/orders/${orderId}/delete/`, {
-      method: 'DELETE',
     }),
 }

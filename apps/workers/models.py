@@ -8,7 +8,9 @@ class Worker(models.Model):
         PACKER = "packer", "Упаковщик"
         COURIER = "courier", "Курьер"
         OPERATOR = "operator", "Оператор"
+        OWNER = "owner", "Владелец"
         OTHER = "other", "Прочие"
+
     full_name = models.CharField(max_length=255, verbose_name="ФИО")
     phone = models.CharField(
         max_length=20,
@@ -45,4 +47,3 @@ class Worker(models.Model):
 
     def __str__(self):
         return self.full_name
-
