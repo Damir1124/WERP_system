@@ -784,6 +784,51 @@ class CourierPoolDetailView(APIView):
         return Response(serializer.data)
 
 
+class CourierOrdersAggregateView(APIView):
+    """GET /api/bot/courier/orders/aggregate/ — сводка по адресам взятых заказов.
+
+    Берёт PENDING-заказы курьера в активном рейсе, группирует их по адресу
+    общежития (блок → этаж → комната) и суммирует количество воды 19л.
+    Заказы с нераспознанным адресом попадают в 'unparsed'.
+
+    Ответ:
+        {
+            'groups': [
+                {'block': 'A', 'floor': 3, 'room': 12, 'water_qty': 2, 'orders': [...]},
+            ],
+            'unparsed': [...],
+        }
+    """
+    permission_classes = [IsCourier]
+
+    def get(self, request):
+        from apps.logistics.services import aggregate_orders_by_address
+
+        courier = request.courier
+        active_shift = CourierShift.objects.filter(
+            courier=courier,
+            status=CourierShift.Status.OPEN,
+        ).first()
+        if not active_shift:
+            return Response({'groups': [], 'unparsed': [], 'message': 'Нет активной смены'})
+
+        active_trip = CourierTrip.objects.filter(
+            shift=active_shift,
+            status=CourierTrip.Status.ACTIVE,
+        ).first()
+        if not active_trip:
+            return Response({'groups': [], 'unparsed': [], 'message': 'Нет активного рейса'})
+
+        orders = Order.objects.filter(
+            trip=active_trip,
+            status=Order.Status.PENDING,
+        ).select_related('client', 'assigned_courier').prefetch_related('items__product').order_by('-created_at')
+
+        serializer = OrderSerializer(orders, many=True)
+        result = aggregate_orders_by_address(serializer.data)
+        return Response(result)
+
+
 class CourierAssignOrderView(APIView):
     """POST /api/bot/courier/pool/<order_id>/assign/"""
     permission_classes = [IsCourier]

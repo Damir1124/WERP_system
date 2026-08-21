@@ -90,13 +90,6 @@ export default function OrderCreate() {
     }
   }, [phone])
 
-  // ─── Коды операторов Узбекистана (2 цифры сразу после +998) ────────────────
-  // При появлении новых операторов/кодов достаточно дополнить этот список
-  const UZ_OPERATOR_CODES = [
-    '90', '91', '93', '94', '95', '97', '98', '99', // основные мобильные операторы
-    '33', '88', '20', '77', '50'                     // доп. коды (Uzmobile, Perfectum, MVNO и т.п.)
-  ]
-
   // ─── Приведение произвольного ввода к "телу" номера (9 цифр) ────────────────
   // Обрабатывает вставку в любом виде: "+998 95 555 55 55", "998955555555",
   // "895555555" (старый формат с 8), "955555555", с пробелами/скобками/дефисами и т.д.
@@ -124,10 +117,10 @@ export default function OrderCreate() {
     return parts.join(' ')
   }
 
-  // ─── Проверка корректности тела номера (9 цифр + допустимый код оператора) ──
+  // ─── Проверка корректности тела номера (9 цифр) ─────────────────────────────
+  // Валидация кода оператора намеренно убрана — принимаем любые 9 цифр.
   const isValidUzPhoneBody = (digits) => {
-    if (digits.length !== 9) return false
-    return UZ_OPERATOR_CODES.includes(digits.slice(0, 2))
+    return digits.length === 9
   }
 
   // ─── Обработка изменения поля телефона ──────────────────────────────────────
@@ -151,11 +144,7 @@ export default function OrderCreate() {
     const normalized = validateAndNormalizePhone()
     
     if (!normalized) {
-      if (phone.length < 9) {
-        setError('Номер телефона должен содержать 9 цифр')
-      } else {
-        setError('Неверный код оператора. Проверьте номер телефона')
-      }
+      setError('Номер телефона должен содержать 9 цифр')
       setPhoneChecked(false)
       return
     }
@@ -325,11 +314,7 @@ export default function OrderCreate() {
     // Валидация и нормализация телефона
     const normalized = validateAndNormalizePhone()
     if (!normalized) {
-      if (phone.length < 9) {
-        setError('Номер телефона должен содержать 9 цифр')
-      } else {
-        setError('Неверный код оператора. Проверьте номер телефона')
-      }
+      setError('Номер телефона должен содержать 9 цифр')
       return
     }
     

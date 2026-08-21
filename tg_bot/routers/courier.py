@@ -1292,6 +1292,47 @@ async def show_colleagues(message: Message):
         )
     await message.answer(text)
 
+# ─── Скрытая команда: сводка по адресам (агрегация) ───────────────────────────
+# Команда НЕ выводится в меню и доступна только курьеру (фильтр role в bot.py).
+# Курьер вводит её вручную, чтобы увидеть агрегацию своих взятых заказов
+# по адресу общежития (блок → этаж, общее кол-во воды на этаж).
+@router.message(Command("сводка"))
+@router.message(Command("agg"))
+async def cmd_address_summary(message: Message):
+    tg_id = message.from_user.id
+    data = await api_client.get('/courier/orders/aggregate/', headers=auth_headers(tg_id))
+    if 'error' in data:
+        await message.answer(f"❌ Ошибка: {data.get('error')}")
+        return
+
+    groups = data.get('groups', [])
+    unparsed = data.get('unparsed', [])
+
+    if not groups and not unparsed:
+        await message.answer("📦 Сводка по адресам\n\nНет взятых заказов в активном рейсе.")
+        return
+
+    lines = ["📦 <b>Сводка по адресам</b>", ""]
+    for g in groups:
+        lines.append(f"🏢 <b>Блок {g['block']}</b>")
+        lines.append(f"   {g['floor']} этаж — {g['water_qty']} шт")
+        for room in g.get('rooms', []):
+            lines.append(f"      комната {room['room']} — {room['water_qty']} шт")
+        lines.append("")
+
+    text = "\n".join(lines).rstrip()
+
+    if unparsed:
+        text += (
+            "\n\n⚠️ <b>Без адреса (не агрегированы):</b> "
+            f"{len(unparsed)} зак.\nНажмите на заказ, чтобы посмотреть адрес:"
+        )
+        kb = get_pool_inline_keyboard(unparsed)
+        await message.answer(text, reply_markup=kb)
+    else:
+        await message.answer(text)
+
+
 # ─── Помощь ────────────────────────────────────────────────────────────────────
 @router.message(F.text == "🆘 Помощь")
 async def show_help(message: Message):
