@@ -24,7 +24,7 @@ from apps.products.models import Product
 from apps.clients.models import Client
 from apps.workers.models import Worker
 from apps.accounting.models import Finance
-from apps.warehouse.models import StockBalance
+from apps.warehouse.models import WarehouseStockBalance
 
 
 class APIRootView(APIView):
@@ -1226,13 +1226,13 @@ class AdminStockAlertsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        alerts = StockBalance.objects.filter(
+        alerts = WarehouseStockBalance.objects.filter(
             quantity__lt=10
-        ).select_related('product').order_by('quantity')
+        ).select_related('warehouse_product').order_by('quantity')
         data = [{
-            'product_id': a.product.id,
-            'product_name': a.product.name,
-            'product_type': a.product.type_product,
+            'product_id': a.warehouse_product.id,
+            'product_name': a.warehouse_product.name,
+            'product_type': 'WAREHOUSE',
             'quantity': a.quantity,
             'last_received_date': a.last_received_date,
             'last_departure_date': a.last_departure_date,

@@ -66,7 +66,7 @@ def get_order_water_qty(order: dict) -> int:
 
 
 def get_pool_inline_keyboard(orders: list) -> InlineKeyboardMarkup:
-    """Пул заказов: кнопка на каждый заказ (#id | вода 19 | адрес) + создать + Launcher."""
+    """Пул заказов: кнопка на каждый заказ (#id | вода 19 | адрес) + обновить."""
     builder = InlineKeyboardBuilder()
     for order in orders[:30]:
         water_qty = get_order_water_qty(order)
@@ -75,7 +75,7 @@ def get_pool_inline_keyboard(orders: list) -> InlineKeyboardMarkup:
         label = order.get('human_number', f"#{order['id']}")
         text = f"{label} | {water_qty} | {address_short}"
         builder.add(InlineKeyboardButton(text=text, callback_data=f"order_details_{order['id']}"))
-    builder.add(InlineKeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL)))
+    builder.add(InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_pool"))
     builder.adjust(1)
     return builder.as_markup()
 

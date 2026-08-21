@@ -4,22 +4,6 @@
 
 ## Модели
 
-### StockBalance
-Баланс позиций на складе.
-- `product` (FK → Product) - продукт
-- `quantity` - количество на складе
-- `last_received_date` - дата последнего прибавления
-- `last_departure_date` - дата последнего убавления
-
-### StockMovement
-Движение позиций со склада.
-- `sold_product` (FK → Product) - проданный продукт
-- `contract` (FK → Contract) - связанный контракт
-- `operation_type` (Buy/Sell) - тип операции
-- `quantity` - количество
-- `data` - дата операции
-- `note` - примечание
-
 ### Garage
 Учет транспортных средств.
 - `vehicle_name` - название автомобиля
@@ -28,28 +12,39 @@
 - `year` - год выпуска
 - `courier` (OneToOne → Worker) - курьер
 
-### InventoryAdjustment (P2 реализовано)
-Ручная корректировка остатков на складе через админку.
-- `product` (FK → Product) - продукт для корректировки
-- `adjustment_type` (INC/DEC/SET) - тип корректировки: увеличение, уменьшение, установка значения
-- `quantity` - количество для изменения
-- `reason` (обязательное поле) - причина корректировки
-- `adjusted_by` (FK → Worker) - кто выполнил корректировку
-- `created_at` - дата корректировки
-- `note` - дополнительные примечания
+## Автономный контур складских продуктов (WarehouseProduct)
 
-**Логика работы:** При сохранении `InventoryAdjustment` автоматически обновляется `StockBalance` и создается запись в `StockMovement` для аудита.
+**Назначение:** Учёт складских продуктов **отдельно** от ассортимента `Product`. Полностью автономная сущность без наследования и без FK на `Product`.
 
-## Логика
-- Автоматическое списание товаров при продаже
-- Маппинг товаров (BOTTLE → BOTTLE_20L)
-- Отслеживание остатков в реальном времени
-- **Выборочный учет на складе:** Поле `track_inventory` в модели `Product` определяет, нужно ли вести учет остатков для данного продукта
+### Модели
+- **`WarehouseProduct`** — складской продукт (`name`, `sku`, `unit`, `is_active`)
+- **`WarehouseStockBalance`** — остатки (OneToOne к `WarehouseProduct`)
+- **`WarehouseStockMovement`** — журнал приход/расход (IN/OUT)
+- **`WarehouseInventoryAdjustment`** — ручные корректировки (INC/DEC/SET)
+- **`ProductWarehouseMapping`** — M2M-мост: `Product` ↔ `WarehouseProduct` с коэффициентом
 
-## Сигналы
-- `post_save` в `logistics` → списание со склада (только для продуктов с `track_inventory=True`)
-- `post_save` в `accounting` → обновление баланса (только для продуктов с `track_inventory=True`)
-- `post_save` в `SubjectContract` → обновление остатков по контрактам (только для продуктов с `track_inventory=True`)
+### Логика
+- При создании `WarehouseProduct` авто-создаётся `WarehouseStockBalance` (сигнал)
+- При `WarehouseStockMovement` авто-обновляется остаток (IN → +, OUT → −)
+- При `WarehouseInventoryAdjustment` авто-обновляется остаток + запись в журнал
+- **Авто-списание при продажах:** при `Order` (статус DELIVERED) и `SubjectContract` (SELL) через маппинг списывается `coefficient × quantity` из `WarehouseStockBalance`
+- **Закупки (BUY):** приходуют складские продукты через маппинг
+
+### Сигналы
+Отдельный файл `warehouse_signals.py` (подключён в `apps.py`). Старый контур `StockBalance`/`StockMovement`/`InventoryAdjustment` и его сигналы **полностью удалены**.
+
+### API
+- `/api/warehouse/warehouse-products/` — CRUD складских продуктов
+- `/api/warehouse/warehouse-stock/` — остатки
+- `/api/warehouse/warehouse-movements/` — журнал + приход/расход
+- `/api/warehouse/warehouse-adjustments/` — корректировки
+- `/api/warehouse/warehouse-mappings/` — маппинги
+
+### Админка
+- `WarehouseProductAdmin` с Inline `ProductWarehouseMappingInline` — связь складского продукта с продуктами ассортимента
+- `WarehouseStockBalanceAdmin`, `WarehouseStockMovementAdmin` — только просмотр
+- `WarehouseInventoryAdjustmentAdmin` — ручные корректировки
+- `ProductWarehouseMappingAdmin` — сводное управление связями
 
 ## Утилиты (`warehouse/utils.py`) - P2 реализовано
 
@@ -72,11 +67,46 @@
 - ✅ **Генератор путевых листов (.docx)** - реализован в `warehouse/utils.py`
 - ✅ **Ручная корректировка склада через админку** - реализована моделью `InventoryAdjustment`
 
+## Автономный контур складских продуктов (WarehouseProduct)
+
+**Назначение:** Учёт складских продуктов **отдельно** от ассортимента `Product`. Полностью автономная сущность без наследования и без FK на `Product`.
+
+### Модели
+- **`WarehouseProduct`** — складской продукт (`name`, `sku`, `unit`, `is_active`)
+- **`WarehouseStockBalance`** — остатки (OneToOne к `WarehouseProduct`)
+- **`WarehouseStockMovement`** — журнал приход/расход (IN/OUT)
+- **`WarehouseInventoryAdjustment`** — ручные корректировки (INC/DEC/SET)
+- **`ProductWarehouseMapping`** — M2M-мост: `Product` ↔ `WarehouseProduct` с коэффициентом
+
+### Логика
+- При создании `WarehouseProduct` авто-создаётся `WarehouseStockBalance` (сигнал)
+- При `WarehouseStockMovement` авто-обновляется остаток (IN → +, OUT → −)
+- При `WarehouseInventoryAdjustment` авто-обновляется остаток + запись в журнал
+- **Авто-списание при продажах:** при `Order` (статус DELIVERED) и `SubjectContract` (SELL) через маппинг списывается `coefficient × quantity` из `WarehouseStockBalance`
+- **Закупки (BUY):** приходуют складские продукты через маппинг
+
+### Сигналы
+Отдельный файл `warehouse_signals.py` (подключён в `apps.py`). Существующие сигналы в `signals.py` **не тронуты** — старый контур `StockBalance` работает параллельно.
+
+### API
+- `/api/warehouse/warehouse-products/` — CRUD складских продуктов
+- `/api/warehouse/warehouse-stock/` — остатки
+- `/api/warehouse/warehouse-movements/` — журнал + приход/расход
+- `/api/warehouse/warehouse-adjustments/` — корректировки
+- `/api/warehouse/warehouse-mappings/` — маппинги
+
+### Админка
+- `WarehouseProductAdmin` с Inline `ProductWarehouseMappingInline` — связь складского продукта с продуктами ассортимента
+- `WarehouseStockBalanceAdmin`, `WarehouseStockMovementAdmin` — только просмотр
+- `WarehouseInventoryAdjustmentAdmin` — ручные корректировки
+- `ProductWarehouseMappingAdmin` — сводное управление связями
+
 ## Связи
 - `Product` ← `StockBalance`
 - `Contract` ← `StockMovement`
 - `Worker` ← `Garage`
 - `Product` ← `InventoryAdjustment`
+- `Product` ↔ `WarehouseProduct` (M2M через `ProductWarehouseMapping`)
 
 ## Пример использования генератора путевых листов
 ```python

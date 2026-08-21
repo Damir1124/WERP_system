@@ -6,11 +6,13 @@ const initData = tgInitData || sessionStorage.getItem('tg_init_data') || ''
 // tgId: из Telegram WebApp или из sessionStorage (передан от Launcher)
 const tgId = tgWebTgId || sessionStorage.getItem('tg_id') || ''
 
-// Базовый URL API, берется из переменной окружения VITE_API_URL
+// Базовый URL API.
+// По умолчанию — относительный путь /api/bot (запросы идут на тот же домен,
+// откуда загружен Mini App — ngrok/домен). Это работает и на мобильном,
+// где localhost недоступен. Для локальной разработки можно задать VITE_API_URL.
 let BASE_URL = import.meta.env.VITE_API_URL
 if (!BASE_URL || BASE_URL === 'undefined') {
-  console.warn('VITE_API_URL не задан, используем http://localhost:8000/api/bot')
-  BASE_URL = 'http://localhost:8000/api/bot'
+  BASE_URL = '/api/bot'
 }
 BASE_URL = BASE_URL.replace(/\/$/, '')
 console.log('API BASE_URL:', BASE_URL)

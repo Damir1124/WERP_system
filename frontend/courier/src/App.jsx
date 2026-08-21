@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { initTelegram, tgId } from './tg.js'
+import { initTelegram } from './tg.js'
 import Pool from './pages/Pool.jsx'
+import RefreshContext, { useRefresh } from './refreshContext.js'
 import Trip from './pages/Trip.jsx'
 import TripClose from './pages/TripClose.jsx'
 import OrderConfirm from './pages/OrderConfirm.jsx'
@@ -70,47 +71,102 @@ function BottomNav() {
 function FAB() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { refresh } = useRefresh()
 
   // Не показываем FAB на странице создания заказа
   const showFAB = location.pathname !== '/orders/create'
 
   if (!showFAB) return null
 
+  // Refresh-FAB виден только на странице пула (/) и обновляет пул + данные рейса
+  const showRefreshFAB = location.pathname === '/'
+
   return (
-    <button
-      onClick={() => navigate('/orders/create')}
-      style={{
-        position: 'fixed',
-        bottom: '60px',
-        right: '20px',
-        width: '52px',
-        height: '52px',
-        borderRadius: '50%',
-        background: '#3b82f6',
-        color: 'white',
-        fontSize: '28px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        zIndex: 1000,
-        border: 'none',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: '300',
-        lineHeight: '1'
-      }}
-      title="Создать заказ"
-    >
-      +
-    </button>
+    <>
+      {showRefreshFAB && (
+        <button
+          onClick={refresh}
+          style={{
+            position: 'fixed',
+            bottom: '124px',
+            right: '20px',
+            width: '52px',
+            height: '52px',
+            borderRadius: '50%',
+            background: '#3b82f6',
+            color: 'white',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 1000,
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          title="Обновить пул заказов"
+        >
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
+      )}
+      <button
+        onClick={() => navigate('/orders/create')}
+        style={{
+          position: 'fixed',
+          bottom: '60px',
+          right: '20px',
+          width: '52px',
+          height: '52px',
+          borderRadius: '50%',
+          background: '#3b82f6',
+          color: 'white',
+          fontSize: '28px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontWeight: '300',
+          lineHeight: '1'
+        }}
+        title="Создать заказ"
+      >
+        +
+      </button>
+    </>
   )
 }
 
 function AppShell() {
   const location = useLocation()
   const isConfirm = location.pathname.startsWith('/order/')
+  const refreshRef = useRef(null)
+
+  const registerRefresh = (fn) => {
+    refreshRef.current = fn
+  }
+
+  const refresh = () => {
+    if (typeof refreshRef.current === 'function') {
+      refreshRef.current()
+    }
+  }
 
   return (
+    <RefreshContext.Provider value={{ registerRefresh, refresh }}>
     <div className="app-shell">
       <TopBar />
 
@@ -138,78 +194,17 @@ function AppShell() {
       <BottomNav />
       <FAB />
     </div>
-  )
-}
-
-function AccessDenied() {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      padding: '20px',
-      textAlign: 'center',
-      background: '#f8f9fa',
-    }}>
-      <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚫</div>
-      <h1 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>
-        Доступ запрещён
-      </h1>
-      <p style={{ fontSize: '14px', color: '#666', maxWidth: '300px' }}>
-        Mini App доступно только для курьеров. Обратитесь к администратору.
-      </p>
-    </div>
+    </RefreshContext.Provider>
   )
 }
 
 export default function App() {
-  const [access, setAccess] = React.useState({ loading: true, granted: false })
-
   useEffect(() => {
     initTelegram()
-    checkAccess()
   }, [])
 
-  async function checkAccess() {
-    try {
-      const { api } = await import('./api.js')
-      const data = await api.identify(tgId)
-      // Курьерскому приложению доступны роли COURIER и admin (по target_app)
-      const allowedRoles = ['COURIER']
-      const allowedApps = ['courier', 'admin']
-      if (allowedRoles.includes(data.role) || allowedApps.includes(data.target_app)) {
-        setAccess({ loading: false, granted: true })
-      } else {
-        setAccess({ loading: false, granted: false })
-        console.warn('[Access] Роль не имеет доступа к курьерскому Mini App:', data.role, data)
-      }
-    } catch (err) {
-      console.error('[Access] Ошибка проверки доступа:', err)
-      setAccess({ loading: false, granted: false })
-    }
-  }
-
-  if (access.loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        fontSize: '16px',
-        color: '#666',
-      }}>
-        Проверка доступа...
-      </div>
-    )
-  }
-
-  if (!access.granted) {
-    return <AccessDenied />
-  }
-
+  // Доступ контролирует backend (permissions.py) на каждом API-эндпоинте.
+  // Launcher уже перенаправил пользователя в правильный Mini App.
   return (
     <Router>
       <AppShell />

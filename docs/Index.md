@@ -33,6 +33,7 @@
 * [[Concepts_ContainerOperations|Контейнерные операции (Container Operations)]] — бизнес-логика учета тары (обмен, продажа с тарой, брак), списание со склада, обновленные API эндпоинты
 * [[Concepts_PostgreSQLTransactions|PostgreSQL транзакции и select_for_update]] — блокировка строк, race conditions, атомарные счётчики, паттерны в WERP
 * [[Concepts_TWACaching|Кэширование TWA при пересборке Vite]] — почему после `npx vite build` не видно изменений в Telegram WebView и как это чинить через `?v=N`
+* [[Concepts_WarehouseProductSeparation|Разделение контуров учёта (Product vs WarehouseProduct)]] — автономный складской продукт + M2M-мост с коэффициентом, авто-списание при продажах
 
 ## Функциональные возможности
 * [[Feature_MultiProductOrderForm|Форма создания заказа с несколькими продуктами]] — улучшенная админ-форма для быстрого создания заказов с динамическим добавлением продуктов

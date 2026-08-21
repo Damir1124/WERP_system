@@ -1,94 +1,12 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from apps.warehouse.models import StockBalance, StockMovement, Garage, InventoryAdjustment
+from apps.warehouse.models import (
+    Garage,
+    WarehouseProduct, WarehouseStockBalance, WarehouseStockMovement,
+    WarehouseInventoryAdjustment, ProductWarehouseMapping,
+)
 from apps.workers.models import Worker
 from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
-
-
-# ─── Остатки склада ──────────────────────────────────────────────────────────
-
-
-@admin.register(StockBalance)
-class StockBalanceAdmin(admin.ModelAdmin):
-    """Остатки товаров на складе (только просмотр, редактирование через InventoryAdjustment)"""
-    list_display = ('product', 'quantity_colored', 'last_received_date', 'last_departure_date')
-    list_filter = ('product__type_product', 'last_received_date', 'last_departure_date')
-    search_fields = ('product__name',)
-    readonly_fields = ['product', 'quantity', 'last_departure_date', 'last_received_date']
-    list_per_page = 20
-    ordering = ('product__type_product', 'product__name')
-
-    fieldsets = [
-        ('Информация об остатке', {
-            'fields': ['product', 'quantity'],
-        }),
-        ('Даты', {
-            'fields': ['last_received_date', 'last_departure_date'],
-            'classes': ['collapse'],
-        }),
-    ]
-
-    @admin.display(description='Остаток')
-    def quantity_colored(self, obj):
-        """Цветовая индикация остатка"""
-        if obj.quantity <= 0:
-            color = '#d63031'
-        elif obj.quantity < 10:
-            color = '#fdcb6e'
-        else:
-            color = '#00b894'
-        return format_html('<span style="color:{}; font-weight:bold">{}</span>', color, obj.quantity)
-
-    def has_add_permission(self, request):
-        """Запрещаем ручное создание остатков (создаются автоматически)"""
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        """Запрещаем удаление остатков"""
-        return False
-
-
-# ─── Движения склада ─────────────────────────────────────────────────────────
-
-
-@admin.register(StockMovement)
-class StockMovementAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
-    """Лог всех движений на складе (только просмотр)"""
-    list_display = ('sold_product', 'operation_type', 'quantity', 'data', 'contract_link', 'note')
-    list_filter = ('operation_type', 'data')
-    search_fields = ('sold_product__name', 'note')
-    ordering = ('-data',)
-    date_hierarchy = 'data'
-    list_per_page = 25
-    readonly_fields = ['sold_product', 'operation_type', 'quantity', 'contract', 'note']
-
-    fieldsets = [
-        ('Информация о движении', {
-            'fields': ['sold_product', 'operation_type', 'quantity'],
-        }),
-        ('Основание', {
-            'fields': ['contract', 'note'],
-            'classes': ['collapse'],
-        }),
-    ]
-
-    @admin.display(description='Контракт')
-    def contract_link(self, obj):
-        if obj.contract:
-            return format_html(
-                '<a href="{}">{}</a>',
-                f'/admin/accounting/contract/{obj.contract.id}/change/',
-                obj.contract.description[:50]
-            )
-        return '—'
-
-    def has_add_permission(self, request):
-        """Запрещаем ручное создание движений (создаются бизнес-логикой)"""
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        """Запрещаем удаление движений"""
-        return False
 
 
 # ─── Автомобили ──────────────────────────────────────────────────────────────
@@ -117,15 +35,108 @@ class GarageAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-# ─── Корректировки инвентаря ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  АВТОНОМНЫЙ КОНТУР СКЛАДСКИХ ПРОДУКТОВ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
-@admin.register(InventoryAdjustment)
-class InventoryAdjustmentAdmin(admin.ModelAdmin):
-    """Ручная корректировка остатков склада"""
-    list_display = ('product', 'adjustment_type', 'quantity', 'adjusted_by', 'created_at', 'reason_short')
-    list_filter = ('adjustment_type', 'created_at', 'product__type_product')
-    search_fields = ('product__name', 'reason', 'note')
+class ProductWarehouseMappingInline(admin.TabularInline):
+    """Связь складского продукта с продуктами ассортимента (M2M с коэффициентом)"""
+    model = ProductWarehouseMapping
+    extra = 1
+    fk_name = 'warehouse_product'
+    verbose_name = 'Связь с продуктом ассортимента'
+    verbose_name_plural = 'Связи с продуктами ассортимента'
+
+
+@admin.register(WarehouseProduct)
+class WarehouseProductAdmin(admin.ModelAdmin):
+    """Административные продукты (автономный контур учёта)"""
+    list_display = ('name', 'sku', 'unit', 'balance_quantity', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'sku')
+    list_per_page = 20
+    ordering = ('name',)
+    inlines = [ProductWarehouseMappingInline]
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = [
+        ('Основная информация', {
+            'fields': ['name', 'sku', 'unit'],
+        }),
+        ('Статус', {
+            'fields': ['is_active'],
+        }),
+        ('Служебное', {
+            'fields': ['created_at', 'updated_at'],
+            'classes': ['collapse'],
+        }),
+    ]
+
+    @admin.display(description='Остаток')
+    def balance_quantity(self, obj):
+        balance = getattr(obj, 'balance', None)
+        if balance is None:
+            return '—'
+        if balance.quantity <= 0:
+            color = '#d63031'
+        elif balance.quantity < 10:
+            color = '#fdcb6e'
+        else:
+            color = '#00b894'
+        return format_html('<span style="color:{}; font-weight:bold">{}</span>', color, balance.quantity)
+
+
+@admin.register(WarehouseStockBalance)
+class WarehouseStockBalanceAdmin(admin.ModelAdmin):
+    """Остатки складских продуктов (только просмотр)"""
+    list_display = ('warehouse_product', 'quantity_colored', 'last_received_date', 'last_departure_date')
+    search_fields = ('warehouse_product__name',)
+    readonly_fields = ['warehouse_product', 'quantity', 'last_received_date', 'last_departure_date']
+    list_per_page = 20
+    ordering = ('warehouse_product__name',)
+
+    @admin.display(description='Остаток')
+    def quantity_colored(self, obj):
+        if obj.quantity <= 0:
+            color = '#d63031'
+        elif obj.quantity < 10:
+            color = '#fdcb6e'
+        else:
+            color = '#00b894'
+        return format_html('<span style="color:{}; font-weight:bold">{}</span>', color, obj.quantity)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(WarehouseStockMovement)
+class WarehouseStockMovementAdmin(admin.ModelAdmin):
+    """Журнал движений складских продуктов (только просмотр)"""
+    list_display = ('warehouse_product', 'operation_type', 'quantity', 'created_at', 'note')
+    list_filter = ('operation_type', 'created_at')
+    search_fields = ('warehouse_product__name', 'note')
+    ordering = ('-created_at',)
+    date_hierarchy = 'created_at'
+    list_per_page = 25
+    readonly_fields = ['warehouse_product', 'operation_type', 'quantity', 'note']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(WarehouseInventoryAdjustment)
+class WarehouseInventoryAdjustmentAdmin(admin.ModelAdmin):
+    """Ручная корректировка остатков складских продуктов"""
+    list_display = ('warehouse_product', 'adjustment_type', 'quantity', 'adjusted_by', 'created_at', 'reason_short')
+    list_filter = ('adjustment_type', 'created_at')
+    search_fields = ('warehouse_product__name', 'reason', 'note')
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'
     list_per_page = 20
@@ -133,7 +144,7 @@ class InventoryAdjustmentAdmin(admin.ModelAdmin):
 
     fieldsets = [
         ('Корректировка', {
-            'fields': ['product', 'adjustment_type', 'quantity'],
+            'fields': ['warehouse_product', 'adjustment_type', 'quantity'],
         }),
         ('Обоснование', {
             'fields': ['reason', 'note', 'adjusted_by'],
@@ -147,3 +158,13 @@ class InventoryAdjustmentAdmin(admin.ModelAdmin):
     @admin.display(description='Причина')
     def reason_short(self, obj):
         return obj.reason[:75] + '...' if len(obj.reason) > 75 else obj.reason
+
+
+@admin.register(ProductWarehouseMapping)
+class ProductWarehouseMappingAdmin(admin.ModelAdmin):
+    """Связи продуктов ассортимента со складскими продуктами"""
+    list_display = ('product', 'warehouse_product', 'coefficient')
+    list_filter = ('product__type_product',)
+    search_fields = ('product__name', 'warehouse_product__name')
+    list_per_page = 20
+    ordering = ('product__name',)

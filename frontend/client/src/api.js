@@ -10,7 +10,7 @@ const effectiveTgId =
 
 let BASE_URL = import.meta.env.VITE_API_URL
 if (!BASE_URL || BASE_URL === 'undefined') {
-  BASE_URL = 'http://localhost:8000/api/bot'
+  BASE_URL = '/api/bot'
 }
 BASE_URL = BASE_URL.replace(/\/$/, '')
 console.log('[Client API] BASE_URL:', BASE_URL)

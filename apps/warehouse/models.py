@@ -4,60 +4,165 @@ from django.core.validators import MinValueValidator
 from apps.accounting.models import Contract
 
 
-
-class StockBalance(models.Model):
-    """Баланс позиций на складе"""
-    product = models.ForeignKey(Product,
-                                on_delete=models.CASCADE,
-                                null=True,
-                                blank=True,
-                                related_name='products',
-                                verbose_name="Продукт")
-    quantity = models.IntegerField(null=False,
-                                   default=1,
-                                   verbose_name="Количство на складе",
-                                   validators=[MinValueValidator(1)])
-    last_received_date = models.DateTimeField(verbose_name='Дата последнего прибавления', null=True, blank=True)
-    last_departure_date = models.DateTimeField(verbose_name='Дата последнего убавления', null=True, blank=True)
-
-    class Meta:
-        verbose_name = 'Склад'
+# ═══════════════════════════════════════════════════════════════════════════════
+#  АВТОНОМНЫЙ КОНТУР СКЛАДСКИХ ПРОДУКТОВ
+#  Полностью отдельная сущность WarehouseProduct — НЕ связана с Product.
+#  Связь с ассортиментом реализована через ProductWarehouseMapping (M2M).
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
-    def __str__(self):
-        return f"{self.product.name} на складе {self.quantity} шт"
-
-
-class StockMovement(models.Model):
-    """Движение позиций со склада на склад"""
-    class OperationTypeChoices(models.TextChoices):
-        BUY = 'Buy', 'В плюс'
-        SELL = 'Sell', 'В минус'
-
-    sold_product = models.ForeignKey(Product,
-                                on_delete=models.CASCADE,
-                                null=True,
-                                blank=True,
-                                related_name='sold_product',
-                                verbose_name='Продукт'
-    )
-    contract = models.ForeignKey(Contract,
-                                 on_delete=models.CASCADE,
-                                 null=True,
-                                 blank=True,
-                                 related_name="contrats",
-                                 verbose_name='Контракт'
-    )
-    operation_type = models.CharField(max_length=10, choices=OperationTypeChoices.choices)
-    quantity = models.IntegerField(default=1, validators=[MinValueValidator(1)], verbose_name='Количество')
-    data = models.DateField(auto_now_add=True)
-    note = models.TextField(max_length=255, verbose_name='Примечание', null=True)
+class WarehouseProduct(models.Model):
+    """Складской продукт — полностью автономная сущность, отдельная от ассортимента Product"""
+    name = models.CharField(max_length=120, unique=True, verbose_name="Наименование")
+    sku = models.CharField(max_length=50, blank=True, verbose_name="Артикул")
+    unit = models.CharField(max_length=20, default='шт', verbose_name="Единица измерения")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
 
     class Meta:
-        verbose_name = "Лог Движений на складе"
+        verbose_name = 'Складской продукт'
+        verbose_name_plural = 'Складские продукты'
+        ordering = ['name']
 
     def __str__(self):
-        return f"{self.sold_product} - {self.operation_type}" if self.sold_product else "Без продукта"
+        return self.name
+
+
+class WarehouseStockBalance(models.Model):
+    """Остатки складских продуктов (один баланс на продукт)"""
+    warehouse_product = models.OneToOneField(
+        WarehouseProduct,
+        on_delete=models.CASCADE,
+        related_name='balance',
+        verbose_name="Складской продукт"
+    )
+    quantity = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Остаток"
+    )
+    last_received_date = models.DateTimeField(null=True, blank=True, verbose_name="Последний приход")
+    last_departure_date = models.DateTimeField(null=True, blank=True, verbose_name="Последний расход")
+
+    class Meta:
+        verbose_name = 'Остаток складского продукта'
+        verbose_name_plural = 'Остатки складских продуктов'
+
+    def __str__(self):
+        return f"{self.warehouse_product.name}: {self.quantity} {self.warehouse_product.unit}"
+
+
+class WarehouseStockMovement(models.Model):
+    """Приход/расход складских продуктов (журнал движений)"""
+    class OperationType(models.TextChoices):
+        INCOME = 'IN', 'Приход'
+        EXPENSE = 'OUT', 'Расход'
+
+    warehouse_product = models.ForeignKey(
+        WarehouseProduct,
+        on_delete=models.CASCADE,
+        related_name='movements',
+        verbose_name="Складской продукт"
+    )
+    operation_type = models.CharField(
+        max_length=3,
+        choices=OperationType.choices,
+        verbose_name="Тип операции"
+    )
+    quantity = models.IntegerField(validators=[MinValueValidator(1)], verbose_name="Количество")
+    note = models.TextField(max_length=255, blank=True, verbose_name="Примечание")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата операции")
+
+    class Meta:
+        verbose_name = 'Движение складского продукта'
+        verbose_name_plural = 'Движения складских продуктов'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_operation_type_display()} {self.warehouse_product.name} - {self.quantity}"
+
+
+class WarehouseInventoryAdjustment(models.Model):
+    """Ручная корректировка остатков складских продуктов"""
+    class AdjustmentType(models.TextChoices):
+        INCREASE = 'INC', 'Увеличение'
+        DECREASE = 'DEC', 'Уменьшение'
+        SET = 'SET', 'Установка значения'
+
+    warehouse_product = models.ForeignKey(
+        WarehouseProduct,
+        on_delete=models.CASCADE,
+        related_name='adjustments',
+        verbose_name="Складской продукт"
+    )
+    adjustment_type = models.CharField(
+        max_length=3,
+        choices=AdjustmentType.choices,
+        verbose_name="Тип корректировки"
+    )
+    quantity = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name="Количество",
+        help_text='Количество для увеличения/уменьшения или новое значение при установке'
+    )
+    reason = models.TextField(
+        max_length=500,
+        verbose_name="Причина корректировки",
+        help_text='Обязательно укажите причину корректировки остатков'
+    )
+    adjusted_by = models.ForeignKey(
+        'workers.Worker',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Кто выполнил корректировку"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата корректировки")
+    note = models.TextField(max_length=1000, blank=True, verbose_name="Дополнительные примечания")
+
+    class Meta:
+        verbose_name = 'Корректировка складского продукта'
+        verbose_name_plural = 'Корректировки складских продуктов'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.get_adjustment_type_display()} {self.warehouse_product.name} - {self.quantity}'
+
+
+class ProductWarehouseMapping(models.Model):
+    """Связь многие-ко-многим: Product ассортимента ↔ складские продукты.
+
+    Позволяет одному Product списывать несколько складских продуктов
+    (и наоборот) при продажах. Коэффициент задаёт, сколько единиц
+    складского продукта списывается за 1 проданный продукт.
+    """
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='warehouse_mappings',
+        verbose_name="Продукт ассортимента"
+    )
+    warehouse_product = models.ForeignKey(
+        WarehouseProduct,
+        on_delete=models.CASCADE,
+        related_name='product_mappings',
+        verbose_name="Складской продукт"
+    )
+    coefficient = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Коэффициент",
+        help_text="Сколько единиц складского продукта списывается за 1 проданный продукт"
+    )
+
+    class Meta:
+        verbose_name = 'Связь продукта со складом'
+        verbose_name_plural = 'Связи продуктов со складом'
+        unique_together = ('product', 'warehouse_product')
+
+    def __str__(self):
+        return f"{self.product.name} → {self.warehouse_product.name} (×{self.coefficient})"
+
 
 
 class Garage(models.Model):
@@ -74,98 +179,3 @@ class Garage(models.Model):
 
     def __str__(self):
         return str(self.courier.full_name)
-
-
-class InventoryAdjustment(models.Model):
-    """
-    Ручная корректировка остатков на складе через админку.
-    Используется для исправления расхождений, инвентаризации и т.д.
-    """
-    class AdjustmentType(models.TextChoices):
-        INCREASE = 'INC', 'Увеличение'
-        DECREASE = 'DEC', 'Уменьшение'
-        SET = 'SET', 'Установка значения'
-    
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name='Продукт')
-    adjustment_type = models.CharField(
-        max_length=3,
-        choices=AdjustmentType.choices,
-        verbose_name='Тип корректировки'
-    )
-    quantity = models.IntegerField(
-        verbose_name='Количество',
-        validators=[MinValueValidator(1)],
-        help_text='Количество для увеличения/уменьшения или новое значение при установке'
-    )
-    reason = models.TextField(
-        verbose_name='Причина корректировки',
-        max_length=500,
-        help_text='Обязательно укажите причину корректировки остатков'
-    )
-    adjusted_by = models.ForeignKey(
-        'workers.Worker',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        verbose_name='Кто выполнил корректировку'
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата корректировки')
-    note = models.TextField(
-        verbose_name='Дополнительные примечания',
-        max_length=1000,
-        null=True,
-        blank=True
-    )
-    
-    class Meta:
-        verbose_name = 'Корректировка инвентаря'
-        verbose_name_plural = 'Корректировки инвентаря'
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f'{self.get_adjustment_type_display()} {self.product.name} - {self.quantity} шт.'
-    
-    def save(self, *args, **kwargs):
-        """При сохранении корректировки автоматически обновляем StockBalance"""
-        from django.utils import timezone
-        
-        # Проверяем, нужно ли учитывать этот продукт на складе
-        if not self.product.track_inventory:
-            # Если продукт не отслеживается на складе, просто сохраняем запись корректировки
-            # но не меняем StockBalance
-            super().save(*args, **kwargs)
-            return
-        
-        # Вызываем родительский save сначала, чтобы получить id
-        super().save(*args, **kwargs)
-        
-        # Получаем или создаем StockBalance для продукта
-        stock_balance, created = StockBalance.objects.get_or_create(
-            product=self.product,
-            defaults={'quantity': 0}
-        )
-        
-        # Применяем корректировку в зависимости от типа
-        if self.adjustment_type == self.AdjustmentType.INCREASE:
-            stock_balance.quantity += self.quantity
-            stock_balance.last_received_date = timezone.now()
-        elif self.adjustment_type == self.AdjustmentType.DECREASE:
-            stock_balance.quantity = max(0, stock_balance.quantity - self.quantity)
-            stock_balance.last_departure_date = timezone.now()
-        elif self.adjustment_type == self.AdjustmentType.SET:
-            stock_balance.quantity = max(0, self.quantity)
-            # Если новое значение больше старого - считаем приходом, иначе - уходом
-            if self.quantity > stock_balance.quantity:
-                stock_balance.last_received_date = timezone.now()
-            else:
-                stock_balance.last_departure_date = timezone.now()
-        
-        stock_balance.save()
-        
-        # Создаем запись в StockMovement для аудита
-        StockMovement.objects.create(
-            sold_product=self.product,
-            operation_type=StockMovement.OperationTypeChoices.BUY if self.adjustment_type in [self.AdjustmentType.INCREASE, self.AdjustmentType.SET] else StockMovement.OperationTypeChoices.SELL,
-            quantity=abs(self.quantity),
-            note=f'Корректировка инвентаря: {self.reason}. {self.note or ""}'
-        )

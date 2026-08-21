@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import OrderCard from '../components/OrderCard/OrderCard.jsx'
+import { useRefresh } from '../refreshContext.js'
 
 export default function Pool({ role }) {
   const navigate = useNavigate()
@@ -40,6 +41,12 @@ export default function Pool({ role }) {
   }, [isOperator])
 
   useEffect(() => { load() }, [load])
+
+  // Регистрируем load() в контексте, чтобы refresh-FAB мог обновить пул + рейс
+  const { registerRefresh } = useRefresh()
+  useEffect(() => {
+    registerRefresh(load)
+  }, [registerRefresh, load])
 
   const handleAssign = async (orderId) => {
     // Проверяем наличие активного рейса

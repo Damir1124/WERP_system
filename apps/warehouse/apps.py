@@ -7,4 +7,4 @@ class WarehouseConfig(AppConfig):
     verbouse_name = 'Склад'
 
     def ready(self):
-        import apps.warehouse.signals
+        import apps.warehouse.warehouse_signals

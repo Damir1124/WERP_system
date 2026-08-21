@@ -8,6 +8,7 @@
 import asyncio
 import logging
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import (
     Message,
@@ -346,6 +347,32 @@ async def take_order(callback: CallbackQuery):
 async def back_to_pool(callback: CallbackQuery):
     await callback.message.delete()
     await show_pool(callback.message)
+
+
+@router.callback_query(F.data == "refresh_pool")
+async def refresh_pool(callback: CallbackQuery):
+    """Обновить пул заказов (перезагрузить данные и отредактировать сообщение)."""
+    tg_id = callback.from_user.id
+    pool_data, colleagues_data = await asyncio.gather(
+        api_client.get('/courier/pool/', headers=auth_headers(tg_id)),
+        api_client.get('/courier/colleagues/', headers=auth_headers(tg_id)),
+    )
+    if 'error' in pool_data:
+        await callback.answer("❌ Ошибка загрузки пула заказов.", show_alert=True)
+        return
+    orders = pool_data if isinstance(pool_data, list) else []
+    colleagues = colleagues_data if isinstance(colleagues_data, list) else []
+    text = build_pool_text(orders, colleagues)
+    kb = get_pool_inline_keyboard(orders)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+        await callback.answer("🔄 Пул обновлён")
+    except TelegramBadRequest as e:
+        # Сообщение не изменилось (пул тот же) — просто подтверждаем нажатие
+        if 'message is not modified' in str(e):
+            await callback.answer("🔄 Пул актуален")
+        else:
+            await callback.answer("❌ Не удалось обновить пул", show_alert=True)
 
 # ─── Мой рейс ──────────────────────────────────────────────────────────────────
 @router.message(F.text == "🚚 Мой рейс")
