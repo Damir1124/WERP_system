@@ -78,8 +78,8 @@ function FAB() {
 
   if (!showFAB) return null
 
-  // Refresh-FAB виден только на странице пула (/) и обновляет пул + данные рейса
-  const showRefreshFAB = location.pathname === '/'
+  // Refresh-FAB виден на страницах пула (/) и коллег (/colleagues)
+  const showRefreshFAB = location.pathname === '/' || location.pathname === '/colleagues'
 
   return (
     <>
@@ -103,7 +103,7 @@ function FAB() {
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          title="Обновить пул заказов"
+          title={location.pathname === '/colleagues' ? 'Обновить коллег' : 'Обновить пул заказов'}
         >
           <svg
             width="26"

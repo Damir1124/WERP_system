@@ -1,4 +1,4 @@
-]from django.test import TestCase
+from django.test import TestCase
 from django.utils import timezone
 from apps.logistics.models import Order, OrderItem, CourierShift, CourierTrip
 from apps.products.models import Product

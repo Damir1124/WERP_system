@@ -355,6 +355,23 @@ export default function OrderConfirm() {
     <div className="page-body">
       {error && <div className="error-box">{error}</div>}
 
+      {/* Примечание — только если есть */}
+      {order.note && (
+        <div style={{
+          background: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: '10px',
+          padding: '10px 12px',
+          marginBottom: '12px',
+          fontSize: '13px',
+          color: 'var(--ink1)',
+          lineHeight: '1.4'
+        }}>
+          <span style={{ fontWeight: '600', color: 'var(--blue)' }}>Примечание:</span>{' '}
+          {order.note}
+        </div>
+      )}
+
       <div className="sec-lbl">Состав заказа</div>
 
       {itemsWithPrices.map(item => {

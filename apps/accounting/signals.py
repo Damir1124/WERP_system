@@ -1,6 +1,9 @@
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
-from .models import PaymentsInstallment, SalaryPayment, FinancialTransactions, Contract
+from .models import (
+    PaymentsInstallment, Salary, SalaryPeriod, SalaryPayment,
+    FinancialTransactions, Contract, Installment, InstallmentItem,
+)
 from . import utils
 from apps.logistics import models as logistics
 from apps.logistics.models import Order
@@ -34,22 +37,131 @@ def update_installment_on_payment(sender, instance, created, **kwargs):
         utils.update_due_date(installment)  # Обновление даты след. платeжа
 
 
-# Salary и SalaryPayment
+# Installment — рассрочка по заказу
+@receiver(post_save, sender=Installment)
+def generate_items_from_order(sender, instance, created, **kwargs):
+    """Авто-генерация позиций рассрочки из заказа и удаление PLUS-транзакции заказа.
+
+    Если рассрочка привязана к заказу (instance.order):
+    1. Подставляем issued_by из курьера заказа (если не указан вручную);
+    2. Создаём InstallmentItem из OrderItem (товар, количество, цена);
+    3. Пересчитываем amount из позиций;
+    4. Удаляем существующую PLUS-транзакцию заказа, чтобы не было двойного учёта
+       (доход теперь фиксируется только по платежам PaymentsInstallment).
+    """
+    if not instance.order:
+        return
+
+    order = instance.order
+
+    # 1. Подставляем курьера, если issued_by не указан
+    # Используем queryset.update() — НЕ вызывает сигналы (защита от рекурсии)
+    if not instance.issued_by and order.assigned_courier:
+        Installment.objects.filter(pk=instance.pk).update(issued_by=order.assigned_courier)
+        instance.issued_by = order.assigned_courier
+
+    # 1.1 Авто-установка даты следующего платежа (сегодня + 1 месяц), если не указана
+    if not instance.due_date:
+        from django.utils import timezone
+        from dateutil.relativedelta import relativedelta
+        new_due_date = timezone.now().date() + relativedelta(months=1)
+        Installment.objects.filter(pk=instance.pk).update(due_date=new_due_date)
+        instance.due_date = new_due_date
+
+    # 2. Создаём позиции из заказа, если их ещё нет
+    if not instance.items.exists():
+        for order_item in order.items.select_related('product').all():
+            InstallmentItem.objects.create(
+                installment=instance,
+                product=order_item.product,
+                quantity=order_item.quantity,
+                price_per_unit=order_item.product.price,
+            )
+
+    # 3. Пересчитываем сумму
+    instance.recalc_amount()
+
+    # 4. Удаляем PLUS-транзакцию заказа (доход только по платежам)
+    FinancialTransactions.objects.filter(
+        date=order.delivered_at.date() if order.delivered_at else None,
+        source__startswith=f"Заказ #{order.pk}",
+    ).delete()
+    if order.delivered_at:
+        utils.update_finance_record(order.delivered_at.date())
+
+
+@receiver(post_delete, sender=Installment)
+def restore_order_transaction_on_installment_delete(sender, instance, **kwargs):
+    """Восстановление PLUS-транзакции заказа при удалении рассрочки.
+
+    Если рассрочка была привязана к заказу и заказ доставлен —
+    восстанавливаем доходную транзакцию заказа (деньги снова учитываются).
+    """
+    if not instance.order:
+        return
+
+    order = instance.order
+    if order.status != Order.Status.DELIVERED or not order.delivered_at:
+        return
+
+    total_price = order.get_total_price()
+    card_amount = total_price if order.payment_type == Order.PaymentType.CARD else 0
+
+    FinancialTransactions.objects.create(
+        date=order.delivered_at.date(),
+        transaction_type=FinancialTransactions.TransactionsType.PLUS,
+        amount=total_price,
+        card_amount=card_amount,
+        source=f"Заказ #{order.pk} — {order.client}"
+    )
+    utils.update_finance_record(order.delivered_at.date())
+
+
+# =============================================================================
+# Worker -> Salary (авто-создание карточки зарплаты)
+# =============================================================================
+
+@receiver(post_save, sender='workers.Worker')
+def create_salary_for_worker(sender, instance, created, **kwargs):
+    """Авто-создание записи Salary при создании сотрудника."""
+    if created:
+        Salary.objects.get_or_create(worker=instance)
+
+
+# =============================================================================
+# Salary и SalaryPayment (учёт по календарным месяцам)
+# =============================================================================
+
+def get_or_create_period(salary, date):
+    """Возвращает зарплатный период для указанной даты (первый день месяца)."""
+    month = date.replace(day=1)
+    period, _ = SalaryPeriod.objects.get_or_create(
+        worker=salary.worker,
+        month=month,
+        defaults={'salary_amount': salary.worker.salary_amount or 0},
+    )
+    return period
+
+
 @receiver(pre_save, sender=SalaryPayment)
 def calculate_salary_payment(sender, instance, **kwargs):
-    """Пересчет баланса и даты последней выплаты перед сохранением платежа"""
-    if instance.pk:  # Если объект уже существует
+    """Пересчёт баланса и даты последней выплаты перед сохранением платежа."""
+    if instance.pk:
         old_instance = sender.objects.get(pk=instance.pk)
         salary = instance.salary
 
         # Убираем старую сумму из баланса
-        if old_instance.payment_type in [SalaryPayment.PaymentType.SALARY, SalaryPayment.PaymentType.BONUS]:
+        if old_instance.payment_type in [SalaryPayment.PaymentType.SALARY,
+                                         SalaryPayment.PaymentType.BONUS,
+                                         SalaryPayment.PaymentType.ADVANCE]:
             salary.balance -= old_instance.amount
         elif old_instance.payment_type == SalaryPayment.PaymentType.FINE:
             salary.balance += old_instance.amount
 
         # Добавляем новую сумму в баланс
-        if instance.payment_type in [SalaryPayment.PaymentType.SALARY, SalaryPayment.PaymentType.BONUS]:
+        if instance.payment_type in [SalaryPayment.PaymentType.SALARY,
+                                     SalaryPayment.PaymentType.BONUS,
+                                     SalaryPayment.PaymentType.ADVANCE]:
             salary.balance += instance.amount
         elif instance.payment_type == SalaryPayment.PaymentType.FINE:
             salary.balance -= instance.amount
@@ -61,26 +173,37 @@ def calculate_salary_payment(sender, instance, **kwargs):
         salary.save()
 
 
-# Salary и SalaryPayment
 @receiver(post_save, sender=SalaryPayment)
 def update_salary_on_payment(sender, instance, created, **kwargs):
-    """Обновление баланса и даты последней выплаты при добавлении платежа"""
+    """Обновление баланса, периода и даты последней выплаты при добавлении платежа."""
+    salary = instance.salary
+
+    # Авто-привязка платежа к зарплатному периоду
+    if not instance.period_id:
+        period = get_or_create_period(salary, instance.date)
+        SalaryPayment.objects.filter(pk=instance.pk).update(period=period)
+        instance.period = period
+
     if created:
-        salary = instance.salary
+        utils.reset_balance_if_expired(salary)
 
-        utils.reset_balance_if_expired(salary)  # проверяем и обнуляем если нужно
-
-        # обновляем баланс в зависимости от типа платежа
-        if instance.payment_type in [SalaryPayment.PaymentType.SALARY, SalaryPayment.PaymentType.BONUS]:
+        # Обновляем баланс в зависимости от типа платежа
+        if instance.payment_type in [SalaryPayment.PaymentType.SALARY,
+                                     SalaryPayment.PaymentType.BONUS,
+                                     SalaryPayment.PaymentType.ADVANCE]:
             salary.balance += instance.amount
         elif instance.payment_type == SalaryPayment.PaymentType.FINE:
             salary.balance -= instance.amount
 
-        # обновляем дату последней выплаты, если это зарплата
+        # Обновляем дату последней выплаты, если это зарплата
         if instance.payment_type == SalaryPayment.PaymentType.SALARY:
             salary.last_payment = instance.date
 
         salary.save()
+
+    # Пересчитываем итоги зарплатного периода
+    if instance.period_id:
+        instance.period.recalc()
 
 
 # Contract
@@ -238,6 +361,11 @@ def update_finance_on_transaction_create(sender, instance, created, **kwargs):
 def create_transaction_on_order(sender, instance, created, **kwargs):
     """Создание финансовой транзакции при подтверждении заказа (статус DELIVERED)"""
     if instance.status != Order.Status.DELIVERED:
+        return
+
+    # Если заказ переведён в рассрочку — доход фиксируется только по платежам,
+    # PLUS-транзакцию на полную сумму не создаём (страховка от двойного учёта)
+    if Installment.objects.filter(order=instance).exists():
         return
 
     # Если заказ не привязан к рейсу — нет смены, нет даты → пропускаем

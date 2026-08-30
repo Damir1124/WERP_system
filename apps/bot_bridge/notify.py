@@ -123,7 +123,7 @@ def notify_courier_new_order(courier_tg_id: int, order):
 
     client_name = order.client.name if order.client else "Неизвестный клиент"
     # Используем снимок адреса из заказа (не зависит от удалённого ClientAddress)
-    address = order.delivery_address_text or "Адрес не указан"
+    address = order.display_address()
 
     # Собираем позиции из OrderItem
     items = order.items.select_related('product').all()
@@ -158,3 +158,58 @@ def notify_admin_alert(text: str, admin_tg_id: int = None):
             return False
     
     return send_telegram_message(admin_tg_id, f"⚠️ <b>Алерт:</b>\n{text}")
+
+
+def notify_owner_installment_reminder(installment):
+    """
+    Отправляет напоминание владельцу (owner) о предстоящем взносе по рассрочке.
+
+    Отправляется всем сотрудникам с worker_type=OWNER и tg_id.
+    Текст содержит: клиент, телефон, продукты, сумму, долг, дату платежа,
+    и кто оформил рассрочку (курьер/сотрудник).
+    """
+    from apps.workers.models import Worker
+
+    if not installment.client:
+        logger.warning(f"У рассрочки {installment.id} нет клиента, напоминание не отправлено")
+        return False
+
+    # Собираем позиции
+    items = installment.items.select_related('product').all()
+    if items:
+        items_str = ", ".join(f"{i.product.name} × {i.quantity} шт." for i in items)
+    else:
+        items_str = "Неизвестный товар"
+
+    # Кто оформил
+    issued_by = installment.issued_by.full_name if installment.issued_by else "Не указан"
+
+    # Номер заказа, если рассрочка по заказу
+    order_info = ""
+    if installment.order:
+        order_info = f"\nЗаказ: №{installment.order.human_number}"
+
+    text = (
+        f"💳 <b>Напоминание о взносе по рассрочке</b>\n\n"
+        f"👤 Клиент: {installment.client.name}\n"
+        f"📞 Телефон: {installment.client.phone}\n"
+        f"🛒 Продукты: {items_str}\n"
+        f"💰 Сумма рассрочки: {installment.amount} сум\n"
+        f"💵 Оплачено: {installment.paid_amount} сум\n"
+        f"📉 Остаток долга: {installment.debt} сум\n"
+        f"📅 Дата платежа: {installment.due_date}\n"
+        f"👤 Оформил: {issued_by}"
+        f"{order_info}\n\n"
+        f"Не забудьте взять взнос с клиента вовремя!"
+    )
+
+    # Отправляем всем владельцам
+    owners = Worker.objects.filter(worker_type=Worker.WorkerType.OWNER, tg_id__isnull=False)
+    sent = False
+    for owner in owners:
+        if send_telegram_message(owner.tg_id, text):
+            sent = True
+
+    if not sent:
+        logger.warning(f"Не найдено владельцев с tg_id для напоминания по рассрочке {installment.id}")
+    return sent

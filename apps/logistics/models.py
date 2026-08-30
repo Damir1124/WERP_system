@@ -1,118 +1,8 @@
 from django.db import models
-from django.db.models import Sum
-from apps.workers.models import Worker
-from apps.products.models import Product
-from apps.clients.models import Client, ClientAddress
 
 
-class DeliveryLog(models.Model):
-    """Учет доставки по рейсам курьеров"""
-    courier = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name='couriers', verbose_name='Курьер')
-    total_quantity = models.IntegerField(verbose_name='Количевство',
-                                         help_text='Кол-во проданой воды с тарой или несоо'
-                                                   'тветсвие, пропажа', null=True,
-                                         blank=True)
-    total_sold = models.IntegerField(verbose_name='Всего проданно:', null=True, blank=True)
-    date = models.DateField(verbose_name='Дата')
-
-    class Meta:
-        verbose_name = "Журнал учета тар"
-
-    def __str__(self):
-        return f'{self.courier} - {self.date}'
-
-    def calculate_total_quantity(self):
-        """Вычисляет общее количество на основе связанных движений."""
-        total_quantity = 0
-        for move in self.deliverylogmove_set.all():
-            if move.action == DeliveryLogMove.ActionType.TAKEN:
-                total_quantity += move.quantity
-            else:
-                total_quantity -= move.quantity
-        self.total_quantity = total_quantity
-        self.save()
-
-    def calculate_total_sold(self):
-        """Вычисляет общее число проданной воды учитывая последовательные записи с типом BG"""
-        total_sold = 0
-        moves = list(self.deliverylogmove_set.all().order_by('date',
-                                                             'id'))  # Получаем все движения, отсортированные по дате и ID
-
-        for i, move in enumerate(moves):
-            if move.action == DeliveryLogMove.ActionType.TAKEN:
-                total_sold += move.quantity
-            elif move.action == DeliveryLogMove.ActionType.BROUGHT:
-                # Проверяем если предыдущая запись тоже была BROUGHT минусуем ее на колво проданного
-                if i > 0 and moves[i - 1].action == DeliveryLogMove.ActionType.BROUGHT:
-                    total_sold -= move.quantity
-
-        self.total_sold = total_sold
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)  # Сначала сохраняем запись
-        self.check_total_quantity()
-        self.calculate_total_sold()
-
-    def check_total_quantity(self):
-        """Проверяет соответствие total_quantity.
-
-        Ранее логика опиралась на устаревшую модель DeliveryJournalProducts.
-        Сейчас источник истины — модель Order (статус DELIVERED).
-        Сравниваем total_quantity журнала с суммой доставленных BOTTLE_20L
-        за ту же дату и курьера.
-        """
-        # quantity теперь в OrderItem, фильтруем через items
-        # Ленивый импорт, т.к. OrderItem определён ниже в этом же файле
-        from apps.logistics.models import OrderItem as _OrderItem
-        total_sales_bottle_20l = _OrderItem.objects.filter(
-            order__status=Order.Status.DELIVERED,
-            product__type_product=Product.TypeProduct.BOTTLE_20L,
-            order__trip__shift__courier=self.courier,
-            order__delivered_at__date=self.date,
-        ).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
-
-        if self.total_quantity != total_sales_bottle_20l:
-            print(
-                f"Несоответствие для курьера {self.courier}: total_quantity = {self.total_quantity}, "
-                f"продажи BOTTLE_20L (Order) = {total_sales_bottle_20l}"
-            )
-        else:
-            print(
-                f"Совпадение для курьера {self.courier}: total_quantity = {self.total_quantity}, "
-                f"продажи BOTTLE_20L (Order) = {total_sales_bottle_20l}"
-            )
-
-
-class DeliveryLogMove(models.Model):
-    """Инфа о рейсах"""
-
-    class ActionType(models.TextChoices):
-        TAKEN = 'TK', 'Взято'
-        BROUGHT = 'BG', 'Принесено'
-        RETURNED = 'RT', 'Возврат'
-
-    delivery_log = models.ForeignKey(DeliveryLog, on_delete=models.CASCADE, verbose_name='Журнал')
-    action = models.CharField(choices=ActionType.choices, verbose_name='Тип действия', max_length=2)
-    quantity = models.IntegerField(verbose_name='Количество')
-    date = models.DateField(verbose_name='Дата дейсвия')
-
-    def __str__(self):
-        sign = '-' if self.action == self.ActionType.TAKEN else '+'
-        return f'{self.delivery_log.courier.full_name} - {sign}{self.quantity} - {self.action}'
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)  # Сначала сохраняем движение
-        self.delivery_log.calculate_total_quantity()  # Затем обновляем общее количество в журнале
-
-
-class DeliveryJournal(models.Model):
-    """Deprecated: DeliveryJournal model removed.
-
-    Ранее использовался для ручных отчетов курьеров. Источник правды в
-    новой архитектуре — модели CourierShift/CourierTrip/Order.
-    Этот класс удалён из кода. Если требуется историческая совместимость,
-    используйте резервные таблицы или миграции для доступа к старым данным.
-    """
+# Устаревшие модели DeliveryLog, DeliveryLogMove, DeliveryJournal удалены.
+# Источник правды — архитектура CourierShift → CourierTrip → Order → OrderItem.
 
 
 class CourierShift(models.Model):
@@ -121,7 +11,7 @@ class CourierShift(models.Model):
         OPEN   = 'OP', 'Открыта'
         CLOSED = 'CL', 'Закрыта'
 
-    courier     = models.ForeignKey('workers.Worker', on_delete=models.CASCADE, verbose_name='Курьер')
+    courier     = models.ForeignKey('workers.Worker', on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Курьер')
     date        = models.DateField(auto_now_add=True, verbose_name='Дата смены')
     status      = models.CharField(choices=Status.choices, default=Status.OPEN, max_length=2)
     cash_total  = models.IntegerField(default=0, verbose_name='Наличные за смену')
@@ -135,7 +25,8 @@ class CourierShift(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f'Смена {self.courier} от {self.date} ({self.status})'
+        courier_name = self.courier.full_name if self.courier else '—'
+        return f'Смена {courier_name} от {self.date} ({self.status})'
 
     def close(self):
         """Закрытие смены"""
@@ -320,6 +211,33 @@ class Order(models.Model):
         from django.db.models import Sum
         total = self.items.aggregate(total=Sum('price'))['total']
         return total if total is not None else 0
+
+    def display_address(self) -> str:
+        """Человекочитаемый адрес доставки.
+
+        Формат:
+        1. Только координаты (без текста) — 'Location';
+        2. И текст, и координаты — 'Location | <текст>';
+        3. Только текст — '<текст>';
+        4. Ничего — 'Адрес не указан'.
+
+        Если текстовый адрес — заглушка 'Location' (например, при создании
+        только по координатам), она не дублируется с маркером локации.
+        """
+        text = (self.delivery_address_text or '').strip()
+        has_coords = self.delivery_latitude is not None and self.delivery_longitude is not None
+
+        # Заглушка 'Location' / '📍 Location' в тексте не считается реальным адресом
+        if text.lower() in ('location', '📍 location'):
+            text = ''
+
+        if text and has_coords:
+            return f'Location | {text}'
+        if has_coords:
+            return 'Location'
+        if text:
+            return text
+        return 'Адрес не указан'
 
     def save(self, *args, **kwargs):
         """Автоматический расчет цены больше не нужен, цена считается через OrderItem"""

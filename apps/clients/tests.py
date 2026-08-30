@@ -1,19 +1,18 @@
 from django.test import TestCase
+from django.utils import timezone
 from .models import Client
-from faker import Faker
 
-fake = Faker()
 
 class ClientTestSave(TestCase):
     def setUp(self):
-        '''Создание клиента перед каждым тестом'''
+        """Создание клиента перед каждым тестом."""
         self.client_instance = Client.objects.create(
-            name=fake.name()[:85],
-            phone=fake.phone_number()[:12],
-            address=fake.address()[:120],
-            balans=fake.random_int(min=-100, max=100),
-            note=fake.text()[:255],
-            created_at=fake.date()
+            name='Тестовый Клиент',
+            phone='+998901111111',
+            address='Улица Тестовая, 1',
+            balans=100,
+            note='Тестовая заметка',
+            created_at=timezone.now(),
         )
 
     def test_client_creation(self):
@@ -24,10 +23,9 @@ class ClientTestSave(TestCase):
         """Проверка уникальности номера телефона"""
         with self.assertRaises(Exception):
             Client.objects.create(
-                name=fake.name(),
+                name='Другой Клиент',
                 phone=self.client_instance.phone,
-                address=fake.address(),
-                balans=fake.random_int(min=-100, max=100),
-                note=fake.text(max_nb_chars=255),
-                date_created=fake.date()
+                address='Улица Вторая, 5',
+                balans=50,
+                note='',
             )

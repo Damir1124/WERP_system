@@ -168,14 +168,23 @@ class ProductWarehouseMapping(models.Model):
 class Garage(models.Model):
     """Учет транспортных средств"""
     vehicle_name = models.CharField(max_length=255, verbose_name='Название автомобиля')
-    plate_number = models.CharField(max_length=6, verbose_name='Номерной знак', null=True)
+    plate_number = models.CharField(max_length=15, verbose_name='Номерной знак', null=True)
     milage = models.PositiveIntegerField(verbose_name='Пробег', validators=[MinValueValidator(0)])
     year = models.DateField(verbose_name="Год выпуска")
-    courier = models.OneToOneField('workers.Worker', on_delete=models.CASCADE, verbose_name='Курьер')
+    courier = models.OneToOneField('workers.Worker', on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Курьер')
 
     class Meta:
         unique_together = ('milage', 'vehicle_name')
-        verbose_name = 'Гараж'
+        verbose_name = 'Автомобиль'
+        verbose_name_plural = 'Автомобили'
+
+    def save(self, *args, **kwargs):
+        # Номерной знак всегда храним в верхнем регистре
+        if self.plate_number:
+            self.plate_number = self.plate_number.upper()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return str(self.courier.full_name)
+        if self.courier:
+            return str(self.courier.full_name)
+        return self.vehicle_name

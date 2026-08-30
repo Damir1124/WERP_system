@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { clientApi } from '../api.js'
+import { t, tF } from '../i18n.js'
+import { ICONS, TYPE_ICONS } from '../icons/water-icons.jsx'
+import LocationPicker from '../components/LocationPicker.jsx'
 
-export default function OrderForm({ clientData }) {
+export default function OrderForm({ clientData, lang = 'ru' }) {
   const { productId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -13,19 +16,55 @@ export default function OrderForm({ clientData }) {
     payment_type: 'CASH',
     address: clientData?.address || '',
     note: '',
+    phone: clientData?.phone || '',
+    latitude: null,
+    longitude: null,
   })
+  const [savedAddresses, setSavedAddresses] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [showMap, setShowMap] = useState(false)
+
+  // Загружаем сохранённые адреса клиента
+  useEffect(() => {
+    if (clientData?.phone) {
+      clientApi
+        .getAddresses(clientData.phone)
+        .then((data) => setSavedAddresses(Array.isArray(data.addresses) ? data.addresses : []))
+        .catch(() => setSavedAddresses([]))
+    }
+  }, [clientData?.phone])
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSelectAddress = (addr) => {
+    setForm((prev) => ({
+      ...prev,
+      address: addr.address_text || '',
+      latitude: addr.latitude,
+      longitude: addr.longitude,
+    }))
+  }
+
+  const handleLocationSelect = (lat, lon) => {
+    setForm((prev) => ({ ...prev, latitude: lat, longitude: lon }))
   }
 
   const totalPrice = product ? product.price * form.quantity : 0
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!form.phone.trim()) {
+      setError(t('phone_required', lang))
+      return
+    }
+    if (!form.address.trim() && (form.latitude == null || form.longitude == null)) {
+      setError(t('address_required', lang))
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -35,10 +74,12 @@ export default function OrderForm({ clientData }) {
         payment_type: form.payment_type,
         address: form.address,
         note: form.note,
+        latitude: form.latitude,
+        longitude: form.longitude,
       })
       const displayNum = result.display_number != null ? String(result.display_number).padStart(3, '0') : String(result.order_id)
       navigate('/orders', {
-        state: { successMessage: `Заказ ${displayNum} создан! Ожидайте курьера.` }
+        state: { successMessage: tF('order_created_success', lang, { num: displayNum }) },
       })
     } catch (err) {
       setError(err.message)
@@ -50,9 +91,9 @@ export default function OrderForm({ clientData }) {
   if (!product) {
     return (
       <div className="p-4 text-center">
-        <p className="text-gray-500 mb-4">Товар не найден</p>
+        <p className="text-gray-500 mb-4">{t('product_not_found', lang)}</p>
         <button onClick={() => navigate('/')} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">
-          В каталог
+          {t('to_catalog', lang)}
         </button>
       </div>
     )
@@ -64,17 +105,22 @@ export default function OrderForm({ clientData }) {
         onClick={() => navigate(-1)}
         className="flex items-center gap-1 text-blue-600 text-sm mb-4"
       >
-        ← Назад
+        {t('back', lang)}
       </button>
 
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Оформление заказа</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-4">{t('order_title', lang)}</h2>
 
       {/* Карточка товара */}
       <div className="bg-blue-50 rounded-xl p-4 mb-4 flex items-center gap-3">
-        <div className="text-3xl">🪣</div>
+        <div className="text-3xl text-blue-600">
+          {(() => {
+            const TypeIcon = TYPE_ICONS[product.type_product] || ICONS.logo
+            return <TypeIcon size={32} />
+          })()}
+        </div>
         <div>
           <p className="font-semibold text-gray-900">{product.name}</p>
-          <p className="text-blue-600 font-bold">{product.price.toLocaleString()} сум / шт.</p>
+          <p className="text-blue-600 font-bold">{product.price.toLocaleString()} {t('per_unit', lang)}</p>
         </div>
       </div>
 
@@ -88,12 +134,12 @@ export default function OrderForm({ clientData }) {
         {/* Количество */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Количество
+            {t('quantity', lang)}
           </label>
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setForm(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}
+              onClick={() => setForm((p) => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}
               className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 font-bold text-lg flex items-center justify-center hover:bg-gray-300"
             >
               −
@@ -103,7 +149,7 @@ export default function OrderForm({ clientData }) {
             </span>
             <button
               type="button"
-              onClick={() => setForm(p => ({ ...p, quantity: p.quantity + 1 }))}
+              onClick={() => setForm((p) => ({ ...p, quantity: p.quantity + 1 }))}
               className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold text-lg flex items-center justify-center hover:bg-blue-700"
             >
               +
@@ -114,12 +160,12 @@ export default function OrderForm({ clientData }) {
         {/* Тип оплаты */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Способ оплаты
+            {t('payment_type', lang)}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { value: 'CASH', label: '💵 Наличные' },
-              { value: 'CARD', label: '💳 Карта' },
+              { value: 'CASH', label: t('pay_cash', lang) },
+              { value: 'CARD', label: t('pay_card', lang) },
             ].map((opt) => (
               <label
                 key={opt.value}
@@ -143,32 +189,85 @@ export default function OrderForm({ clientData }) {
           </div>
         </div>
 
-        {/* Адрес */}
+        {/* Телефон */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Адрес доставки
+            {t('phone', lang)}
+          </label>
+          <input
+            type="tel"
+            name="phone"
+            value={form.phone}
+            onChange={handleChange}
+            placeholder={t('phone_placeholder', lang)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Адрес: выбор сохранённого */}
+        {savedAddresses.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('choose_saved_address', lang)}
+            </label>
+            <div className="space-y-2">
+              {savedAddresses.map((addr) => (
+                <button
+                  key={addr.id}
+                  type="button"
+                  onClick={() => handleSelectAddress(addr)}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                    form.address === addr.address_text
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-700'
+                  }`}
+                >
+                  {addr.label && <span className="font-medium">{addr.label}: </span>}
+                  {addr.address_text || `${addr.latitude}, ${addr.longitude}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Адрес: ввод нового */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {t('delivery_address', lang)}
           </label>
           <input
             type="text"
             name="address"
             value={form.address}
             onChange={handleChange}
-            placeholder="Введите адрес"
+            placeholder={t('address_placeholder', lang)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <button
+            type="button"
+            onClick={() => setShowMap(true)}
+            className="mt-2 w-full py-2.5 border border-blue-300 text-blue-700 font-medium rounded-lg"
+          >
+            {t('use_geolocation', lang)}
+          </button>
+          {(form.latitude != null || form.longitude != null) && (
+            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+              <ICONS.location size={12} /> {form.latitude?.toFixed?.(6) ?? form.latitude}, {form.longitude?.toFixed?.(6) ?? form.longitude}
+            </p>
+          )}
         </div>
 
         {/* Примечание */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Примечание (необязательно)
+            {t('note', lang)}
           </label>
           <textarea
             name="note"
             value={form.note}
             onChange={handleChange}
             rows={2}
-            placeholder="Например: позвоните за 10 минут..."
+            placeholder={t('note_placeholder', lang)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
         </div>
@@ -176,7 +275,7 @@ export default function OrderForm({ clientData }) {
         {/* Итого */}
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Итого:</span>
+            <span className="text-gray-600">{t('total', lang)}:</span>
             <span className="text-2xl font-bold text-blue-600">
               {totalPrice.toLocaleString()} сум
             </span>
@@ -191,9 +290,22 @@ export default function OrderForm({ clientData }) {
           disabled={loading}
           className="w-full py-3.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-base"
         >
-          {loading ? 'Оформляем...' : '✅ Подтвердить заказ'}
+          {loading ? t('processing', lang) : t('confirm_order', lang)}
         </button>
       </form>
+
+      {showMap && (
+        <LocationPicker
+          initialPosition={
+            form.latitude != null && form.longitude != null
+              ? { lat: form.latitude, lon: form.longitude }
+              : null
+          }
+          onLocationSelect={handleLocationSelect}
+          onClose={() => setShowMap(false)}
+          lang={lang}
+        />
+      )}
     </div>
   )
 }

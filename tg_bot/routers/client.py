@@ -615,9 +615,9 @@ async def _create_order(message: Message, state: FSMContext, client: Client):
     if address.label:
         address_display = f"{address.label}: {address_display}"
 
-    # Если есть координаты — делаем адрес ссылкой на Google Maps
+    # Если есть координаты — делаем адрес ссылкой на Яндекс.Карты (pt = долгота,широта)
     if address.latitude and address.longitude:
-        maps_url = f"https://www.google.com/maps?q={address.latitude},{address.longitude}"
+        maps_url = f"https://yandex.ru/maps/?pt={address.longitude},{address.latitude}&z=17&l=map"
         address_display = f'<a href="{maps_url}">{address_display}</a>'
 
     await message.answer(

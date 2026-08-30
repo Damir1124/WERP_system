@@ -3,8 +3,8 @@ from django.utils.html import format_html
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from .models import (
-    Contract, SubjectContract, Installment, PaymentsInstallment,
-    Salary, SalaryPayment, FinancialTransactions, Finance,
+    Contract, SubjectContract, Installment, InstallmentItem, PaymentsInstallment,
+    Salary, SalaryPeriod, SalaryPayment, FinancialTransactions, Finance,
     HistoricalStats,
 )
 from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
@@ -18,16 +18,18 @@ class SubjectContractInline(admin.TabularInline):
     """Предметы контракта (товары, количество)"""
     model = SubjectContract
     extra = 1
-    fields = ('product', 'quantity', 'note')
+    fields = ('product', 'warehouse_product', 'quantity', 'note')
     verbose_name = 'Предмет контракта'
     verbose_name_plural = 'Предметы контракта'
 
 
 @admin.register(SubjectContract)
 class SubjectContractAdmin(admin.ModelAdmin):
-    list_display = ['contract', 'product', 'quantity', 'note']
-    list_filter = ['contract__contract_type', 'product']
-    search_fields = ['contract__description', 'product__name', 'note']
+    list_display = ['contract', 'product', 'warehouse_product', 'quantity', 'note']
+    list_filter = ['contract__contract_type', 'product', 'warehouse_product']
+    search_fields = ['contract__description', 'product__name', 'warehouse_product__name', 'note']
+    autocomplete_fields = ['contract', 'product', 'warehouse_product']
+    list_select_related = ('contract', 'product', 'warehouse_product')
     list_per_page = 20
 
 
@@ -36,7 +38,9 @@ class ContractAdmin(admin.ModelAdmin):
     """Контракты и сделки (доход/расход)"""
     list_display = ['description', 'client', 'date', 'contract_type_badge', 'amount_display', 'file_link']
     list_filter = ['contract_type', 'date', 'client']
-    search_fields = ['description', 'client__name', 'note']
+    search_fields = ['description', 'client__name', 'client__phone', 'note']
+    autocomplete_fields = ['client']
+    list_select_related = ('client',)
     list_per_page = 20
     ordering = ['-date']
     date_hierarchy = 'date'
@@ -86,27 +90,41 @@ class PaymentsInstallmentInline(admin.TabularInline):
 class PaymentsInstallmentAdmin(admin.ModelAdmin):
     list_display = ('id', 'installment', 'amount', 'payment_date', 'created_at')
     list_filter = ('installment', 'payment_date')
-    search_fields = ('installment__client__name',)
+    search_fields = ('installment__client__name', 'installment__client__phone')
+    autocomplete_fields = ('installment',)
+    list_select_related = ('installment__client',)
     ordering = ('-payment_date',)
     date_hierarchy = 'payment_date'
 
 
+class InstallmentItemInline(admin.TabularInline):
+    """Позиции рассрочки (товары, количество, цена)"""
+    model = InstallmentItem
+    extra = 1
+    fields = ('product', 'quantity', 'price_per_unit', 'subtotal')
+    readonly_fields = ('subtotal',)
+    verbose_name = 'Позиция рассрочки'
+    verbose_name_plural = 'Позиции рассрочки'
+
+
 @admin.register(Installment)
 class InstallmentAdmin(admin.ModelAdmin):
-    """Рассрочка для клиентов"""
-    list_display = ('id', 'client', 'product', 'amount', 'paid_amount', 'debt', 'due_date', 'status_badge', 'created_at')
+    """Рассрочка для клиентов (шапка + позиции)"""
+    list_display = ('id', 'client', 'order', 'issued_by', 'amount', 'paid_amount', 'debt', 'due_date', 'status_badge', 'created_at')
     list_filter = ('status', 'due_date', 'client')
-    search_fields = ('client__name', 'product__name')
+    search_fields = ('client__name', 'client__phone', 'items__product__name', 'order__id')
+    autocomplete_fields = ('client', 'order', 'issued_by')
+    list_select_related = ('client', 'order', 'issued_by')
     ordering = ('-due_date',)
     date_hierarchy = 'due_date'
-    inlines = [PaymentsInstallmentInline]
-    readonly_fields = ['created_at', 'updated_at']
+    inlines = [InstallmentItemInline, PaymentsInstallmentInline]
+    readonly_fields = ['created_at', 'updated_at', 'amount']
     list_per_page = 20
     save_on_top = True
 
     fieldsets = [
         ('Информация о рассрочке', {
-            'fields': ['client', 'product', 'amount', 'paid_amount', 'due_date', 'status'],
+            'fields': ['client', 'order', 'issued_by', 'amount', 'paid_amount', 'due_date', 'status'],
         }),
         ('Служебное', {
             'fields': ['created_at', 'updated_at'],
@@ -141,11 +159,23 @@ class SalaryPaymentInline(admin.TabularInline):
     verbose_name_plural = 'Платежи по зарплате'
 
 
+class SalaryPeriodPaymentInline(admin.TabularInline):
+    """Платежи по зарплате внутри зарплатного периода"""
+    model = SalaryPayment
+    extra = 0
+    fields = ('payment_type', 'amount', 'date', 'note')
+    readonly_fields = ('period',)
+    verbose_name = 'Платёж'
+    verbose_name_plural = 'Платежи за период'
+
+
 @admin.register(SalaryPayment)
 class SalaryPaymentAdmin(admin.ModelAdmin):
-    list_display = ('salary', 'payment_type', 'amount', 'date', 'note')
-    list_filter = ('payment_type', 'date')
-    search_fields = ('salary__worker__full_name', 'note')
+    list_display = ('salary', 'period', 'payment_type', 'amount', 'date', 'note')
+    list_filter = ('payment_type', 'date', 'period__month', 'salary__worker__worker_type')
+    search_fields = ('salary__worker__full_name', 'salary__worker__phone', 'note')
+    autocomplete_fields = ('salary', 'period')
+    list_select_related = ('salary__worker', 'period')
     list_per_page = 20
     date_hierarchy = 'date'
 
@@ -154,7 +184,9 @@ class SalaryPaymentAdmin(admin.ModelAdmin):
 class SalaryAdmin(admin.ModelAdmin):
     """Баланс зарплаты сотрудников"""
     list_display = ('worker', 'worker_type', 'balance_display', 'last_payment')
-    search_fields = ('worker__full_name',)
+    search_fields = ('worker__full_name', 'worker__phone')
+    autocomplete_fields = ('worker',)
+    list_select_related = ('worker',)
     readonly_fields = ('balance',)
     inlines = [SalaryPaymentInline]
     list_per_page = 20
@@ -172,6 +204,89 @@ class SalaryAdmin(admin.ModelAdmin):
     @admin.display(description='Баланс')
     def balance_display(self, obj):
         return f'{obj.balance:,} сум'.replace(',', ' ')
+
+
+@admin.register(SalaryPeriod)
+class SalaryPeriodAdmin(admin.ModelAdmin):
+    """Зарплатный период (месяц) сотрудника с итогами."""
+    list_display = (
+        'worker', 'month', 'salary_amount_display', 'bonuses_display',
+        'fines_display', 'advances_display', 'paid_salary_display',
+        'remaining_display', 'salary_date', 'status_badge',
+    )
+    list_filter = ('status', 'month', 'worker__worker_type')
+    search_fields = ('worker__full_name', 'worker__phone')
+    autocomplete_fields = ('worker',)
+    list_select_related = ('worker',)
+    readonly_fields = (
+        'salary_amount', 'bonuses', 'fines', 'advances', 'paid_salary',
+        'accrued_display', 'paid_total_display', 'remaining_display',
+        'created_at', 'updated_at',
+    )
+    inlines = [SalaryPeriodPaymentInline]
+    list_per_page = 20
+    save_on_top = True
+
+    fieldsets = [
+        ('Период', {
+            'fields': ['worker', 'month', 'status', 'salary_date'],
+        }),
+        ('Начислено', {
+            'fields': ['salary_amount', 'bonuses', 'fines', 'accrued_display'],
+        }),
+        ('Выплачено', {
+            'fields': ['advances', 'paid_salary', 'paid_total_display', 'remaining_display'],
+        }),
+        ('Служебное', {
+            'fields': ['created_at', 'updated_at'],
+            'classes': ['collapse'],
+        }),
+    ]
+
+    @admin.display(description='Оклад')
+    def salary_amount_display(self, obj):
+        return f'{obj.salary_amount:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Бонусы')
+    def bonuses_display(self, obj):
+        return f'{obj.bonuses:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Штрафы')
+    def fines_display(self, obj):
+        return f'{obj.fines:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Авансы')
+    def advances_display(self, obj):
+        return f'{obj.advances:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Зарплата')
+    def paid_salary_display(self, obj):
+        return f'{obj.paid_salary:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Начислено')
+    def accrued_display(self, obj):
+        return f'{obj.accrued:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Выплачено')
+    def paid_total_display(self, obj):
+        return f'{obj.paid_total:,} сум'.replace(',', ' ')
+
+    @admin.display(description='Остаток к выдаче')
+    def remaining_display(self, obj):
+        color = '#00b894' if obj.remaining >= 0 else '#d63031'
+        formatted = f'{obj.remaining:,}'.replace(',', ' ')
+        return format_html(
+            '<span style="color:{}; font-weight:bold">{} сум</span>',
+            color, formatted
+        )
+
+    @admin.display(description='Статус')
+    def status_badge(self, obj):
+        if obj.status == SalaryPeriod.PeriodStatus.PAID:
+            return format_html('<span class="badge-dl">Выплачен</span>')
+        elif obj.status == SalaryPeriod.PeriodStatus.CLOSED:
+            return format_html('<span class="badge-cn">Закрыт</span>')
+        return format_html('<span class="badge-pd">Открыт</span>')
 
 
 # =============================================================================

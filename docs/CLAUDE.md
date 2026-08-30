@@ -206,10 +206,9 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 | `sell_with_qty > 0` | Списать BOTTLE × sell_with_qty | 0 пустых |
 | `defective_qty > 0` | НЕ списывать (брак возвращается) | +defective_qty бракованных |
 
-**Устаревшие модели (оставлены в БД для совместимости, не используются в новом коде):**
-- `DeliveryLog` — заменён на `CourierShift` + `CourierTrip`
-- `DeliveryLogMove` — заменён на `Order`
-- `DeliveryJournal` — класс присутствует в коде как заглушка с docstring, таблица не используется
+**Устаревшие модели:**
+- `DeliveryLog`, `DeliveryLogMove`, `DeliveryJournal` — **полностью удалены** из кода и БД
+  (миграция `logistics.0010_remove_legacy_models`). Источник правды — `CourierShift → CourierTrip → Order → OrderItem`.
 
 **Сигналы (`logistics/signals.py`):**
 - `pre_save(OrderItem)` → `recalculate_order_price`: пересчёт `price = product.price × quantity` если не задана вручную или изменилось quantity
@@ -260,8 +259,7 @@ BOTTLE    = 'BT'   # Тара (списывается со склада при �
 4. ✅ Миграции применены
 
 **Что осталось (техдолг):**
-- Удалить устаревшие модели `DeliveryLog`, `DeliveryLogMove` из `apps/logistics/models.py` и их сигналы (после проверки отсутствия зависимостей в БД)
-- Команда: `python manage.py makemigrations logistics` после удаления
+- ✅ Устаревшие модели `DeliveryLog`, `DeliveryLogMove`, `DeliveryJournal` удалены из кода, сигналов и админки. Таблицы удалены миграцией `logistics.0010_remove_legacy_models`.
 
 ---
 

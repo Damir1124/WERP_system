@@ -22,6 +22,7 @@
 * [[Bugs_OrderCardProps|Карточка заказа «Локация»/«Адрес не указан»]] — OrderCard читает `delivery_address_text`, а Pool/Trip передавали `address`
 * [[Bugs_AddressSnapshot|Заказ теряет адрес при удалении 4-го]] — FK SET_NULL + авто-удаление ClientAddress; решено снимком в Order + защитой лимита
 * [[Bugs_ClientSearchTgBot|Поиск клиента по телефону не работает в tg_bot]] — `?phone=` вместо `?q=` + потеря сообщения об ошибке в api_client; доработана логика адресов до уровня Mini App
+* [[Bugs_WorkerPriorityOverClient|Дубль Client для работника при прямом входе в клиентский Mini App]] — ClientRegisterView не проверял Worker; решено приоритетом Worker + редиректом в Launcher
 
 ## Теоретические справки
 * [[Concepts_DjangoSignals|Как работают сигналы в Django]]

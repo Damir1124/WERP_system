@@ -118,6 +118,7 @@ def save_client_address(request):
     """
     client_id = request.data.get('client_id')
     address_text = request.data.get('address_text', '').strip()
+    label = request.data.get('label', '').strip()
     latitude = request.data.get('latitude')
     longitude = request.data.get('longitude')
     
@@ -150,6 +151,7 @@ def save_client_address(request):
     if existing:
         # Обновляем существующий адрес
         existing.address_text = address_text
+        existing.label = label
         existing.latitude = latitude
         existing.longitude = longitude
         existing.last_used_at = timezone.now()
@@ -164,13 +166,14 @@ def save_client_address(request):
         # Создаём новый адрес
         new_address = ClientAddress.objects.create(
             client=client,
+            label=label,
             address_text=address_text,
             latitude=latitude,
             longitude=longitude,
             last_used_at=timezone.now()
         )
         
-        # Если адресов больше 3-х, удаляем самый старый БЕЗ заказов
+        # Если адресов больше 3, удаляем самый старый БЕЗ заказов
         addresses = client.addresses.all()
         if addresses.count() > 3:
             # Не трогаем адреса, на которые висят заказы (orders__isnull=True)
@@ -189,3 +192,95 @@ def save_client_address(request):
             'address_id': new_address.id,
             'action': 'created'
         })
+
+
+@api_view(['POST'])
+def delete_client_address(request):
+    """
+    Удалить адрес клиента.
+    
+    POST /api/clients/addresses/delete/
+    
+    Body:
+    {
+        "address_id": 1
+    }
+    
+    Response:
+    {
+        "status": "ok",
+        "deleted": true
+    }
+    """
+    address_id = request.data.get('address_id')
+    if not address_id:
+        return Response(
+            {'error': 'address_id обязателен'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        address = ClientAddress.objects.get(id=address_id)
+    except ClientAddress.DoesNotExist:
+        return Response(
+            {'error': 'Адрес не найден'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    address.delete()
+    return Response({
+        'status': 'ok',
+        'deleted': True
+    })
+
+
+@api_view(['POST'])
+def update_client_profile(request):
+    """
+    Обновить профиль клиента (имя, телефон, адрес).
+    
+    POST /api/clients/profile/update/
+    
+    Body:
+    {
+        "client_id": 1,
+        "name": "Иван",
+        "phone": "+998901234567"
+    }
+    
+    Response:
+    {
+        "status": "ok",
+        "client_id": 1
+    }
+    """
+    client_id = request.data.get('client_id')
+    if not client_id:
+        return Response(
+            {'error': 'client_id обязателен'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        client = Client.objects.get(id=client_id)
+    except Client.DoesNotExist:
+        return Response(
+            {'error': 'Клиент не найден'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    name = request.data.get('name')
+    phone = request.data.get('phone')
+    
+    if name is not None:
+        client.name = name.strip()
+    if phone is not None:
+        client.phone = phone.strip()
+    
+    client.save()
+    return Response({
+        'status': 'ok',
+        'client_id': client.id,
+        'name': client.name,
+        'phone': client.phone,
+    })

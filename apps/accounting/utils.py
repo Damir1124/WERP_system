@@ -12,16 +12,43 @@ def update_due_date(installment):
 
 
 def reset_balance_if_expired(salary):
-    """Обнуляет баланс если с последней зарплаты прошёл месяц"""
+    """Обнуляет баланс, если последняя выплата была в прошлом календарном месяце.
+
+    В отличие от старой логики (30 дней), здесь учитывается именно смена
+    календарного месяца: если last_payment в прошлом месяце — баланс обнуляется.
+    """
     if salary.last_payment is None:
         return
 
     now = timezone.now().date()
-    delta = now - salary.last_payment
-
-    if delta.days >= 30:
+    if salary.last_payment.year < now.year or (
+        salary.last_payment.year == now.year and salary.last_payment.month < now.month
+    ):
         salary.balance = 0
         salary.save()
+
+
+def accrue_salary_for_period(worker, month):
+    """Начисляет оклад сотруднику за указанный месяц.
+
+    Создаёт (или обновляет) зарплатный период с фиксированным окладом.
+    Возвращает созданный/обновлённый SalaryPeriod.
+    """
+    from .models import Salary, SalaryPeriod
+
+    salary, _ = Salary.objects.get_or_create(worker=worker)
+    period, _ = SalaryPeriod.objects.get_or_create(
+        worker=worker,
+        month=month,
+        defaults={'salary_amount': worker.salary_amount or 0},
+    )
+    # Если оклад изменился — обновляем начисление за месяц
+    if period.salary_amount != (worker.salary_amount or 0):
+        SalaryPeriod.objects.filter(pk=period.pk).update(
+            salary_amount=worker.salary_amount or 0
+        )
+        period.salary_amount = worker.salary_amount or 0
+    return period
 
 
 def update_finance_record(date):

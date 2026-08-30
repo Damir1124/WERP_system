@@ -23,7 +23,12 @@ class Worker(models.Model):
         choices=WorkerType.choices,
         verbose_name="Тип сотрудника"
     )
-    date_for_payed = models.DateField(blank=True, null=False, verbose_name='Начисление зарплаты', default=date.today)
+    date_for_payed = models.DateField(blank=True, null=False, verbose_name='Дата начисления зарплаты', default=date.today)
+    salary_amount = models.IntegerField(
+        default=0,
+        verbose_name='Оклад (сум)',
+        help_text='Фиксированный месячный оклад сотрудника. Используется при авто-начислении зарплаты.'
+    )
     note = models.TextField(blank=True, verbose_name="Примечание")
     tg_id = models.BigIntegerField(
         null=True,
@@ -38,8 +43,8 @@ class Worker(models.Model):
         help_text='Даёт доступ к командам администратора в Telegram-боте'
     )
 
-    created_at = models.DateField(auto_now_add=True, verbose_name='Созданно')
-    updated_at = models.DateField(auto_now=True, verbose_name='Обнавлено')
+    created_at = models.DateField(auto_now_add=True, verbose_name='Создан')
+    updated_at = models.DateField(auto_now=True, verbose_name='Обновлён')
 
     class Meta:
         verbose_name = "Сотрудник"

@@ -24,7 +24,11 @@ def serve_spa(spa_name):
         index_path = os.path.join(settings.BASE_DIR, 'static', 'miniapp', spa_name, 'index.html')
         if not os.path.exists(index_path):
             raise Http404(f"Mini App '{spa_name}' не найден. Выполните npm run build.")
-        return FileResponse(open(index_path, 'rb'), content_type='text/html')
+        response = FileResponse(open(index_path, 'rb'), content_type='text/html')
+        # Запрещаем кэширование index.html, чтобы Telegram WebView всегда
+        # подхватывал свежую сборку (имя бандла меняется при rebuild).
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return response
     return view
 
 

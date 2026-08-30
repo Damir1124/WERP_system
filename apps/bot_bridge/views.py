@@ -972,15 +972,47 @@ class ClientInfoView(APIView):
 
 
 class ClientProductListView(APIView):
-    """GET /api/bot/client/products/ — каталог для клиентов"""
+    """GET /api/bot/client/products/ — каталог для клиентов.
+
+    Показывает только товары с is_visible_in_catalog=True.
+    Пагинация: ?limit=&offset= (по умолчанию limit=50).
+    Если параметры пагинации не переданы — возвращает плоский массив
+    (обратная совместимость с ботом и старым фронтендом).
+    """
     permission_classes = []
 
     def get(self, request):
         products = Product.objects.filter(
-            type_product=Product.TypeProduct.WATER
+            is_visible_in_catalog=True
         ).order_by('name')
-        serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+
+        has_pagination = 'limit' in request.query_params or 'offset' in request.query_params
+
+        if not has_pagination:
+            serializer = ProductSerializer(products, many=True)
+            return Response(serializer.data)
+
+        # Пагинация limit/offset
+        try:
+            limit = int(request.query_params.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        try:
+            offset = int(request.query_params.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+
+        total = products.count()
+        page = products[offset:offset + limit]
+        serializer = ProductSerializer(page, many=True)
+        return Response({
+            'count': total,
+            'next': offset + limit < total,
+            'results': serializer.data,
+        })
 
 
 class ClientOrderCreateView(APIView):
@@ -996,8 +1028,22 @@ class ClientOrderCreateView(APIView):
             client = Client.objects.get(tg_id=int(tg_id))
         except (Client.DoesNotExist, ValueError):
             return Response({'error': 'Клиент не найден. Зарегистрируйтесь в системе.'}, status=status.HTTP_404_NOT_FOUND)
-        product_id = request.data.get('product_id')
-        quantity = int(request.data.get('quantity', 1))
+
+        # ─── Обновление телефона клиента, если передан ─────────────────────────
+        phone_raw = request.data.get('phone')
+        if phone_raw:
+            from apps.bot_bridge.phone_validator import validate_uzbek_phone
+            try:
+                validated_phone = validate_uzbek_phone(str(phone_raw))
+            except ValueError as e:
+                return Response({'error': f'Некорректный телефон: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            if client.phone != validated_phone:
+                # Сбрасываем старый phone у другого клиента, если такой phone уже есть
+                Client.objects.filter(phone=validated_phone).exclude(id=client.id).update(phone='')
+                client.phone = validated_phone
+                client.save(update_fields=['phone'])
+                client.refresh_from_db()
+
         payment_type_raw = request.data.get('payment_type', 'CASH')
         note = request.data.get('note', '')
         address = request.data.get('address', '')
@@ -1012,13 +1058,24 @@ class ClientOrderCreateView(APIView):
             Order.PaymentType.BONUS: Order.PaymentType.BONUS,
         }
         payment_type = payment_map.get(payment_type_raw, Order.PaymentType.CASH)
-        try:
-            product = Product.objects.get(id=product_id)
-        except (Product.DoesNotExist, TypeError):
-            return Response({'error': 'Продукт не найден'}, status=status.HTTP_404_NOT_FOUND)
-        # Создаём заказ без рейса (trip=None — ждёт назначения курьера)
+
+        # ─── Позиции заказа ────────────────────────────────────────────────────
+        # Поддержка двух форматов:
+        #   1. Новый (корзина): items = [{"product_id": 1, "quantity": 2}, ...]
+        #   2. Старый (бот):    product_id + quantity (одиночная позиция)
+        items_raw = request.data.get('items')
+        if items_raw is None:
+            product_id = request.data.get('product_id')
+            quantity = int(request.data.get('quantity', 1))
+            items_raw = [{'product_id': product_id, 'quantity': quantity}]
+
+        if not items_raw:
+            return Response({'error': 'Не указаны товары в заказе'}, status=status.HTTP_400_BAD_REQUEST)
+
         from apps.logistics.models import OrderItem
         from apps.logistics.services import create_order_with_display_number
+
+        # Создаём заказ без рейса (trip=None — ждёт назначения курьера)
         order = create_order_with_display_number(
             trip=None,
             client=client,
@@ -1026,11 +1083,40 @@ class ClientOrderCreateView(APIView):
             status=Order.Status.PENDING,
             note=note,
         )
-        item = OrderItem.objects.create(
-            order=order,
-            product=product,
-            quantity=quantity,
-        )
+
+        created_items = []
+        # Минимальное количество воды 19л (type_product='19W') в заказе
+        MIN_WATER_QTY = 2
+        for raw in items_raw:
+            pid = raw.get('product_id')
+            qty = int(raw.get('quantity', 1))
+            if qty < 1:
+                continue
+            try:
+                product = Product.objects.get(id=pid)
+            except (Product.DoesNotExist, TypeError):
+                return Response({'error': f'Продукт {pid} не найден'}, status=status.HTTP_404_NOT_FOUND)
+            # Вода 19л — минимум 2 бутылки
+            if product.type_product == Product.TypeProduct.WATER and qty < MIN_WATER_QTY:
+                return Response(
+                    {'error': f'Минимальный заказ воды — {MIN_WATER_QTY} бутылки. "{product.name}": указано {qty}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            item = OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=qty,
+            )
+            created_items.append({
+                'product_id': product.id,
+                'product': product.name,
+                'quantity': item.quantity,
+                'price': item.price,
+            })
+
+        if not created_items:
+            return Response({'error': 'Нет валидных позиций в заказе'}, status=status.HTTP_400_BAD_REQUEST)
+
         # Адрес доставки сохраняем в ClientAddress и привязываем к заказу
         address_text = (address or '').strip()
         latitude = request.data.get('latitude')
@@ -1060,7 +1146,7 @@ class ClientOrderCreateView(APIView):
                     longitude=longitude,
                     last_used_at=timezone.now(),
                 )
-                # Ограничиваем количество адресов клиента тремя (не трогая привязанные к заказам)
+                # Ограничиваем количество адресов клиента до трёх (не трогая привязанные к заказам)
                 extra = client.addresses.count()
                 if extra > 3:
                     old_ids = list(
@@ -1081,12 +1167,11 @@ class ClientOrderCreateView(APIView):
                                       'delivery_latitude', 'delivery_longitude'])
         return Response({
             'status': 'created',
-            'message': f'Заказ создан и ожидает назначения курьера',
+            'message': 'Заказ создан и ожидает назначения курьера',
             'order_id': order.id,
             'display_number': order.display_number,
-            'product': product.name,
-            'quantity': item.quantity,
-            'price': item.price,
+            'items': created_items,
+            'total_price': order.get_total_price(),
             'estimated_date': timezone.now().date().isoformat(),
         }, status=status.HTTP_201_CREATED)
 
@@ -1150,6 +1235,162 @@ class ClientOrderStatusView(APIView):
             'courier': courier_info,
         })
 
+
+class ClientOrderUpdateView(APIView):
+    """PATCH /api/bot/client/order/<order_id>/update/ — редактирование заказа клиентом.
+
+    Доступно только для заказов в статусе PENDING (курьер ещё не назначен).
+    Можно изменить состав товаров и количество (пересоздание позиций).
+    """
+    permission_classes = []
+
+    def patch(self, request, order_id):
+        tg_id = request.data.get('client_tg_id') or request.headers.get('X-Telegram-ID')
+        if not tg_id:
+            return Response({'error': 'Не указан tg_id'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client = Client.objects.get(tg_id=int(tg_id))
+        except (Client.DoesNotExist, ValueError):
+            return Response({'error': 'Клиент не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            order = Order.objects.get(id=order_id, client=client)
+        except Order.DoesNotExist:
+            return Response({'error': 'Заказ не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status != Order.Status.PENDING:
+            return Response(
+                {'error': 'Редактирование доступно только для заказов в статусе "Ожидает"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from apps.logistics.models import OrderItem
+
+        # ─── Обновление состава товаров (items) ───────────────────────────────
+        items_raw = request.data.get('items')
+        if items_raw is not None:
+            if not items_raw:
+                return Response({'error': 'Не указаны товары в заказе'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Пересоздаём позиции заказа
+            order.items.all().delete()
+            created_items = []
+            # Минимальное количество воды 19л (type_product='19W') в заказе
+            MIN_WATER_QTY = 2
+            for raw in items_raw:
+                pid = raw.get('product_id')
+                qty = int(raw.get('quantity', 1))
+                if qty < 1:
+                    continue
+                try:
+                    product = Product.objects.get(id=pid)
+                except (Product.DoesNotExist, TypeError):
+                    return Response({'error': f'Продукт {pid} не найден'}, status=status.HTTP_404_NOT_FOUND)
+                # Вода 19л — минимум 2 бутылки
+                if product.type_product == Product.TypeProduct.WATER and qty < MIN_WATER_QTY:
+                    return Response(
+                        {'error': f'Минимальный заказ воды — {MIN_WATER_QTY} бутылки. "{product.name}": указано {qty}.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                item = OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=qty,
+                )
+                created_items.append({
+                    'product_id': product.id,
+                    'product': product.name,
+                    'quantity': item.quantity,
+                    'price': item.price,
+                })
+            if not created_items:
+                return Response({'error': 'Нет валидных позиций в заказе'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ─── Обновление адреса доставки ───────────────────────────────────────
+        address = request.data.get('address')
+        if address is not None:
+            from apps.clients.models import ClientAddress
+            address_text = (address or '').strip()
+            latitude = request.data.get('latitude')
+            longitude = request.data.get('longitude')
+            if address_text or latitude or longitude:
+                existing = None
+                if address_text:
+                    existing = client.addresses.filter(address_text=address_text).first()
+                if not existing and latitude and longitude:
+                    existing = client.addresses.filter(latitude=latitude, longitude=longitude).first()
+                if existing:
+                    delivery_address = existing
+                    if address_text and existing.address_text != address_text:
+                        existing.address_text = address_text
+                    if latitude and existing.latitude != latitude:
+                        existing.latitude = latitude
+                    if longitude and existing.longitude != longitude:
+                        existing.longitude = longitude
+                    existing.last_used_at = timezone.now()
+                    existing.save()
+                else:
+                    delivery_address = ClientAddress.objects.create(
+                        client=client,
+                        address_text=address_text,
+                        latitude=latitude,
+                        longitude=longitude,
+                        last_used_at=timezone.now(),
+                    )
+                order.delivery_address = delivery_address
+                order.delivery_address_text = delivery_address.address_text
+                order.delivery_latitude = delivery_address.latitude
+                order.delivery_longitude = delivery_address.longitude
+                order.save(update_fields=['delivery_address', 'delivery_address_text',
+                                          'delivery_latitude', 'delivery_longitude'])
+
+        # ─── Обновление примечания ────────────────────────────────────────────
+        note = request.data.get('note')
+        if note is not None:
+            order.note = note
+            order.save(update_fields=['note'])
+
+        serializer = OrderSerializer(order)
+        return Response({
+            'status': 'updated',
+            'message': 'Заказ обновлён',
+            'order': serializer.data,
+        })
+
+
+class ClientOrderDeleteView(APIView):
+    """DELETE /api/bot/client/order/<order_id>/delete/ — удаление заказа клиентом.
+
+    Доступно только для заказов в статусе PENDING (курьер ещё не назначен).
+    """
+    permission_classes = []
+
+    def delete(self, request, order_id):
+        tg_id = request.headers.get('X-Telegram-ID')
+        if not tg_id:
+            return Response({'error': 'Не указан tg_id'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client = Client.objects.get(tg_id=int(tg_id))
+        except (Client.DoesNotExist, ValueError):
+            return Response({'error': 'Клиент не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            order = Order.objects.get(id=order_id, client=client)
+        except Order.DoesNotExist:
+            return Response({'error': 'Заказ не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status != Order.Status.PENDING:
+            return Response(
+                {'error': 'Удаление доступно только для заказов в статусе "Ожидает"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.delete()
+        return Response({
+            'status': 'deleted',
+            'message': 'Заказ удалён',
+        })
+
 # ─── Регистрация клиента ──────────────────────────────────────────────────────
 
 
@@ -1158,54 +1399,93 @@ class ClientRegisterView(APIView):
     permission_classes = []
 
     def post(self, request):
+        """Вход/регистрация ТОЛЬКО по tg_id (TWA внутри Telegram).
+
+        Номер телефона НЕ запрашивается при входе — он заполняется позже
+        при создании заказа (см. ClientOrderCreateView).
+        """
         tg_id = request.data.get('tg_id') or request.headers.get('X-Telegram-ID')
         name = request.data.get('name', '')
-        phone = request.data.get('phone', '')
-        address = request.data.get('address', '')
-        if not tg_id or not name or not phone:
-            return Response({'error': 'Обязательные поля: tg_id, name, phone'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not tg_id:
+            return Response(
+                {'error': 'Не указан tg_id. Приложение работает только внутри Telegram.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             tg_id = int(tg_id)
-        except ValueError:
+        except (TypeError, ValueError):
             return Response({'error': 'tg_id должен быть числом'}, status=status.HTTP_400_BAD_REQUEST)
-        # Проверяем, не зарегистрирован ли уже
-        if Client.objects.filter(tg_id=tg_id).exists():
-            client = Client.objects.get(tg_id=tg_id)
+
+        # Приоритет работника: если tg_id уже привязан к Worker — не создаём
+        # дубль Client. Пользователь является сотрудником, а не клиентом.
+        worker = Worker.objects.filter(tg_id=tg_id).first()
+        if worker:
+            return Response({
+                'status': 'worker',
+                'message': 'Пользователь является сотрудником',
+                'worker_id': worker.id,
+                'name': worker.full_name,
+                'registered': False,
+            })
+
+        existing = Client.objects.filter(tg_id=tg_id).first()
+        if existing:
             return Response({
                 'status': 'exists',
                 'message': 'Клиент уже зарегистрирован',
-                'client_id': client.id,
-                'name': client.name,
+                'client_id': existing.id,
+                'name': existing.name,
+                'registered': True,
             })
-        if Client.objects.filter(phone=phone).exists():
-            return Response({'error': 'Телефон уже используется'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Создаём клиента по tg_id с именем из Telegram (или заглушкой)
+        client_name = name or f'Пользователь {str(tg_id)[-4:]}'
         client = Client.objects.create(
             tg_id=tg_id,
-            name=name,
-            phone=phone,
-            address=address,
+            name=client_name,
+            phone='',
         )
         return Response({
             'status': 'created',
             'message': 'Клиент зарегистрирован',
             'client_id': client.id,
             'name': client.name,
+            'registered': True,
         }, status=status.HTTP_201_CREATED)
 
 # ─── Профиль клиента ──────────────────────────────────────────────────────────
 
 
 class ClientProfileView(APIView):
-    """GET /api/bot/client/profile/?tg_id=<id>"""
+    """GET /api/bot/client/profile/?tg_id=<id>
+
+    Если tg_id не передан — ищем по ?phone= (вход по телефону).
+    """
     permission_classes = []
 
     def get(self, request):
         tg_id = request.query_params.get('tg_id') or request.headers.get('X-Telegram-ID')
-        if not tg_id:
-            return Response({'error': 'Не указан tg_id'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            client = Client.objects.get(tg_id=int(tg_id))
-        except (Client.DoesNotExist, ValueError):
+        phone = request.query_params.get('phone')
+
+        client = None
+        if tg_id:
+            try:
+                client = Client.objects.filter(tg_id=int(tg_id)).first()
+            except (TypeError, ValueError):
+                client = None
+
+        if client is None and phone:
+            from apps.bot_bridge.phone_validator import validate_uzbek_phone
+            try:
+                normalized = validate_uzbek_phone(phone)
+            except ValueError:
+                normalized = None
+            if normalized:
+                client = Client.objects.filter(phone=normalized).first()
+
+        if client is None:
             return Response({'error': 'Клиент не найден', 'registered': False}, status=status.HTTP_404_NOT_FOUND)
         serializer = ClientSerializer(client)
         return Response({'registered': True, **serializer.data})
@@ -1255,8 +1535,8 @@ class AdminShiftsView(APIView):
             orders_count = Order.objects.filter(trip__shift=shift).count()
             data.append({
                 'id': shift.id,
-                'courier_id': shift.courier.id,
-                'courier_name': shift.courier.full_name,
+                'courier_id': shift.courier.id if shift.courier else None,
+                'courier_name': shift.courier.full_name if shift.courier else '—',
                 'cash_total': shift.cash_total,
                 'card_total': shift.card_total,
                 'total': shift.cash_total + shift.card_total,
@@ -1315,7 +1595,7 @@ class AdminOrdersRecentView(APIView):
                 'status': o.status,
                 'status_display': o.get_status_display(),
                 'assigned_courier_name': o.assigned_courier.full_name if o.assigned_courier else None,
-                'courier_name': o.trip.shift.courier.full_name if o.trip and o.trip.shift else None,
+                'courier_name': o.trip.shift.courier.full_name if o.trip and o.trip.shift and o.trip.shift.courier else None,
                 'created_at': o.created_at,
                 'delivered_at': o.delivered_at,
             })

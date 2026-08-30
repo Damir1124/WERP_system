@@ -22,6 +22,7 @@ class ClientAdmin(admin.ModelAdmin):
         'tg_id', 'created_at', 'orders_link',
     ]
     list_filter = ['created_at', 'balans']
+    list_editable = ['balans']
     list_per_page = 20
     ordering = ['-created_at']
     inlines = [ClientAddressInline]
@@ -82,6 +83,8 @@ class ClientAddressAdmin(admin.ModelAdmin):
     list_display = ['client', 'address_text', 'latitude', 'longitude', 'last_used_at', 'created_at']
     list_filter = ['last_used_at', 'created_at']
     search_fields = ['client__name', 'client__phone', 'address_text']
+    autocomplete_fields = ['client']
+    list_select_related = ('client',)
     readonly_fields = ['created_at']
     list_per_page = 20
     ordering = ['-last_used_at', '-created_at']

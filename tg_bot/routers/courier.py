@@ -153,21 +153,29 @@ async def trip_full_loaded_invalid(message: Message, state: FSMContext):
     )
 
 # ─── Пул заказов ───────────────────────────────────────────────────────────────
-@router.message(F.text.in_({"📦 Заказы", "📦 Пул заказов"}))
-async def show_pool(message: Message):
-    tg_id = message.from_user.id
+async def send_pool(tg_id: int, target: Message):
+    """Загрузить пул заказов и коллег и отправить сообщение в target.
+
+    tg_id передаётся явно, т.к. при callback-запросах target.from_user —
+    это бот, а не пользователь.
+    """
     pool_data, colleagues_data = await asyncio.gather(
         api_client.get('/courier/pool/', headers=auth_headers(tg_id)),
         api_client.get('/courier/colleagues/', headers=auth_headers(tg_id)),
     )
     if 'error' in pool_data:
-        await message.answer("❌ Ошибка загрузки пула заказов.")
+        await target.answer("❌ Ошибка загрузки пула заказов.")
         return
     orders = pool_data if isinstance(pool_data, list) else []
     colleagues = colleagues_data if isinstance(colleagues_data, list) else []
     text = build_pool_text(orders, colleagues)
     kb = get_pool_inline_keyboard(orders)
-    await message.answer(text, reply_markup=kb)
+    await target.answer(text, reply_markup=kb)
+
+
+@router.message(F.text.in_({"📦 Заказы", "📦 Пул заказов"}))
+async def show_pool(message: Message):
+    await send_pool(message.from_user.id, message)
 
 
 # ─── В процессе — курьеры → их заказы (всегда доступно) ────────────────────────
@@ -285,15 +293,17 @@ def build_pool_order_detail_text(order: dict) -> str:
     """Карточка заказа из пула (как раскрытая OrderCard в Mini App)."""
     from datetime import datetime
     items = order.get('items', [])
-    items_text = " | ".join(
-        f"{it.get('product_name', 'N/A')} × {it.get('quantity', 0)}"
+    items_text = "\n".join(
+        f"   • {it.get('product_name', 'N/A')} × {it.get('quantity', 0)} шт."
         for it in items
-    ) or "—"
-    addr = order.get('delivery_address_text') or order.get('client_address') or 'Адрес не указан'
+    ) or "   —"
+    from tg_bot.keyboards.courier import get_order_address
+    addr = get_order_address(order)
     lat = order.get('delivery_latitude')
     lon = order.get('delivery_longitude')
+    # Кликабельная ссылка на Яндекс.Карты (pt = долгота,широта)
     loc_link = (
-        f'\n📍 <a href="https://www.google.com/maps/search/?api=1&query={lat},{lon}">Локация</a>'
+        f'\n      📍 <a href="https://yandex.ru/maps/?pt={lon},{lat}&z=17&l=map">Открыть на Яндекс.Картах</a>'
         if lat and lon else ''
     )
     phone = order.get('client_phone') or ''
@@ -301,7 +311,7 @@ def build_pool_order_detail_text(order: dict) -> str:
     if phone and not phone.startswith('+'):
         phone = '+' + phone
     # Кликабельный номер телефона
-    phone_text = f'\n📞 <a href="tel:{phone}">{phone}</a>' if phone else ''
+    phone_text = f'\n      📞 {phone}' if phone else ''
     # Вместо «X мин. назад» — день месяца и время (ЧЧ:ММ)
     created_at_raw = order.get('created_at')
     if created_at_raw:
@@ -314,15 +324,22 @@ def build_pool_order_detail_text(order: dict) -> str:
         time_text = '—'
     created_by = order.get('created_by') or '—'
     _hn = order.get('human_number') or '#' + str(order.get('id', ''))
+    note = order.get('note')
+    note_text = f"\n📝 <b>Примечание:</b>\n   {note}\n" if note else ''
+    sep = "─" * 15
     return (
         f"📦 <b>Заказ {_hn}</b>\n"
-        f"{'=' * 28}\n"
-        f"📍 <b>Адрес:</b> {addr}{loc_link}\n"
         f"👤 <b>Клиент:</b> {order.get('client_name', 'N/A')}{phone_text}\n"
-        f"🚰 <b>Товары:</b> {items_text}\n"
+        f"📍 <b>Адрес:</b> {addr}{loc_link}\n"
+        f"{sep}\n"
+        f"🚰 <b>Товары:</b>\n{items_text}\n"
+        f"{sep}\n"
         f"💰 <b>Сумма:</b> {fmt_money(order.get('total_price'))} сум\n"
         f"💳 <b>Оплата:</b> {order.get('payment_type_display', 'N/A')}\n"
-        f"⏰ <b>Создан:</b> {time_text} | создал: {created_by}"
+        f"{note_text}"
+        f"{sep}\n"
+        f"⏰ <b>Создан:</b> {time_text}\n"
+        f"👤 <b>Создал:</b> {created_by}"
     )
 @router.callback_query(F.data.startswith("take_order_"))
 async def take_order(callback: CallbackQuery):
@@ -345,8 +362,9 @@ async def take_order(callback: CallbackQuery):
     await callback.answer("Готово!")
 @router.callback_query(F.data == "back_to_pool")
 async def back_to_pool(callback: CallbackQuery):
+    tg_id = callback.from_user.id
     await callback.message.delete()
-    await show_pool(callback.message)
+    await send_pool(tg_id, callback.message)
 
 
 @router.callback_query(F.data == "refresh_pool")
@@ -375,12 +393,15 @@ async def refresh_pool(callback: CallbackQuery):
             await callback.answer("❌ Не удалось обновить пул", show_alert=True)
 
 # ─── Мой рейс ──────────────────────────────────────────────────────────────────
-@router.message(F.text == "🚚 Мой рейс")
-async def show_current_trip(message: Message):
-    tg_id = message.from_user.id
+async def send_current_trip(tg_id: int, target: Message):
+    """Показать текущий рейс в target.
+
+    tg_id передаётся явно, т.к. при callback-запросах target.from_user —
+    это бот, а не пользователь.
+    """
     trip_data = await get_trip_state(tg_id)
     if not trip_data.get('active_shift'):
-        await message.answer("🌅 Смена не открыта. Начните с «🟢 Открыть смену».")
+        await target.answer("🌅 Смена не открыта. Начните с «🟢 Открыть смену».")
         return
     if not trip_data.get('active_trip'):
         return
@@ -406,7 +427,12 @@ async def show_current_trip(message: Message):
         buttons.append([InlineKeyboardButton(text=label, callback_data=f"trip_order_{order['id']}")])
     buttons.append([InlineKeyboardButton(text="🏁 Закрыть рейс", callback_data="close_trip")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await message.answer(text, reply_markup=kb)
+    await target.answer(text, reply_markup=kb)
+
+
+@router.message(F.text == "🚚 Мой рейс")
+async def show_current_trip(message: Message):
+    await send_current_trip(message.from_user.id, message)
 
 
 def build_trip_order_label(order: dict) -> str:
@@ -414,22 +440,23 @@ def build_trip_order_label(order: dict) -> str:
     order_id = order.get('id')
     items = order.get('items', [])
     total_qty = sum(it.get('quantity', 0) for it in items)
-    addr = order.get('delivery_address_text') or order.get('client_address') or ''
-    if not addr and (order.get('delivery_latitude') or order.get('latitude')):
-        addr = '📍 локация'
+    from tg_bot.keyboards.courier import get_order_address
+    addr = get_order_address(order)
     addr_short = (addr[:24] + '…') if len(addr) > 24 else addr
     status_icon = '✅' if order.get('status') == 'DL' else '⏳'
     label = order.get('human_number', f'#{order_id}')
-    return f"{status_icon} {label} | {total_qty} | {addr_short}"
+    from tg_bot.keyboards.courier import get_order_freshness_icon
+    freshness = get_order_freshness_icon(order)
+    return f"{status_icon} {freshness} {label} | {total_qty} | {addr_short}"
 
 
 def build_order_detail_text(order: dict) -> str:
     """Подробная карточка заказа (как в Mini App)."""
     items = order.get('items', [])
     items_text = "\n".join([
-        f"• {it.get('product_name', 'N/A')} × {it.get('quantity', 0)} шт."
+        f"   • {it.get('product_name', 'N/A')} × {it.get('quantity', 0)} шт."
         for it in items
-    ])
+    ]) or "   —"
     from datetime import datetime
     created_at_raw = order.get('created_at')
     if created_at_raw:
@@ -441,15 +468,36 @@ def build_order_detail_text(order: dict) -> str:
     else:
         time_text = 'неизвестно'
     _hn = order.get('human_number') or '#' + str(order.get('id', ''))
+    from tg_bot.keyboards.courier import get_order_address
+    _addr = get_order_address(order)
+    lat = order.get('delivery_latitude')
+    lon = order.get('delivery_longitude')
+    # Кликабельная ссылка на Яндекс.Карты (pt = долгота,широта)
+    loc_link = (
+        f'\n      📍 <a href="https://yandex.ru/maps/?pt={lon},{lat}&z=17&l=map">Открыть на Яндекс.Картах</a>'
+        if lat and lon else ''
+    )
+    phone = order.get('client_phone') or ''
+    if phone and not phone.startswith('+'):
+        phone = '+' + phone
+    phone_text = f'\n      📞 {phone}' if phone else ''
+    note = order.get('note')
+    note_text = f"\n📝 <b>Примечание:</b>\n   {note}\n" if note else ''
+    created_by = order.get('created_by') or '—'
+    sep = "─" * 15
     return (
-        f"📦 <b>Заказ {_hn}</b>\n\n"
-        f"👤 Клиент: {order.get('client_name', 'N/A')}\n"
-        f"📞 Телефон: {order.get('client_phone', 'N/A')}\n"
-        f"📍 Адрес: {order.get('delivery_address_text') or order.get('client_address') or 'локация'}\n\n"
-        f"🚰 Товары:\n{items_text}\n\n"
-        f"💰 Сумма: {fmt_money(order.get('total_price'))} сум\n"
-        f"💳 Оплата: {order.get('payment_type_display', 'N/A')}\n"
-        f"⏰ Создан: {time_text}"
+        f"📦 <b>Заказ {_hn}</b>\n"
+        f"👤 <b>Клиент:</b> {order.get('client_name', 'N/A')}{phone_text}\n"
+        f"📍 <b>Адрес:</b> {_addr}{loc_link}\n"
+        f"{sep}\n"
+        f"🚰 <b>Товары:</b>\n{items_text}\n"
+        f"{sep}\n"
+        f"💰 <b>Сумма:</b> {fmt_money(order.get('total_price'))} сум\n"
+        f"💳 <b>Оплата:</b> {order.get('payment_type_display', 'N/A')}\n"
+        f"{note_text}"
+        f"{sep}\n"
+        f"⏰ <b>Создан:</b> {time_text}\n"
+        f"👤 <b>Создал:</b> {created_by}"
     )
 @router.callback_query(F.data.startswith("trip_order_"))
 async def trip_order_detail(callback: CallbackQuery):
@@ -484,7 +532,7 @@ async def trip_cancel_order(callback: CallbackQuery):
         await callback.answer(f"❌ {result.get('error')}", show_alert=True)
         return
     await callback.answer("❌ Заказ отменён")
-    await show_current_trip(callback.message)
+    await send_current_trip(tg_id, callback.message)
 @router.callback_query(F.data.startswith("return_order_"))
 async def return_order_to_pool(callback: CallbackQuery):
     order_id = int(callback.data.split("_")[2])
@@ -497,7 +545,7 @@ async def return_order_to_pool(callback: CallbackQuery):
         await callback.answer(f"❌ {result.get('error')}", show_alert=True)
         return
     await callback.answer("✅ Возвращено в пул")
-    await show_current_trip(callback.message)
+    await send_current_trip(tg_id, callback.message)
 @router.callback_query(F.data == "close_trip")
 async def close_trip(callback: CallbackQuery):
     """Показать подтверждение закрытия рейса со статистикой."""
@@ -571,12 +619,14 @@ async def confirm_close_trip(callback: CallbackQuery):
 @router.callback_query(F.data == "cancel_close_trip")
 async def cancel_close_trip(callback: CallbackQuery):
     """Отмена закрытия рейса — возврат к текущему рейсу."""
-    await show_current_trip(callback.message)
+    tg_id = callback.from_user.id
+    await send_current_trip(tg_id, callback.message)
     await callback.answer()
 @router.callback_query(F.data == "back_to_trip")
 async def back_to_trip(callback: CallbackQuery):
+    tg_id = callback.from_user.id
     await callback.message.delete()
-    await show_current_trip(callback.message)
+    await send_current_trip(tg_id, callback.message)
 
 # ─── Подтверждение доставки (FSM) ──────────────────────────────────────────────
 @router.message(F.text == "✅ Подтвердить доставку")
@@ -654,6 +704,9 @@ def init_deliver_edit(order: dict) -> dict:
 def build_deliver_edit_text(order: dict, edit: dict, extra_items: list = None) -> str:
     _hn = order.get('human_number') or '#' + str(order.get('id', ''))
     lines = [f"📦 <b>Редактирование доставки — Заказ {_hn}</b>\n"]
+    note = order.get('note')
+    if note:
+        lines.append(f"<b>Примечание:</b> {note}\n")
     for it in order.get('items', []):
         iid = it['id']
         st = edit.get(iid, {})
@@ -1155,6 +1208,9 @@ async def show_order_info(callback: CallbackQuery):
         f"{pay_icon} Оплата: {order.get('payment_type')}",
         f"📊 Статус: {status_label}",
     ]
+    note = order.get('note')
+    if note:
+        lines.append(f"Примечание: {note}")
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⬅️ Назад к рейсу", callback_data=f"back_to_shift_{shift_id}")
     ]])

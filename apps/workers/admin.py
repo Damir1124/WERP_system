@@ -16,9 +16,10 @@ class GarageInline(admin.TabularInline):
 @admin.register(Worker)
 class WorkerAdmin(admin.ModelAdmin):
     """Удобное управление сотрудниками"""
-    list_display = ('full_name', 'phone', 'worker_type', 'tg_id', 'is_admin', 'date_for_payed', 'created_at')
+    list_display = ('full_name', 'phone', 'worker_type', 'salary_amount', 'tg_id', 'is_admin', 'date_for_payed', 'created_at')
     list_filter = ('worker_type', 'is_admin', 'created_at')
     search_fields = ('full_name', 'phone', 'tg_id')
+    list_editable = ('worker_type', 'salary_amount', 'is_admin')
     ordering = ('-created_at',)
     list_per_page = 20
     save_on_top = True
@@ -30,7 +31,7 @@ class WorkerAdmin(admin.ModelAdmin):
             'fields': ['full_name', 'phone', 'worker_type'],
         }),
         ('Зарплата', {
-            'fields': ['date_for_payed', 'note'],
+            'fields': ['salary_amount', 'date_for_payed', 'note'],
         }),
         ('Telegram', {
             'fields': ['tg_id', 'is_admin'],

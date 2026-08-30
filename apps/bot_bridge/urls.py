@@ -1,6 +1,11 @@
 from django.urls import path
 from apps.bot_bridge import views
-from apps.clients.views import get_client_addresses, save_client_address
+from apps.clients.views import (
+    get_client_addresses,
+    save_client_address,
+    delete_client_address,
+    update_client_profile,
+)
 app_name = 'bot_bridge'
 urlpatterns = [
     # Корневой эндпоинт
@@ -47,8 +52,12 @@ urlpatterns = [
     path('clients/', views.ClientInfoView.as_view(), name='client_info'),
     path('clients/search/', views.ClientSearchView.as_view(), name='client_search'),
     # Адреса клиента (зарегистрированы здесь, т.к. фронтенд курьера зовёт api/bot/clients/addresses/...)
-    path('clients/addresses/<str:phone>/', get_client_addresses, name='client_addresses'),
+    # ВАЖНО: статические пути (save/, delete/) ДО динамического <str:phone>/,
+    # иначе 'delete' будет перехвачен как номер телефона.
     path('clients/addresses/save/', save_client_address, name='save_client_address'),
+    path('clients/addresses/delete/', delete_client_address, name='delete_client_address'),
+    path('clients/addresses/<str:phone>/', get_client_addresses, name='client_addresses'),
+    path('clients/profile/update/', update_client_profile, name='update_client_profile'),
     
     # ── Курьер: создание заказа (новый endpoint) ─────────────────────────────
     path('courier/orders/create-new/', views.CourierCreateOrderView.as_view(), name='courier_create_order'),
@@ -58,6 +67,8 @@ urlpatterns = [
     path('client/order/', views.ClientOrderCreateView.as_view(), name='client_order_create'),
     path('client/orders/', views.ClientOrderHistoryView.as_view(), name='client_orders'),
     path('client/order/<int:order_id>/status/', views.ClientOrderStatusView.as_view(), name='client_order_status'),
+    path('client/order/<int:order_id>/update/', views.ClientOrderUpdateView.as_view(), name='client_order_update'),
+    path('client/order/<int:order_id>/delete/', views.ClientOrderDeleteView.as_view(), name='client_order_delete'),
     path('client/register/', views.ClientRegisterView.as_view(), name='client_register'),
     path('client/profile/', views.ClientProfileView.as_view(), name='client_profile'),
 

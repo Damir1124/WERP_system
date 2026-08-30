@@ -34,18 +34,6 @@ class OrderForm(forms.ModelForm):
         help_text='Адрес доставки заказа'
     )
     
-    client_name = forms.CharField(
-        max_length=85,
-        required=False,
-        label='ФИО клиента (опционально)',
-        widget=forms.TextInput(attrs={
-            'class': 'vTextField',
-            'placeholder': 'Иванов Иван Иванович',
-            'style': 'width: 400px;'
-        }),
-        help_text='Если клиент новый, укажите ФИО'
-    )
-    
     class Meta:
         model = Order
         fields = ['payment_type', 'assigned_courier', 'note']
@@ -76,7 +64,6 @@ class OrderForm(forms.ModelForm):
                 self.instance.delivery_address.address_text
                 if self.instance.delivery_address else ''
             )
-            self.fields['client_name'].initial = self.instance.client.name
         
         # Настройка лейблов и порядка полей
         self.fields['payment_type'].label = 'Способ оплаты'
@@ -118,20 +105,14 @@ class OrderForm(forms.ModelForm):
         # Получаем данные клиента из формы
         phone = self.cleaned_data.get('client_phone')
         address = self.cleaned_data.get('client_address')
-        name = self.cleaned_data.get('client_name')
         
         # Ищем существующего клиента по телефону
         client, created = Client.objects.get_or_create(
             phone=phone,
             defaults={
-                'name': name if name else f'Клиент {phone}',
+                'name': f'Клиент {phone}',
             }
         )
-        
-        # Если клиент существует, обновляем имя (адрес теперь в ClientAddress)
-        if not created and name:
-            client.name = name
-            client.save()
 
         # Адрес доставки сохраняем в ClientAddress и привязываем к заказу
         if address:

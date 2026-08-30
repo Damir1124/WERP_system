@@ -16,7 +16,9 @@ from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
 class GarageAdmin(admin.ModelAdmin):
     """Учёт транспортных средств"""
     list_display = ('vehicle_name', 'plate_number', 'milage', 'year', 'courier')
-    search_fields = ('vehicle_name', 'plate_number', 'courier__full_name')
+    search_fields = ('vehicle_name', 'plate_number', 'courier__full_name', 'courier__phone')
+    autocomplete_fields = ('courier',)
+    list_select_related = ('courier',)
     list_per_page = 20
     ordering = ('vehicle_name',)
 
@@ -91,7 +93,9 @@ class WarehouseProductAdmin(admin.ModelAdmin):
 class WarehouseStockBalanceAdmin(admin.ModelAdmin):
     """Остатки складских продуктов (только просмотр)"""
     list_display = ('warehouse_product', 'quantity_colored', 'last_received_date', 'last_departure_date')
-    search_fields = ('warehouse_product__name',)
+    search_fields = ('warehouse_product__name', 'warehouse_product__sku')
+    autocomplete_fields = ('warehouse_product',)
+    list_select_related = ('warehouse_product',)
     readonly_fields = ['warehouse_product', 'quantity', 'last_received_date', 'last_departure_date']
     list_per_page = 20
     ordering = ('warehouse_product__name',)
@@ -118,7 +122,9 @@ class WarehouseStockMovementAdmin(admin.ModelAdmin):
     """Журнал движений складских продуктов (только просмотр)"""
     list_display = ('warehouse_product', 'operation_type', 'quantity', 'created_at', 'note')
     list_filter = ('operation_type', 'created_at')
-    search_fields = ('warehouse_product__name', 'note')
+    search_fields = ('warehouse_product__name', 'warehouse_product__sku', 'note')
+    autocomplete_fields = ('warehouse_product',)
+    list_select_related = ('warehouse_product',)
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
     list_per_page = 25
@@ -136,7 +142,9 @@ class WarehouseInventoryAdjustmentAdmin(admin.ModelAdmin):
     """Ручная корректировка остатков складских продуктов"""
     list_display = ('warehouse_product', 'adjustment_type', 'quantity', 'adjusted_by', 'created_at', 'reason_short')
     list_filter = ('adjustment_type', 'created_at')
-    search_fields = ('warehouse_product__name', 'reason', 'note')
+    search_fields = ('warehouse_product__name', 'warehouse_product__sku', 'reason', 'note')
+    autocomplete_fields = ('warehouse_product', 'adjusted_by')
+    list_select_related = ('warehouse_product', 'adjusted_by')
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'
     list_per_page = 20
@@ -165,6 +173,8 @@ class ProductWarehouseMappingAdmin(admin.ModelAdmin):
     """Связи продуктов ассортимента со складскими продуктами"""
     list_display = ('product', 'warehouse_product', 'coefficient')
     list_filter = ('product__type_product',)
-    search_fields = ('product__name', 'warehouse_product__name')
+    search_fields = ('product__name', 'warehouse_product__name', 'warehouse_product__sku')
+    autocomplete_fields = ('product', 'warehouse_product')
+    list_select_related = ('product', 'warehouse_product')
     list_per_page = 20
     ordering = ('product__name',)

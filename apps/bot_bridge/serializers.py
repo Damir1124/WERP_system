@@ -8,10 +8,22 @@ from apps.workers.models import Worker
 class ProductSerializer(serializers.ModelSerializer):
     """Сериализатор для продукта"""
     type_product_display = serializers.CharField(source='get_type_product_display', read_only=True)
+    # image_url: приоритет у загруженного файла (image), иначе внешний URL
+    image_url = serializers.SerializerMethodField()
+
+    def get_image_url(self, obj):
+        if obj.image:
+            try:
+                return obj.image.url
+            except Exception:
+                pass
+        return obj.image_url or ''
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'type_product', 'type_product_display', 'price', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'type_product', 'type_product_display', 'price',
+                  'image_url', 'is_visible_in_catalog',
+                  'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 
@@ -24,8 +36,9 @@ class ClientSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
-# Устаревшие сериализаторы DeliveryJournal/DeliveryJournalProducts удалены.
-# Внешние интерфейсы теперь оперируют с моделями P0: Order / CourierTrip / CourierShift.
+# Устаревшие сериализаторы DeliveryJournal/DeliveryJournalProducts удалены
+# вместе с моделями. Внешние интерфейсы оперируют с моделями P0:
+# Order / CourierTrip / CourierShift.
 
 
 class WorkerSerializer(serializers.ModelSerializer):
@@ -51,7 +64,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     """Сериализатор для заказа (модель Order)"""
     client_name = serializers.CharField(source='client.name', read_only=True, allow_null=True)
-    client_address = serializers.CharField(source='delivery_address_text', read_only=True, allow_null=True)
+    client_address = serializers.SerializerMethodField()
+    delivery_address_display = serializers.SerializerMethodField()
     client_phone = serializers.CharField(source='client.phone', read_only=True, allow_null=True)
     latitude = serializers.DecimalField(source='delivery_latitude', max_digits=10, decimal_places=6, read_only=True, allow_null=True)
     longitude = serializers.DecimalField(source='delivery_longitude', max_digits=10, decimal_places=6, read_only=True, allow_null=True)
@@ -93,11 +107,20 @@ class OrderSerializer(serializers.ModelSerializer):
             return obj.assigned_courier.full_name
         return "Система"
 
+    def get_client_address(self, obj):
+        """Человекочитаемый адрес: текст, Location или 'Адрес не указан'."""
+        return obj.display_address()
+
+    def get_delivery_address_display(self, obj):
+        """Алиас display_address для совместимости."""
+        return obj.display_address()
+
     class Meta:
         model = Order
         fields = ['id', 'display_number', 'human_number', 'trip', 'client', 'client_name', 'client_address', 'client_phone',
                   'latitude', 'longitude',
-                  'delivery_address_text', 'delivery_latitude', 'delivery_longitude',
+                  'delivery_address_text', 'delivery_address_display',
+                  'delivery_latitude', 'delivery_longitude',
                   'payment_type', 'payment_type_display',
                   'status', 'status_display',
                   'assigned_courier', 'assigned_courier_name', 'created_by', 'note', 'created_at', 'delivered_at',
@@ -186,7 +209,7 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'courier'):
             courier = request.courier
             trip = data.get('trip')
-            if trip and trip.shift.courier != courier:
+            if trip and trip.shift.courier and trip.shift.courier != courier:
                 raise serializers.ValidationError(
                     "Рейс не принадлежит текущему курьеру"
                 )

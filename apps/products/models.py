@@ -16,10 +16,28 @@ class Product(models.Model):
                                     default=TypeProduct.COOLERS,
                                     verbose_name="Тип продукта")
     price = models.IntegerField(null=False, verbose_name="Стоимость")
+    image_url = models.URLField(
+        blank=True,
+        default='',
+        verbose_name="Фото товара (URL)",
+        help_text="Внешний URL изображения (если не загружен файл)"
+    )
+    image = models.ImageField(
+        upload_to='products/',
+        blank=True,
+        null=True,
+        verbose_name="Фото товара (файл)",
+        help_text="Загрузите изображение товара (будет доступно по /media/products/)"
+    )
+    is_visible_in_catalog = models.BooleanField(
+        default=True,
+        verbose_name="Показывать в каталоге",
+        help_text="Если отмечено, товар показывается в каталоге клиентского приложения"
+    )
     track_inventory = models.BooleanField(
         default=True,
         verbose_name="Учитывать на складе",
-        help_text="Если отмечено, то для этого продукта будет вестись учет остатков на складе"
+        help_text="Если отмечено, то для этого товара будет учитываться учет остатков на складе"
     )
     created_at = models.DateField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateField(auto_now=True, verbose_name="Дата обновления")

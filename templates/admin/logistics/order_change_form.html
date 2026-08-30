@@ -210,11 +210,12 @@
         <span class="helptext">{{ adminform.form.client_address.help_text }}</span>
     </div>
 
-    <div class="form-row">
-        {{ adminform.form.client_name.label_tag }}
-        {{ adminform.form.client_name }}
-        {{ adminform.form.client_name.errors }}
-        <span class="helptext">{{ adminform.form.client_name.help_text }}</span>
+    <!-- Сохранённые адреса клиента (подгружаются по номеру телефона) -->
+    <div id="saved-addresses-block" style="display:none;">
+        <div class="form-row">
+            <label>Сохранённые адреса клиента:</label>
+            <div id="saved-addresses-list" style="margin-top:5px;"></div>
+        </div>
     </div>
     {% endif %}
 </div>
@@ -432,18 +433,74 @@
         {% endfor %}
     }
     
-    // Автозаполнение данных клиента по телефону
+    // ─── Поиск сохранённых адресов клиента по номеру телефона ─────────────
     const phoneInput = document.getElementById('id_client_phone');
+    const savedBlock = document.getElementById('saved-addresses-block');
+    const savedList = document.getElementById('saved-addresses-list');
+    const addressInput = document.getElementById('id_client_address');
+
+    function loadSavedAddresses() {
+        if (!phoneInput || !savedBlock || !savedList) return;
+        const phone = phoneInput.value.trim();
+        if (!phone) {
+            savedBlock.style.display = 'none';
+            savedList.innerHTML = '';
+            return;
+        }
+        fetch(`/api/clients/addresses/${encodeURIComponent(phone)}/`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            const addresses = Array.isArray(data.addresses) ? data.addresses : [];
+            savedList.innerHTML = '';
+            if (addresses.length === 0) {
+                savedBlock.style.display = 'none';
+                return;
+            }
+            addresses.forEach(function(addr) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = addr.address_text || (addr.latitude + ', ' + addr.longitude);
+                btn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;' +
+                    'margin-bottom:6px;border:1px solid #dee2e6;border-radius:6px;' +
+                    'background:#fff;cursor:pointer;font-size:13px;';
+                btn.addEventListener('click', function() {
+                    if (addressInput) {
+                        addressInput.value = addr.address_text || '';
+                    }
+                    // Подсветка выбранного адреса
+                    savedList.querySelectorAll('button').forEach(function(b) {
+                        b.style.borderColor = '#dee2e6';
+                        b.style.background = '#fff';
+                    });
+                    btn.style.borderColor = '#417690';
+                    btn.style.background = '#e7f0f8';
+                });
+                savedList.appendChild(btn);
+            });
+            savedBlock.style.display = 'block';
+        })
+        .catch(function() {
+            savedBlock.style.display = 'none';
+            savedList.innerHTML = '';
+        });
+    }
+
     if (phoneInput) {
-        phoneInput.addEventListener('blur', function() {
-            const phone = this.value.trim();
-            if (phone) {
-                // Здесь можно добавить AJAX запрос для поиска клиента
-                // Пока оставляем простую валидацию
-                console.log('Поиск клиента по телефону:', phone);
+        phoneInput.addEventListener('blur', loadSavedAddresses);
+        phoneInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadSavedAddresses();
             }
         });
     }
+
+    // При редактировании заказа — сразу подгружаем адреса клиента
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSavedAddresses();
+    });
     
     // Обработчик кнопки добавления продукта
     document.getElementById('add-product-btn').addEventListener('click', addProductForm);

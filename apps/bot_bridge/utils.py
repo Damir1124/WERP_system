@@ -164,8 +164,10 @@ def resolve_user_role(tg_id: int) -> dict:
 
     return {
         'role': 'UNKNOWN',
-        'target_app': 'registration',
-        'bot_role': 'unknown',
+        # Новый клиент сразу идёт в клиентский Mini App, где происходит
+        # бесшовный вход по tg_id (без ввода телефона).
+        'target_app': 'client',
+        'bot_role': 'client',
         'name': None,
         'worker_id': None,
         'client_id': None,

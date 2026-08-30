@@ -228,6 +228,5 @@
 9. СУЩЕСТВУЮЩИЙ КОД: перед созданием нового файла проверь есть ли он уже в проекте
    командой find . -name "filename.py" | head -5.
 
-10. УСТАРЕВШИЕ МОДЕЛИ: не трогай DeliveryLog, DeliveryLogMove, DeliveryJournal —
-    они оставлены для совместимости с существующей БД.
+10. УСТАРЕВШИЕ МОДЕЛИ: DeliveryLog, DeliveryLogMove, DeliveryJournal — удалены из кода и БД (миграция logistics.0010_remove_legacy_models). Не добавляй их обратно.
 ```

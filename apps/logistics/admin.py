@@ -1,63 +1,17 @@
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
 from .models import (
-    DeliveryLog, DeliveryLogMove,
     CourierShift, CourierTrip, Order, OrderItem,
     OrderNumberCounter,
 )
-from .forms import OrderForm, OrderItemFormSet
+from .forms import OrderForm
 from apps.products.models import Product
 from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
 
 
 # =============================================================================
-# Устаревшие модели (оставлены для совместимости с БД)
-# =============================================================================
-
-class DeliveryLogMoveInline(admin.TabularInline):
-    model = DeliveryLogMove
-    extra = 1
-    verbose_name = "Движение доставки"
-    verbose_name_plural = "Движения доставки"
-
-
-class DeliveryLogAdmin(admin.ModelAdmin):
-    list_display = ('courier', 'total_quantity', 'total_sold', 'date')
-    list_filter = ('courier', 'date')
-    search_fields = ('courier__full_name',)
-    ordering = ('-date',)
-    date_hierarchy = 'date'
-    inlines = [DeliveryLogMoveInline]
-    readonly_fields = ('total_quantity', 'total_sold')
-
-    fieldsets = [
-        ('Информация', {
-            'fields': ['courier', 'date'],
-        }),
-        ('Итоги', {
-            'fields': ['total_quantity', 'total_sold'],
-        }),
-    ]
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        obj.check_total_quantity()
-
-
-class DeliveryLogMoveAdmin(admin.ModelAdmin):
-    list_display = ('delivery_log', 'action', 'quantity', 'date')
-    list_filter = ('action', 'delivery_log__courier', 'date')
-    search_fields = ('delivery_log__courier__full_name',)
-    ordering = ('-date',)
-    date_hierarchy = 'date'
-
-
-admin.site.register(DeliveryLog, DeliveryLogAdmin)
-admin.site.register(DeliveryLogMove, DeliveryLogMoveAdmin)
-
-
-# =============================================================================
-# Новая архитектура P0: CourierShift → CourierTrip → Order → OrderItem
+# Архитектура P0: CourierShift → CourierTrip → Order → OrderItem
 # =============================================================================
 
 class OrderItemInline(admin.TabularInline):
@@ -65,6 +19,7 @@ class OrderItemInline(admin.TabularInline):
     extra = 1
     fields = ('product', 'quantity', 'price', 'exchange_qty', 'sell_with_qty', 'defective_qty')
     readonly_fields = ('price',)
+    autocomplete_fields = ('product',)
     verbose_name = "Позиция заказа"
     verbose_name_plural = "Позиции заказа"
 
@@ -93,7 +48,7 @@ class CourierTripInline(admin.TabularInline):
         if obj.pk:
             return format_html(
                 '<a href="{}">Рейс №{}</a>',
-                f'/admin/logistics/couriertrip/{obj.pk}/change/',
+                reverse('admin:logistics_couriertrip_change', args=[obj.pk]),
                 obj.pk
             )
         return '—'
@@ -109,12 +64,14 @@ class CourierShiftAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
         'cash_total', 'card_total', 'total_display', 'opened_at', 'closed_at', 'dashboard_link',
     )
     list_filter = ('status', 'date', 'courier')
-    search_fields = ('courier__full_name',)
+    search_fields = ('courier__full_name', 'courier__phone')
+    autocomplete_fields = ('courier',)
     readonly_fields = ('cash_total', 'card_total', 'opened_at', 'closed_at', 'date')
     date_hierarchy = 'date'
     inlines = [CourierTripInline]
     ordering = ('-date', '-opened_at')
     save_on_top = True
+    list_per_page = 25
     list_select_related = ('courier',)
 
     fieldsets = [
@@ -166,7 +123,7 @@ class CourierShiftAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
     def dashboard_link(self, obj):
         return format_html(
             '<a href="{}" target="_blank" style="font-size:.82rem;">📈 Отчёт</a>',
-            f'/dashboard/shifts/{obj.id}/'
+            reverse('dashboard:shift_detail', args=[obj.id])
         )
 
     actions = ['close_selected_shifts']
@@ -190,10 +147,12 @@ class CourierTripAdmin(admin.ModelAdmin):
         'full_returned', 'started_at', 'finished_at', 'orders_link',
     )
     list_filter = ('status', 'shift__courier', 'shift__date')
-    search_fields = ('shift__courier__full_name',)
-    readonly_fields = ('started_at', 'finished_at')
+    search_fields = ('shift__courier__full_name', 'shift__courier__phone')
+    autocomplete_fields = ('shift',)
+    readonly_fields = ('started_at', 'finished_at', 'delivered_display', 'remain_display')
     ordering = ('-started_at',)
     inlines = [OrderInline]
+    list_per_page = 25
     list_select_related = ('shift__courier',)
 
     fieldsets = [
@@ -226,7 +185,7 @@ class CourierTripAdmin(admin.ModelAdmin):
     def shift_link(self, obj):
         return format_html(
             '<a href="{}">Смена #{}</a>',
-            f'/admin/logistics/couriershift/{obj.shift.id}/change/',
+            reverse('admin:logistics_couriershift_change', args=[obj.shift.id]),
             obj.shift.id
         )
 
@@ -250,7 +209,7 @@ class CourierTripAdmin(admin.ModelAdmin):
     def orders_link(self, obj):
         return format_html(
             '<a href="{}?trip__id__exact={}" target="_blank">📋 Список</a>',
-            '/admin/logistics/order/',
+            reverse('admin:logistics_order_changelist'),
             obj.pk
         )
 
@@ -277,6 +236,7 @@ class OrderAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
         'id', 'display_number', 'client__name', 'client__phone',
         'delivery_address_text', 'note',
     )
+    autocomplete_fields = ('client', 'trip', 'assigned_courier', 'created_by_worker', 'delivery_address')
     readonly_fields = ('created_at', 'delivered_at', 'display_number')
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
@@ -304,9 +264,7 @@ class OrderAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
 
     @admin.display(description='Адрес')
     def delivery_address_short(self, obj):
-        addr = obj.delivery_address_text or ''
-        if not addr and obj.delivery_address:
-            addr = str(obj.delivery_address)
+        addr = obj.display_address()
         return addr[:50] + '...' if len(addr) > 50 else addr
 
     @admin.display(description='Смена / Рейс')
@@ -314,9 +272,9 @@ class OrderAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
         if obj.trip and obj.trip.shift:
             return format_html(
                 '<a href="{}">Смена #{}</a> / <a href="{}">Рейс #{}</a>',
-                f'/admin/logistics/couriershift/{obj.trip.shift.id}/change/',
+                reverse('admin:logistics_couriershift_change', args=[obj.trip.shift.id]),
                 obj.trip.shift.id,
-                f'/admin/logistics/couriertrip/{obj.trip.id}/change/',
+                reverse('admin:logistics_couriertrip_change', args=[obj.trip.id]),
                 obj.trip.id,
             )
         if obj.assigned_courier:
@@ -415,7 +373,9 @@ class OrderAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ('id', 'order', 'product', 'quantity', 'price', 'exchange_qty', 'sell_with_qty', 'defective_qty')
     list_filter = ('product__type_product', 'order__status')
-    search_fields = ('product__name', 'order__client__name')
+    search_fields = ('product__name', 'order__client__name', 'order__client__phone')
+    autocomplete_fields = ('order', 'product')
+    list_select_related = ('order__client', 'product')
     readonly_fields = ('price',)
     ordering = ('-order__created_at', 'id')
     list_per_page = 25

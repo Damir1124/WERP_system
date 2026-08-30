@@ -98,9 +98,7 @@ export default function OrderCard({
         <div className="quantity-badge">{getQuantityBadge()}</div>
 
         <div className="address-truncated">
-          {order.delivery_latitude && order.delivery_longitude && order.delivery_address_text
-            ? `📍 | ${order.delivery_address_text}`
-            : order.delivery_address_text || '📍 Локация'}
+          {order.delivery_address_display || order.delivery_address_text || '📍 Локация'}
         </div>
 
         <div className={paymentBadge.className}>{paymentBadge.text}</div>
@@ -120,7 +118,7 @@ export default function OrderCard({
             <div className="detail-col">
               <div className="detail-label">Адрес</div>
               <div className="detail-value">
-                {order.delivery_address_text || 'Адрес не указан'}
+                {order.delivery_address_display || order.delivery_address_text || 'Адрес не указан'}
               </div>
             </div>
             {order.delivery_latitude && order.delivery_longitude && (
@@ -161,6 +159,14 @@ export default function OrderCard({
               ))}
             </div>
           </div>
+
+          {/* Примечание (в развёрнутом состоянии) */}
+          {order.note && (
+            <div className="detail-section">
+              <div className="detail-label">Примечание</div>
+              <div className="detail-value">{order.note}</div>
+            </div>
+          )}
 
           {/* Дата создания и кто создал в одну строку */}
           <div className="detail-section detail-row">

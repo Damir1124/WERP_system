@@ -102,7 +102,16 @@ export default function Trip() {
 
   const trip = data.trip
   const summary = data.summary || {}
-  const orders = trip?.orders || []
+
+  // Сортировка заказов рейса:
+  // 1. Невыполненные — от взятых недавно к взятым раньше (по created_at убыванию).
+  // 2. Выполненные (DL) — строго в конце, тоже по created_at убыванию.
+  const orders = [...(trip?.orders || [])].sort((a, b) => {
+    const aDelivered = a.status === 'DL'
+    const bDelivered = b.status === 'DL'
+    if (aDelivered !== bDelivered) return aDelivered ? 1 : -1
+    return new Date(b.created_at) - new Date(a.created_at)
+  })
 
   const fmt = (n) => (n || 0).toLocaleString('ru-RU')
 
@@ -188,7 +197,9 @@ export default function Trip() {
           display_number: order.display_number ?? null,
           created_at: order.created_at,
           delivered_at: order.delivered_at || null,
+          note: order.note || null,
           delivery_address_text: order.delivery_address_text || 'Адрес не указан',
+          delivery_address_display: order.delivery_address_display || order.delivery_address_text || 'Адрес не указан',
           delivery_latitude: order.delivery_latitude || null,
           delivery_longitude: order.delivery_longitude || null,
           payment_type: order.payment_type,

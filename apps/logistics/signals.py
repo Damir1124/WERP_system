@@ -1,23 +1,7 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.db.models import Sum
-from .models import DeliveryLog, DeliveryLogMove, Order, CourierShift, OrderItem
-
-
-@receiver(post_save, sender=DeliveryLogMove)
-def update_delivery_log_totals(sender, instance, **kwargs):
-    """Обновление total_quantity и total_sold в DeliveryLog после изменения DeliveryLogMove"""
-    delivery_log = instance.delivery_log
-    delivery_log.calculate_total_quantity()
-    delivery_log.calculate_total_sold()
-    # Сохраняем агрегаты журнала (это другой sender, безопасно)
-    delivery_log.save()
-
-
-@receiver(post_save, sender=DeliveryLog)
-def check_delivery_log_total_quantity(sender, instance, **kwargs):
-    """Проверка соответствия total_quantity после сохранения DeliveryLog"""
-    instance.check_total_quantity()
+from .models import Order, CourierShift, OrderItem
 
 
 @receiver(pre_save, sender=OrderItem)
