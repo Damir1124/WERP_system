@@ -4,6 +4,8 @@ import { clientApi } from '../api.js'
 import { t, tF } from '../i18n.js'
 import { ICONS, TYPE_ICONS } from '../icons/water-icons.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
+import DeliveryAddressSummary from '../components/DeliveryAddressSummary.jsx'
+import { resolveDeliveryAddress } from '../utils/address.js'
 
 export default function OrderForm({ clientData, lang = 'ru' }) {
   const { productId } = useParams()
@@ -21,9 +23,16 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
     longitude: null,
   })
   const [savedAddresses, setSavedAddresses] = useState([])
+  const [selectedAddressId, setSelectedAddressId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showMap, setShowMap] = useState(false)
+  // Подсветка блока адреса при попытке оформить без адреса (scroll + shake)
+  const [addrError, setAddrError] = useState(false)
+  // Раскрывающийся блок «Изменить адрес»
+  const [showAddressEditor, setShowAddressEditor] = useState(false)
+  // Подсветка блока ввода адреса при клике «Изменить» (на 1.5 сек)
+  const [editorHighlight, setEditorHighlight] = useState(false)
 
   // Загружаем сохранённые адреса клиента
   useEffect(() => {
@@ -41,15 +50,19 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
   }
 
   const handleSelectAddress = (addr) => {
+    // Не вписываем текст в поле «Адрес доставки» — только подсвечиваем кнопку.
+    // Адрес, координаты и лейбл берутся из выбранного сохранённого адреса через резолвер.
+    setSelectedAddressId(addr.id)
     setForm((prev) => ({
       ...prev,
-      address: addr.address_text || '',
+      address: '',
       latitude: addr.latitude,
       longitude: addr.longitude,
     }))
   }
 
   const handleLocationSelect = (lat, lon) => {
+    setSelectedAddressId(null)
     setForm((prev) => ({ ...prev, latitude: lat, longitude: lon }))
   }
 
@@ -61,8 +74,18 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
       setError(t('phone_required', lang))
       return
     }
-    if (!form.address.trim() && (form.latitude == null || form.longitude == null)) {
-      setError(t('address_required', lang))
+    // Единый резолвер: какой адрес реально уйдёт в заказ
+    const resolved = resolveDeliveryAddress({
+      address: form.address,
+      latitude: form.latitude,
+      longitude: form.longitude,
+      selectedAddressId,
+      savedAddresses,
+    })
+    if (resolved.isEmpty) {
+      setAddrError(true)
+      document.getElementById('delivery-address-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => setAddrError(false), 1500)
       return
     }
     setLoading(true)
@@ -72,10 +95,10 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
         product_id: parseInt(productId),
         quantity: parseInt(form.quantity),
         payment_type: form.payment_type,
-        address: form.address,
+        address: resolved.text || '',
         note: form.note,
-        latitude: form.latitude,
-        longitude: form.longitude,
+        latitude: resolved.lat,
+        longitude: resolved.lon,
       })
       const displayNum = result.display_number != null ? String(result.display_number).padStart(3, '0') : String(result.order_id)
       navigate('/orders', {
@@ -127,6 +150,97 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {/* Адрес доставки — сразу после товара: что заказываю → куда доставить → как оплатить */}
+      <div className="mb-4">
+        <DeliveryAddressSummary
+          address={form.address}
+          latitude={form.latitude}
+          longitude={form.longitude}
+          selectedAddressId={selectedAddressId}
+          savedAddresses={savedAddresses}
+          onEdit={() => {
+            setShowAddressEditor(true)
+            setEditorHighlight(true)
+            setTimeout(() => setEditorHighlight(false), 1500)
+          }}
+          highlightError={addrError}
+          lang={lang}
+        />
+      </div>
+
+      {showAddressEditor && (
+        <div id="delivery-address-editor" className={`mb-4 space-y-4 bg-white rounded-2xl shadow-soft border border-gray-100 p-4 ${editorHighlight ? 'address-editor-highlight' : ''}`}>
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+              <ICONS.location size={14} /> {t('delivery_address', lang)}
+            </h4>
+            <button
+              type="button"
+              onClick={() => setShowAddressEditor(false)}
+              className="text-xs text-gray-500 font-medium"
+            >
+              {t('cancel', lang)}
+            </button>
+          </div>
+
+          {/* Сохранённые адреса */}
+          {savedAddresses.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('choose_saved_address', lang)}
+              </label>
+              <div className="space-y-2">
+                {savedAddresses.map((addr) => (
+                  <button
+                    key={addr.id}
+                    type="button"
+                    onClick={() => handleSelectAddress(addr)}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                      selectedAddressId === addr.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-700'
+                    }`}
+                  >
+                    {addr.label && <span className="font-medium">{addr.label}: </span>}
+                    {addr.address_text || `${addr.latitude}, ${addr.longitude}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Адрес: ввод нового */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('delivery_address', lang)}
+            </label>
+            <input
+              type="text"
+              name="address"
+              value={form.address}
+              onChange={(e) => {
+                handleChange(e)
+                setSelectedAddressId(null)
+              }}
+              placeholder={t('address_placeholder', lang)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowMap(true)}
+              className="mt-2 w-full py-2.5 border border-blue-300 text-blue-700 font-medium rounded-lg"
+            >
+              {t('use_geolocation', lang)}
+            </button>
+            {(form.latitude != null || form.longitude != null) && (
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <ICONS.location size={12} /> {form.latitude?.toFixed?.(6) ?? form.latitude}, {form.longitude?.toFixed?.(6) ?? form.longitude}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -202,59 +316,6 @@ export default function OrderForm({ clientData, lang = 'ru' }) {
             placeholder={t('phone_placeholder', lang)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-        </div>
-
-        {/* Адрес: выбор сохранённого */}
-        {savedAddresses.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('choose_saved_address', lang)}
-            </label>
-            <div className="space-y-2">
-              {savedAddresses.map((addr) => (
-                <button
-                  key={addr.id}
-                  type="button"
-                  onClick={() => handleSelectAddress(addr)}
-                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
-                    form.address === addr.address_text
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 bg-white text-gray-700'
-                  }`}
-                >
-                  {addr.label && <span className="font-medium">{addr.label}: </span>}
-                  {addr.address_text || `${addr.latitude}, ${addr.longitude}`}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Адрес: ввод нового */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {t('delivery_address', lang)}
-          </label>
-          <input
-            type="text"
-            name="address"
-            value={form.address}
-            onChange={handleChange}
-            placeholder={t('address_placeholder', lang)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            type="button"
-            onClick={() => setShowMap(true)}
-            className="mt-2 w-full py-2.5 border border-blue-300 text-blue-700 font-medium rounded-lg"
-          >
-            {t('use_geolocation', lang)}
-          </button>
-          {(form.latitude != null || form.longitude != null) && (
-            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-              <ICONS.location size={12} /> {form.latitude?.toFixed?.(6) ?? form.latitude}, {form.longitude?.toFixed?.(6) ?? form.longitude}
-            </p>
-          )}
         </div>
 
         {/* Примечание */}

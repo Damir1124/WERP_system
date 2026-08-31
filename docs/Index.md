@@ -36,6 +36,8 @@
 * [[Concepts_TWACaching|Кэширование TWA при пересборке Vite]] — почему после `npx vite build` не видно изменений в Telegram WebView и как это чинить через `?v=N`
 * [[Concepts_WarehouseProductSeparation|Разделение контуров учёта (Product vs WarehouseProduct)]] — автономный складской продукт + M2M-мост с коэффициентом, авто-списание при продажах
 * [[Concepts_ProjectCleanup|Полная очистка проекта (2026-08-31)]] — удаление устаревших файлов, дубликатов, мёртвого кода и полей моделей; принцип «один источник правды»
+* [[Concepts_CeleryRedis|Celery и Redis в WERP]] — распределение задач: что выносить на Celery (уведомления, отчёты, периодика), что остаётся на Redis (кэш, Channels), что НЕ выносить (сигналы денег и склада)
+* [[Concepts_Deployment|Подготовка к деплою WERP]] — полный чек-лист: критичные баги (wsgi.py, DEBUG, безопасность), инфраструктура, Celery, бот, бэкапы, мониторинг
 
 ## Функциональные возможности
 * [[Feature_MultiProductOrderForm|Форма создания заказа с несколькими продуктами]] — улучшенная админ-форма для быстрого создания заказов с динамическим добавлением продуктов
@@ -49,6 +51,7 @@
 * [[Feature_ShiftReports|Отчёты по сменам курьеров (Dashboard)]] — выбор даты → иерархический отчёт смена→рейсы→заказы→позиции, вычисляется на лету из OrderItem без снимков
 * [[Feature_ShiftCloseTelegramReport|Автоотчёт о закрытии рейса/смены в Telegram]] — серверный триггер в TripCloseView/CourierShiftCloseView, HTML-сообщение в ADMIN_CHAT_ID, единый расчёт с mini-app (get_trip_summary + OrderItem)
 * [[Feature_CourierAddressAggregation|Скрытая команда курьера «/сводка»]] — агрегация взятых заказов по адресу общежития (блок → этаж → комнаты), парсер адреса, только для курьера
+* [[Feature_DeliveryAddressSummary|Визуальное усиление блока «Адрес доставки» в клиентском Mini App]] — единый резолвер `resolveDeliveryAddress()`, компонент-резюме `DeliveryAddressSummary`, scroll+shake при пустом адресе, чип адреса в MyOrders
 
 ## Статус выполнения задач P2
 **Задача P2 выполнена полностью:**

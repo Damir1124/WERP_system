@@ -128,6 +128,17 @@ export default function MyOrders({ lang = 'ru' }) {
                   </span>
                 </div>
 
+                {/* Адрес доставки — отдельный чип, сразу под номером/статусом */}
+                <div className="flex items-start gap-2 bg-blue-50 rounded-xl px-3 py-2 mb-3">
+                  <ICONS.location size={16} className="text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[11px] text-blue-500 font-semibold uppercase tracking-wide">
+                      {t('address', lang)}
+                    </p>
+                    <p className="text-sm font-semibold text-gray-800 leading-snug">{address}</p>
+                  </div>
+                </div>
+
                 {/* Состав (названия товаров) */}
                 <div className="mb-2">
                   {Array.isArray(order.items) && order.items.length > 0 ? (
@@ -139,12 +150,6 @@ export default function MyOrders({ lang = 'ru' }) {
                   ) : (
                     <p className="text-sm text-gray-700">• {order.product_name || '—'}</p>
                   )}
-                </div>
-
-                {/* Адрес доставки */}
-                <div className="text-sm text-gray-600 mb-2">
-                  <span className="text-gray-400">{t('address', lang)}:</span>{' '}
-                  <span className="font-medium">{address}</span>
                 </div>
 
                 {/* Примечание — только если есть */}

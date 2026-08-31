@@ -103,3 +103,23 @@ button {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Эффект «тряски» при ошибке выбора адреса доставки */
+@keyframes shakeOnce {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+.shake-once { animation: shakeOnce 0.4s ease; }
+
+/* Подсветка блока ввода адреса при клике «Изменить» — синяя рамка + пульсация */
+@keyframes addressPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12); }
+}
+.address-editor-highlight {
+  border-color: #3b82f6 !important;
+  animation: addressPulse 0.8s ease-in-out 2;
+}

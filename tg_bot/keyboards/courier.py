@@ -1,17 +1,13 @@
 """
 Клавиатуры для курьера (reply и inline).
-Стратегия «гибрид»:
-- Основное меню (reply) дублирует все действия кнопками — курьер может работать
-  вообще без Mini App.
-- В меню всегда есть кнопка «🌐 Открыть приложение» (WebApp), ведущая на Launcher.
-  Launcher сам определит роль и перенаправит в нужный Mini App.
+Основное меню (reply) дублирует все действия кнопками — курьер может работать
+полностью через кнопки Telegram, без Mini App.
 """
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton, WebAppInfo,
+    ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from tg_bot.config import LAUNCHER_URL
 
 
 def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -> ReplyKeyboardMarkup:
@@ -19,10 +15,8 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
     Главное меню курьера (адаптивное).
     Состав кнопок зависит от состояния: нет смены -> открыть смену,
     смена без рейса -> начать рейс, рейс активен -> рабочие действия.
-    Кнопка «🌐 Открыть приложение» доступна всегда и ведёт на Launcher.
     """
     builder = ReplyKeyboardBuilder()
-    app_btn = KeyboardButton(text="🌐 Открыть приложение", web_app=WebAppInfo(url=LAUNCHER_URL))
     if has_trip:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="📦 Заказы"))
@@ -30,8 +24,7 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
-        builder.add(app_btn)
-        row_sizes = [1, 2, 2, 1, 1]
+        row_sizes = [1, 2, 2, 1]
     elif has_shift:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="📦 Заказы"))
@@ -39,8 +32,7 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
-        builder.add(app_btn)
-        row_sizes = [1, 2, 2, 1, 1]
+        row_sizes = [1, 2, 2, 1]
     else:
         builder.add(KeyboardButton(text="➕ Создать заказ"))
         builder.add(KeyboardButton(text="🟢 Открыть смену"))
@@ -48,8 +40,7 @@ def get_courier_main_keyboard(has_shift: bool = False, has_trip: bool = False) -
         builder.add(KeyboardButton(text="📋 В процессе"))
         builder.add(KeyboardButton(text="📋 Смены и рейсы"))
         builder.add(KeyboardButton(text="🆘 Помощь"))
-        builder.add(app_btn)
-        row_sizes = [1, 1, 2, 2, 1, 1]
+        row_sizes = [1, 1, 2, 2]
     builder.adjust(*row_sizes)
     return builder.as_markup(resize_keyboard=True)
 # Типы продуктов, считающиеся «водой 19л» (для подсчёта в пуле заказов)
