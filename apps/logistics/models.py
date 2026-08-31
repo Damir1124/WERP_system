@@ -239,11 +239,6 @@ class Order(models.Model):
             return text
         return 'Адрес не указан'
 
-    def save(self, *args, **kwargs):
-        """Автоматический расчет цены больше не нужен, цена считается через OrderItem"""
-        super().save(*args, **kwargs)
-
-
 class OrderItem(models.Model):
     """Позиция заказа (многопозиционная структура)"""
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE, verbose_name='Заказ')

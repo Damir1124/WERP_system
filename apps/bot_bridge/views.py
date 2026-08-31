@@ -8,7 +8,6 @@ from apps.bot_bridge.serializers import (
     ProductSerializer,
     ClientSerializer,
     WorkerSerializer,
-    OrderCreateSerializer,
     OrderSerializer,
     CourierTripSerializer,
     CourierShiftSerializer,
@@ -85,7 +84,6 @@ class IdentifyView(APIView):
         if result['role'] == 'CLIENT':
             client = Client.objects.filter(tg_id=tg_id_int).first()
             result['phone'] = client.phone if client else ''
-            result['address'] = client.address if client else ''
         return Response(result)
 
 # ─── Профиль курьера ──────────────────────────────────────────────────────────
@@ -890,46 +888,6 @@ class CourierReturnToPoolView(APIView):
         })
 
 
-class CourierColleaguesView(APIView):
-    """GET /api/bot/courier/colleagues/"""
-    permission_classes = [IsCourierOrOperator]
-
-    def get(self, request):
-        colleagues = Worker.objects.filter(
-            worker_type=Worker.WorkerType.COURIER,
-            couriershift__status=CourierShift.Status.OPEN,
-            couriershift__date=today
-        ).annotate(
-            delivered_today=Count(
-                'couriershift__trips__orders',
-                filter=Q(couriershift__trips__orders__status=Order.Status.DELIVERED)
-            )
-        ).distinct()
-        # price теперь в OrderItem — считаем через отдельные запросы
-        from apps.logistics.models import OrderItem
-        data = []
-        for c in colleagues:
-            cash_total = OrderItem.objects.filter(
-                order__trip__shift__courier=c,
-                order__trip__shift__date=today,
-                order__status=Order.Status.DELIVERED,
-                order__payment_type=Order.PaymentType.CASH,
-            ).aggregate(total=Sum('price'))['total'] or 0
-            card_total = OrderItem.objects.filter(
-                order__trip__shift__courier=c,
-                order__trip__shift__date=today,
-                order__status=Order.Status.DELIVERED,
-                order__payment_type=Order.PaymentType.CARD,
-            ).aggregate(total=Sum('price'))['total'] or 0
-            data.append({
-                'id': c.id,
-                'full_name': c.full_name,
-                'delivered_today': c.delivered_today or 0,
-                'cash_total': cash_total,
-                'card_total': card_total,
-            })
-        return Response(data)
-
 # ─── Продукты и клиенты (для курьера) ────────────────────────────────────────
 
 
@@ -959,12 +917,9 @@ class ClientInfoView(APIView):
 
     def get(self, request):
         phone = request.query_params.get('phone', '')
-        address = request.query_params.get('address', '')
         clients = Client.objects.all()
         if phone:
             clients = clients.filter(phone__icontains=phone)
-        if address:
-            clients = clients.filter(address__icontains=address)
         serializer = ClientSerializer(clients[:10], many=True)
         return Response(serializer.data)
 
@@ -1781,54 +1736,6 @@ class OperatorOrderDeleteView(APIView):
 # ─── Устаревшие endpoints (410 Gone) ─────────────────────────────────────────
 
 
-class CourierDeliveryListView(APIView):
-    permission_classes = [IsCourier]
-
-    def get(self, request):
-        return Response({'error': 'Deprecated'}, status=status.HTTP_410_GONE)
-
-
-class DeliveryConfirmationView(APIView):
-    permission_classes = [IsCourier]
-
-    def post(self, request):
-        return Response({'error': 'Deprecated. Use /courier/orders/confirm/'}, status=status.HTTP_410_GONE)
-
-
-class UpdateQuantityView(APIView):
-    permission_classes = [IsCourier]
-
-    def post(self, request):
-        return Response({'error': 'Deprecated. Use /courier/orders/update-quantity/'}, status=status.HTTP_410_GONE)
-
-
-class TodayDeliveriesView(APIView):
-    permission_classes = [IsCourier]
-
-    def get(self, request):
-        return Response({'error': 'Deprecated'}, status=status.HTTP_410_GONE)
-
-
-class MarkAsDeliveredView(APIView):
-    permission_classes = [IsCourier]
-
-    def post(self, request, delivery_id):
-        return Response({'error': 'Deprecated'}, status=status.HTTP_410_GONE)
-
-
-class PublicProductListView(APIView):
-    permission_classes = []
-
-    def get(self, request):
-        products = Product.objects.all().order_by('type_product', 'name')
-        return Response(ProductSerializer(products, many=True).data)
-
-
-class ClientOrderView(APIView):
-    permission_classes = []
-
-    def post(self, request):
-        return Response({'error': 'Deprecated. Use /client/order/'}, status=status.HTTP_410_GONE)
 # ============================================================================
 # НОВЫЕ ENDPOINTS ДЛЯ ИНТЕРФЕЙСА ПУЛА ЗАКАЗОВ (Feature_CourierPoolInterface)
 # ============================================================================
@@ -2007,10 +1914,9 @@ class CourierCreateOrderView(APIView):
                 phone=validated_phone,
                 defaults={
                     'name': client_name or f'Клиент {validated_phone[-4:]}',
-                    'address': '',  # Оставляем пустым - адреса в ClientAddress
                 }
             )
-            # Адреса управляются через ClientAddress API, не через Client.address
+            # Адреса управляются через ClientAddress API
         
         # ─── Валидация адреса ───────────────────────────────────────────────────
         # Приоритет: текстовый адрес > координаты

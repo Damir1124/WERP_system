@@ -52,7 +52,6 @@ class OrderItemBusinessLogicTestCase(TestCase):
         self.client = Client.objects.create(
             name='Тестовый клиент',
             phone='998901234567'[:12],  # max_length=12
-            address='Тестовый адрес',
             balans=0
         )
         

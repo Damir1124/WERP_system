@@ -16,9 +16,9 @@ class ClientAddressInline(admin.TabularInline):
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
     """Удобное управление клиентами"""
-    search_fields = ['name', 'phone', 'address', 'tg_id']
+    search_fields = ['name', 'phone', 'tg_id']
     list_display = [
-        'name', 'phone', 'address', 'balans', 'orders_count',
+        'name', 'phone', 'balans', 'orders_count',
         'tg_id', 'created_at', 'orders_link',
     ]
     list_filter = ['created_at', 'balans']
@@ -31,7 +31,7 @@ class ClientAdmin(admin.ModelAdmin):
 
     fieldsets = [
         ('Основная информация', {
-            'fields': ['name', 'phone', 'address', 'balans', 'note'],
+            'fields': ['name', 'phone', 'balans', 'note'],
         }),
         ('Геолокация', {
             'fields': ['latitude', 'longitude'],

@@ -9,7 +9,6 @@ class ClientTestSave(TestCase):
         self.client_instance = Client.objects.create(
             name='Тестовый Клиент',
             phone='+998901111111',
-            address='Улица Тестовая, 1',
             balans=100,
             note='Тестовая заметка',
             created_at=timezone.now(),
@@ -17,7 +16,7 @@ class ClientTestSave(TestCase):
 
     def test_client_creation(self):
         """Проверка сейва клиента"""
-        self.assertTrue(Client.objects.filter(address=self.client_instance.address).exists())
+        self.assertTrue(Client.objects.filter(phone=self.client_instance.phone).exists())
 
     def test_client_unique_phone(self):
         """Проверка уникальности номера телефона"""
@@ -25,7 +24,6 @@ class ClientTestSave(TestCase):
             Client.objects.create(
                 name='Другой Клиент',
                 phone=self.client_instance.phone,
-                address='Улица Вторая, 5',
                 balans=50,
                 note='',
             )

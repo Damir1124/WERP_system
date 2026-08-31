@@ -22,7 +22,7 @@ from apps.logistics.models import Order, OrderItem
 from apps.products.models import Product
 
 from tg_bot.states.client import OrderStates, AddressStates
-from tg_bot.utils.phone_validator import validate_uzbek_phone
+from apps.bot_bridge.phone_validator import validate_uzbek_phone
 from tg_bot.constants import t
 from tg_bot.constants import (
     WELCOME, MAIN_MENU_BTN, MY_ADDRESSES_BTN, LANG_BTN, COOLERS_BTN,

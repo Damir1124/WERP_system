@@ -12,7 +12,7 @@ class ClientListView(APIView):
     def get(self, request):
         clients = Client.objects.all()[:10]
         data = [{"id": c.id, "name": c.name, "phone": c.phone,
-                 "address": c.address, "balans": c.balans} for c in clients]
+                 "balans": c.balans} for c in clients]
         return Response(data)
 
 
@@ -25,7 +25,6 @@ class ClientDetailView(APIView):
                 "id": client.id,
                 "name": client.name,
                 "phone": client.phone,
-                "address": client.address,
                 "balans": client.balans,
                 "latitude": client.latitude,
                 "longitude": client.longitude,

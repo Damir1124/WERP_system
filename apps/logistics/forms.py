@@ -11,7 +11,7 @@ class OrderForm(forms.ModelForm):
     
     # Поля для быстрого создания клиента (если его нет в БД)
     client_phone = forms.CharField(
-        max_length=12,
+        max_length=13,
         required=True,
         label='Номер телефона',
         widget=forms.TextInput(attrs={
@@ -19,7 +19,7 @@ class OrderForm(forms.ModelForm):
             'placeholder': '+998901234567',
             'style': 'width: 300px;'
         }),
-        help_text='Введите номер телефона клиента'
+        help_text='Введите номер телефона клиента (например, +998901234567)'
     )
     
     client_address = forms.CharField(
@@ -59,18 +59,24 @@ class OrderForm(forms.ModelForm):
         
         # Если редактируем существующий заказ
         if self.instance.pk and self.instance.client:
-            self.fields['client_phone'].initial = self.instance.client.phone
-            self.fields['client_address'].initial = (
-                self.instance.delivery_address.address_text
-                if self.instance.delivery_address else ''
-            )
+            if 'client_phone' in self.fields:
+                self.fields['client_phone'].initial = self.instance.client.phone
+            if 'client_address' in self.fields:
+                self.fields['client_address'].initial = (
+                    self.instance.delivery_address.address_text
+                    if self.instance.delivery_address else ''
+                )
         
-        # Настройка лейблов и порядка полей
-        self.fields['payment_type'].label = 'Способ оплаты'
-        self.fields['assigned_courier'].label = 'Назначить курьера (опционально)'
-        self.fields['assigned_courier'].required = False
-        self.fields['note'].label = 'Примечание к заказу'
-        self.fields['note'].required = False
+        # Настройка лейблов и порядка полей.
+        # Для DELIVERED/CANCELLED заказов часть полей readonly и отсутствует в self.fields.
+        if 'payment_type' in self.fields:
+            self.fields['payment_type'].label = 'Способ оплаты'
+        if 'assigned_courier' in self.fields:
+            self.fields['assigned_courier'].label = 'Назначить курьера (опционально)'
+            self.fields['assigned_courier'].required = False
+        if 'note' in self.fields:
+            self.fields['note'].label = 'Примечание к заказу'
+            self.fields['note'].required = False
     
     def clean_client_phone(self):
         """Валидация номера телефона"""

@@ -31,7 +31,7 @@ class ClientSerializer(serializers.ModelSerializer):
     """Сериализатор для клиента"""
     class Meta:
         model = Client
-        fields = ['id', 'name', 'phone', 'address', 'balans', 'note', 
+        fields = ['id', 'name', 'phone', 'balans', 'note',
                   'latitude', 'longitude', 'tg_id', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
@@ -268,11 +268,10 @@ class OrderCreateModelSerializer(serializers.ModelSerializer):
                 phone=phone,
                 defaults={
                     'name': client_name or f'Клиент {phone[-4:]}',
-                    'address': '',  # Оставляем пустым - адреса в ClientAddress
                 }
             )
             
-            # НЕ обновляем client.address, latitude, longitude
+            # НЕ обновляем latitude, longitude
             # Адреса управляются через ClientAddress API
             
             validated_data['client'] = client
@@ -396,14 +395,6 @@ class CourierShiftSerializer(serializers.ModelSerializer):
 
 
 # Сериализаторы для действий (подтверждение, изменение количества и т.д.)
-
-class DeliveryConfirmationSerializer(serializers.Serializer):
-    """Сериализатор для подтверждения доставки (старый, для обратной совместимости)"""
-    delivery_journal_id = serializers.IntegerField()
-    confirmed = serializers.BooleanField(default=True)
-    actual_quantity = serializers.IntegerField(required=False, allow_null=True)
-    note = serializers.CharField(required=False, allow_blank=True)
-
 
 class OrderConfirmationSerializer(serializers.Serializer):
     """Сериализатор для подтверждения заказа (новый, для P0) с поддержкой многопозиционных данных о таре"""
@@ -540,12 +531,6 @@ class OrderConfirmationSerializer(serializers.Serializer):
         return validated_new_items
 
 
-class QuantityUpdateSerializer(serializers.Serializer):
-    """Сериализатор для изменения количества в строке журнала (старый)"""
-    product_line_id = serializers.IntegerField()
-    new_quantity = serializers.IntegerField(min_value=1)
-
-
 class OrderQuantityUpdateSerializer(serializers.Serializer):
     """Сериализатор для изменения количества в заказе (новый) с поддержкой многопозиционной структуры"""
     item_id = serializers.IntegerField(help_text="ID позиции заказа (OrderItem)")
@@ -600,28 +585,3 @@ class OrderQuantityUpdateSerializer(serializers.Serializer):
         return data
 
 
-class OrderCreateSerializer(serializers.Serializer):
-    """Сериализатор для создания заказа через Telegram Mini App"""
-    client_tg_id = serializers.IntegerField(required=True, help_text="Telegram ID клиента")
-    product_id = serializers.IntegerField(required=True, help_text="ID продукта")
-    quantity = serializers.IntegerField(min_value=1, default=1, help_text="Количество")
-    address = serializers.CharField(required=False, allow_blank=True, help_text="Адрес доставки (если отличается от сохраненного)")
-    note = serializers.CharField(required=False, allow_blank=True, help_text="Примечание к заказу")
-    
-    def validate_client_tg_id(self, value):
-        """Проверяем, что клиент с таким tg_id существует"""
-        from apps.clients.models import Client
-        try:
-            client = Client.objects.get(tg_id=value)
-        except Client.DoesNotExist:
-            raise serializers.ValidationError("Клиент с указанным Telegram ID не найден")
-        return value
-    
-    def validate_product_id(self, value):
-        """Проверяем, что продукт существует"""
-        from apps.products.models import Product
-        try:
-            product = Product.objects.get(id=value)
-        except Product.DoesNotExist:
-            raise serializers.ValidationError("Продукт не найден")
-        return value
