@@ -10,5 +10,6 @@ requests==2.32.3
 # Для логирования (опционально)
 colorlog==6.8.2
 
-# Для работы с Redis (если используется RedisStorage)
-redis==5.0.7
+# Для работы с Redis (RedisStorage). Версия python-redis поступает из
+# requirements.txt (redis==7.4.0), который также устанавливается в образ бота.
+# НЕ задавай здесь redis — это конфликтует с requirements.txt.
