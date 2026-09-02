@@ -1,5 +1,6 @@
-version: '3.8'
-
+# WERP / Osnova 2.0 — Docker Compose.
+# Поле version удалено: оно устарело (obsolete) начиная со Compose v2 и
+# вызывало предупреждение «the attribute `version` is obsolete».
 services:
   db:
     image: postgres:17
@@ -13,6 +14,11 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -20,6 +26,71 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    container_name: werp_web
+    restart: always
+    command: gunicorn WERP_system.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    env_file:
+      - .env
+    volumes:
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: .
+    container_name: werp_celery_worker
+    restart: always
+    command: celery -A WERP_system worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - ./media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: .
+    container_name: werp_celery_beat
+    restart: always
+    command: celery -A WERP_system beat --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: werp_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./staticfiles:/staticfiles:ro
+      - ./media:/media:ro
+    depends_on:
+      - web
 
 volumes:
   pgdata:
