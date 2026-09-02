@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 # Загружаем переменные из .env
@@ -8,10 +10,23 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Читаем секреты из окружения
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-if-not-found')
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,.ngrok-free.dev').split(',')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        # Временный ключ только для локальной разработки
+        SECRET_KEY = 'dev-insecure-key-for-local-development-only'
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured('DJANGO_SECRET_KEY обязателен в продакшене (задайте в .env)')
+
+# В продакшене — только реальный домен из .env.
+# ngrok-домены разрешены только при DEBUG (локальная разработка).
+_default_hosts = '127.0.0.1,localhost'
+if DEBUG:
+    _default_hosts += ',.ngrok-free.dev'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', _default_hosts).split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -110,6 +125,42 @@ CHANNEL_LAYERS = {
     },
 }
 
+# --- Celery: фоновые задачи и расписание ---
+# Брокер — отдельная база Redis (db 2), чтобы не смешивать с кэшем (db 1)
+# и каналами WebSockets (db 0).
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/2")
+# Результаты задач не нужны для уведомлений — экономим память Redis
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/2")
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Samarkand'
+CELERY_ENABLE_UTC = True
+
+# Расписание периодических задач (Celery Beat)
+CELERY_BEAT_SCHEDULE = {
+    # Напоминания о взносах по рассрочкам — каждый день в 09:00
+    'send-installment-reminders-daily': {
+        'task': 'apps.accounting.tasks.send_installment_reminders_task',
+        'schedule': crontab(hour=9, minute=0),
+    },
+    # Сброс просроченных балансов зарплат — каждый день в 00:30
+    'reset-expired-salaries-daily': {
+        'task': 'apps.accounting.tasks.reset_expired_salaries_task',
+        'schedule': crontab(hour=0, minute=30),
+    },
+    # Начисление зарплат — 1-го числа каждого месяца в 08:00
+    'accrue-salaries-monthly': {
+        'task': 'apps.accounting.tasks.accrue_salaries_task',
+        'schedule': crontab(hour=8, minute=0, day_of_month='1'),
+    },
+    # Пересчёт Finance за вчера (страховка от пропущенных сигналов) — каждый день в 00:05
+    'recalc-finance-yesterday-daily': {
+        'task': 'apps.dashboard.tasks.recalc_finance_for_date_task',
+        'schedule': crontab(hour=0, minute=5),
+    },
+}
+
 # ASGI application for Django Channels
 ASGI_APPLICATION = "WERP_system.asgi.application"
 
@@ -140,11 +191,14 @@ if "http://localhost:5173" not in CORS_ALLOWED_ORIGINS:
 if "http://127.0.0.1:5173" not in CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGINS.append("http://127.0.0.1:5173")
 
-# Разрешаем все ngrok-домены через regex
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.ngrok-free\.dev$",
-    r"^https://.*\.ngrok\.io$",
-]
+# ngrok-домены разрешаем ТОЛЬКО при DEBUG (локальная разработка через туннель).
+# В продакшене CORS_ALLOWED_ORIGINS задаётся в .env (реальный домен Mini App).
+CORS_ALLOWED_ORIGIN_REGEXES = []
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https://.*\.ngrok-free\.dev$",
+        r"^https://.*\.ngrok\.io$",
+    ]
 
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
@@ -165,17 +219,32 @@ CORS_ALLOW_HEADERS = [
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Bot auth via X-Telegram-ID header ---
-# False (default): header is optional, fallback identity is used.
-# True: strict header check (enable for production).
-BOT_BRIDGE_REQUIRE_TG_HEADER = os.getenv('BOT_BRIDGE_REQUIRE_TG_HEADER', 'False') == 'True'
+# В продакшене строгая проверка ВКЛЮЧЕНА по умолчанию (безопасно).
+# Для локальной разработки можно отключить через .env: BOT_BRIDGE_REQUIRE_TG_HEADER=False
+BOT_BRIDGE_REQUIRE_TG_HEADER = os.getenv('BOT_BRIDGE_REQUIRE_TG_HEADER', 'True') == 'True'
 
 # --- Verification of Telegram initData signature ---
-# False (default): подпись initData НЕ проверяется (для разработки).
-# True: строгая проверка HMAC-подписи (enable for production).
-BOT_BRIDGE_VERIFY_INIT_DATA = os.getenv('BOT_BRIDGE_VERIFY_INIT_DATA', 'False') == 'True'
+# В продакшене строгая проверка HMAC-подписи ВКЛЮЧЕНА по умолчанию (безопасно).
+# Для локальной разработки можно отключить через .env: BOT_BRIDGE_VERIFY_INIT_DATA=False
+BOT_BRIDGE_VERIFY_INIT_DATA = os.getenv('BOT_BRIDGE_VERIFY_INIT_DATA', 'True') == 'True'
 
 # --- Telegram admin chat for shift/trip closure reports ---
 # Дополнительный чат (например, группа), куда автоматически отправляются отчёты
 # о закрытии рейсов и смен курьеров. Отчёты всегда уходят ВСЕМ сотрудникам с
 # worker_type=OWNER и заполненным tg_id; ADMIN_CHAT_ID добавляется к ним.
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
+
+# --- SSL / HTTPS (продакшен) ---
+# Включаются только когда DEBUG=False (защита от случайного включения в разработке).
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
+    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True') == 'True'
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False

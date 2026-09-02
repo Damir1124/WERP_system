@@ -6,11 +6,50 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
-from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect
+from django.db import connection
 from apps.workers.models import Worker
 from apps.bot_bridge.utils import verify_telegram_init_data, extract_user_id_from_init_data
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def health_check(request):
+    """Health-check для мониторинга (UptimeRobot, Better Stack и т.п.).
+
+    Проверяет подключение к БД и Redis. Возвращает 200, если всё работает,
+    иначе 503. Не требует авторизации.
+    """
+    status = {'status': 'ok', 'checks': {}}
+
+    # Проверка БД
+    try:
+        connection.ensure_connection()
+        status['checks']['database'] = 'ok'
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Health-check: БД недоступна: %s", exc)
+        status['checks']['database'] = f'error: {exc}'
+        status['status'] = 'error'
+
+    # Проверка Redis
+    try:
+        from django.core.cache import cache
+        cache.set('health_check', 'ok', timeout=5)
+        if cache.get('health_check') == 'ok':
+            status['checks']['redis'] = 'ok'
+        else:
+            status['checks']['redis'] = 'error: cache read failed'
+            status['status'] = 'error'
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Health-check: Redis недоступен: %s", exc)
+        status['checks']['redis'] = f'error: {exc}'
+        status['status'] = 'error'
+
+    http_status = 200 if status['status'] == 'ok' else 503
+    return JsonResponse(status, status=http_status)
 
 # Кастомизация заголовка Django Admin
 admin.site.site_header = "Osnova 2.0 — ERP"
@@ -121,6 +160,9 @@ urlpatterns = [
 
     # Mini App роутер — определяет роль и редиректит на нужный SPA (legacy)
     path('miniapp/', mini_app_router, name='mini_app_router'),
+
+    # Health-check для мониторинга (без авторизации)
+    path('health/', health_check, name='health_check'),
 
     # Корневой URL — редирект на Launcher
     path('', RedirectView.as_view(url='/static/miniapp/launcher/index.html', permanent=False), name='root'),

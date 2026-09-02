@@ -145,8 +145,9 @@ class CourierShiftCloseView(APIView):
         if shift.status == CourierShift.Status.CLOSED:
             return Response({'error': 'Смена уже закрыта'}, status=status.HTTP_400_BAD_REQUEST)
         shift.close()
-        # Автоматически отправляем отчёт о закрытии смены в админ-чат
-        notify_shift_closed(shift)
+        # Автоматически отправляем отчёт о закрытии смены в админ-чат (в фоне через Celery)
+        from apps.bot_bridge.tasks import notify_shift_closed_task
+        notify_shift_closed_task.delay(shift.id)
         return Response({'message': f'Смена #{shift.id} закрыта', 'shift_id': shift.id})
 
 
@@ -451,8 +452,9 @@ class TripCloseView(APIView):
         trip.finished_at = timezone.now()
         trip.save()
 
-        # Автоматически отправляем отчёт о закрытии рейса в админ-чат
-        notify_trip_closed(trip)
+        # Автоматически отправляем отчёт о закрытии рейса в админ-чат (в фоне через Celery)
+        from apps.bot_bridge.tasks import notify_trip_closed_task
+        notify_trip_closed_task.delay(trip.id)
 
         return Response({
             'success': True,
@@ -638,10 +640,10 @@ class OrderConfirmationView(APIView):
             if note:
                 order.note = note
             order.save()
-            # Уведомление клиенту
+            # Уведомление клиенту (в фоне через Celery)
             try:
-                from apps.bot_bridge.notify import notify_client_order_delivered
-                notify_client_order_delivered(order)
+                from apps.bot_bridge.tasks import notify_client_order_delivered_task
+                notify_client_order_delivered_task.delay(order.id)
             except Exception:
                 pass
             return Response({
@@ -848,10 +850,10 @@ class CourierAssignOrderView(APIView):
         ).first()
         order.trip = active_trip  # None если нет активного рейса
         order.save(update_fields=['assigned_courier', 'trip'])
-        # Уведомление клиенту
+        # Уведомление клиенту (в фоне через Celery)
         try:
-            from apps.bot_bridge.notify import notify_client_order_accepted
-            notify_client_order_accepted(order)
+            from apps.bot_bridge.tasks import notify_client_order_accepted_task
+            notify_client_order_accepted_task.delay(order.id)
         except Exception:
             pass
         return Response({
