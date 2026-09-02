@@ -1,0 +1,151 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Фильтр периода ──────────────────────────────────────────────────── -->
+{% include 'dashboard/_period_filter.html' %}
+
+<!-- ─── Статистика по курьерам ──────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-people"></i> Статистика по курьерам за период
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Курьер</th>
+                        <th>Смен</th>
+                        <th>Рейсов</th>
+                        <th>Доставлено</th>
+                        <th>Продано ед.</th>
+                        <th>Наличные</th>
+                        <th>Карта</th>
+                        <th>Выручка</th>
+                        <th>Средний чек</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in courier_stats %}
+                    <tr>
+                        <td class="fw-semibold">{{ row.name }}</td>
+                        <td>{{ row.shifts_count }}</td>
+                        <td>{{ row.trips_count }}</td>
+                        <td>{{ row.orders_delivered }}</td>
+                        <td>{{ row.units_sold }}</td>
+                        <td>{{ row.cash_total }} сум</td>
+                        <td>{{ row.card_total }} сум</td>
+                        <td>{{ row.revenue }} сум</td>
+                        <td>{{ row.avg_check }} сум</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет данных за выбранный период
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Список смен ─────────────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-calendar2-week"></i> Смены</span>
+        <span class="text-muted small">{{ shifts|length }} шт.</span>
+    </div>
+    <div class="card-body p-0">
+        <form method="get" class="p-3 border-bottom bg-light">
+            <div class="row g-2 align-items-end">
+                {% if period.mode != 'custom' %}
+                <input type="hidden" name="period" value="{{ period.mode }}">
+                {% else %}
+                <input type="hidden" name="date_from" value="{{ period.date_from|date:'Y-m-d' }}">
+                <input type="hidden" name="date_to" value="{{ period.date_to|date:'Y-m-d' }}">
+                {% endif %}
+
+                <div class="col-auto">
+                    <label class="form-label small">Курьер</label>
+                    <select name="courier" class="form-select form-select-sm">
+                        <option value="">Все</option>
+                        {% for c in courier_choices %}
+                        <option value="{{ c.id }}" {% if courier_filter|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
+                            {{ c.full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small">Статус</label>
+                    <select name="shift_status" class="form-select form-select-sm">
+                        <option value="">Все</option>
+                        <option value="OP" {% if status_filter == 'OP' %}selected{% endif %}>Открыта</option>
+                        <option value="CL" {% if status_filter == 'CL' %}selected{% endif %}>Закрыта</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-funnel"></i> Применить
+                    </button>
+                </div>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Курьер</th>
+                        <th>Дата</th>
+                        <th>Статус</th>
+                        <th>Открыта</th>
+                        <th>Закрыта</th>
+                        <th>Рейсов</th>
+                        <th>Доставлено</th>
+                        <th>Наличные</th>
+                        <th>Карта</th>
+                        <th>Итого</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for shift in shifts %}
+                    <tr>
+                        <td>{{ shift.courier_name }}</td>
+                        <td>{{ shift.date }}</td>
+                        <td>
+                            <span class="badge-status {% if shift.status == 'OP' %}badge-delivered{% else %}bg-secondary{% endif %}">
+                                {{ shift.status_display }}
+                            </span>
+                        </td>
+                        <td>{{ shift.opened_at|slice:':16' }}</td>
+                        <td>{{ shift.closed_at|slice:':16'|default:'—' }}</td>
+                        <td>{{ shift.trips_count }}</td>
+                        <td>{{ shift.orders_delivered }}</td>
+                        <td>{{ shift.cash_total }} сум</td>
+                        <td>{{ shift.card_total }} сум</td>
+                        <td class="fw-semibold">{{ shift.total }} сум</td>
+                        <td>
+                            <a href="{% url 'dashboard:shift_detail' shift.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="11" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет смен за выбранный период
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

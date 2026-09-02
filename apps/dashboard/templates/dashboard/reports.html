@@ -1,0 +1,179 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Выбор даты ─────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small mb-1">Дата отчёта</label>
+                <input type="date" name="date" class="form-control"
+                       value="{{ selected_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> Показать отчёты
+                </button>
+            </div>
+        </form>
+        {% if date_error %}
+        <div class="alert alert-danger mt-3 mb-0">
+            <i class="bi bi-exclamation-triangle"></i> {{ date_error }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if date_error %}
+    <!-- ошибка даты — ничего не показываем -->
+{% elif reports %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">
+            <i class="bi bi-calendar3"></i> Отчёты за {{ selected_date|date:'d.m.Y' }}
+        </h5>
+        <span class="text-muted small">{{ reports|length }} смен(ы)</span>
+    </div>
+
+    {% for shift in reports %}
+    <!-- ═══ Смена ═══════════════════════════════════════════════════════ -->
+    <div class="card mb-4">
+        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-person-badge"></i> {{ shift.courier_name }} — смена №{{ shift.id }}</span>
+            <span class="badge-status {% if shift.status == 'CL' %}badge-delivered{% else %}badge-pending{% endif %}">
+                {{ shift.status_display }}
+            </span>
+        </div>
+        <div class="card-body">
+            <!-- Сводка смены -->
+            <div class="row g-3 text-center mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-3">
+                        <div class="text-muted small">Продано воды</div>
+                        <div class="fw-bold fs-5">{{ shift.total_water_sold }} шт.</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-3">
+                        <div class="text-muted small">Рейсов</div>
+                        <div class="fw-bold fs-5">{{ shift.total_trips }}</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-3">
+                        <div class="text-muted small">Наличные</div>
+                        <div class="fw-bold fs-5">{{ shift.total_cash }} сум</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-3">
+                        <div class="text-muted small">Карта</div>
+                        <div class="fw-bold fs-5">{{ shift.total_card }} сум</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-muted small mb-3">
+                Открыта: {{ shift.opened_at|slice:':16' }} ·
+                Закрыта: {{ shift.closed_at|slice:':16'|default:'—' }} ·
+                Итого: <span class="fw-semibold text-primary">{{ shift.total_amount }} сум</span>
+            </div>
+
+            <!-- Рейсы смены -->
+            {% for trip in shift.trips %}
+            <div class="border rounded mb-3">
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light rounded-top">
+                    <span class="fw-semibold"><i class="bi bi-truck"></i> Рейс №{{ trip.id }}</span>
+                    <span class="badge-status {% if trip.status == 'AC' %}badge-pending{% else %}bg-secondary{% endif %}">
+                        {{ trip.status }}
+                    </span>
+                </div>
+                <div class="p-3">
+                    <!-- Данные рейса (формат mini-app) -->
+                    <div class="row g-2 text-center mb-3">
+                        <div class="col">
+                            <div class="fw-bold">{{ trip.water_taken }}</div>
+                            <div class="text-muted small">Взято воды</div>
+                        </div>
+                        <div class="col">
+                            <div class="fw-bold text-success">{{ trip.empty_returned }}</div>
+                            <div class="text-muted small">Привезено пустых</div>
+                        </div>
+                        <div class="col">
+                            <div class="fw-bold">{{ trip.remaining }}</div>
+                            <div class="text-muted small">Остаток</div>
+                        </div>
+                        <div class="col">
+                            <div class="fw-bold">{{ trip.cash_amount }} сум</div>
+                            <div class="text-muted small">Наличные</div>
+                        </div>
+                        <div class="col">
+                            <div class="fw-bold">{{ trip.card_amount }} сум</div>
+                            <div class="text-muted small">Карта</div>
+                        </div>
+                    </div>
+
+                    <!-- Заказы рейса -->
+                    {% if trip.orders %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-end" style="width:70px">№</th>
+                                    <th>Адрес</th>
+                                    <th>Оплата</th>
+                                    <th class="text-end">Сумма</th>
+                                    <th>Позиции</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in trip.orders %}
+                                <tr>
+                                    <td class="text-end fw-semibold">{{ order.display_number }}</td>
+                                    <td>{{ order.address|truncatechars:40 }}</td>
+                                    <td>
+                                        <span class="badge-status {% if order.payment_type == 'CH' %}badge-pending{% elif order.payment_type == 'CD' %}badge-delivered{% else %}bg-secondary{% endif %}">
+                                            {{ order.payment_type_display }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-semibold">{{ order.total_amount }} сум</td>
+                                    <td>
+                                        <table class="table table-sm table-borderless mb-0">
+                                            {% for item in order.items %}
+                                            <tr>
+                                                <td>{{ item.product_name }}</td>
+                                                <td class="text-end">{{ item.quantity }} шт.</td>
+                                                <td class="text-end">{{ item.sum }} сум</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </table>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-2">Заказов в рейсе нет</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> В смене нет рейсов
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card">
+        <div class="card-body text-center text-muted py-5">
+            <i class="bi bi-inbox" style="font-size:3rem"></i>
+            <div class="mt-3">Нет смен за {{ selected_date|date:'d.m.Y' }}</div>
+        </div>
+    </div>
+{% endif %}
+
+{% endblock %}

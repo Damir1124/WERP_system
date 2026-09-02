@@ -1,0 +1,91 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Фильтр периода ──────────────────────────────────────────────────── -->
+{% include 'dashboard/_period_filter.html' %}
+
+<!-- ─── Фильтр по типу товара ───────────────────────────────────────────── -->
+<div class="mb-4">
+    <form method="get" class="row g-2 align-items-end">
+        {% if period.mode != 'custom' %}
+        <input type="hidden" name="period" value="{{ period.mode }}">
+        {% else %}
+        <input type="hidden" name="date_from" value="{{ period.date_from|date:'Y-m-d' }}">
+        <input type="hidden" name="date_to" value="{{ period.date_to|date:'Y-m-d' }}">
+        {% endif %}
+
+        <div class="col-auto">
+            <label class="form-label small">Тип товара</label>
+            <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Все типы</option>
+                {% for code, label in type_choices %}
+                <option value="{{ code }}" {% if type_filter == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small">Сортировка</label>
+            <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="-sold" {% if sort_by == '-sold' %}selected{% endif %}>По продажам ▼</option>
+                <option value="-revenue" {% if sort_by == '-revenue' %}selected{% endif %}>По выручке ▼</option>
+                <option value="name" {% if sort_by == 'name' %}selected{% endif %}>По названию</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <a href="?period={{ period.mode }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-circle"></i> Сброс
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- ─── Продажи по товарам ──────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-box-seam"></i> Продажи по товарам
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Товар</th>
+                        <th>Категория</th>
+                        <th>Продано, шт.</th>
+                        <th>Заказов</th>
+                        <th>Выручка</th>
+                        <th>Средняя цена</th>
+                        <th>Принято по обмену</th>
+                        <th>Продано с новой тарой</th>
+                        <th>Принято брака</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in sales %}
+                    <tr>
+                        <td>{{ row.name }}</td>
+                        <td><span class="badge bg-secondary">{{ row.category_display }}</span></td>
+                        <td>{{ row.sold }}</td>
+                        <td>{{ row.orders_count }}</td>
+                        <td>{{ row.revenue }} сум</td>
+                        <td>{{ row.avg_price }} сум</td>
+                        <td>{{ row.exchange_qty }}</td>
+                        <td>{{ row.sell_with_qty }}</td>
+                        <td>{{ row.defective_qty }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет данных за выбранный период
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

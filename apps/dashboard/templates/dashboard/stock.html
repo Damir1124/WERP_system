@@ -1,0 +1,99 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Остатки склада ──────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-archive"></i> Остатки на складе</span>
+        <span class="text-muted small">{{ balances|length }} позиций</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Товар</th>
+                        <th>Категория</th>
+                        <th>Остаток</th>
+                        <th>Последнее пополнение</th>
+                        <th>Последний расход</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in balances %}
+                    <tr>
+                        <td class="fw-semibold">{{ row.name }}</td>
+                        <td><span class="badge bg-secondary">{{ row.category_display }}</span></td>
+                        <td class="fw-bold {% if row.status_css == 'danger' %}text-danger{% elif row.status_css == 'warning' %}text-warning{% else %}text-success{% endif %}">
+                            {{ row.quantity }} шт.
+                        </td>
+                        <td>{{ row.last_received|default:'—' }}</td>
+                        <td>{{ row.last_departure|default:'—' }}</td>
+                        <td>
+                            <span class="badge bg-{{ row.status_css }}">{{ row.status }}</span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет товаров на складе
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Последние движения склада ───────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-arrow-left-right"></i> Последние движения склада
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Операция</th>
+                        <th>Товар</th>
+                        <th>Количество</th>
+                        <th>Основание</th>
+                        <th>Комментарий</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in movements %}
+                    <tr>
+                        <td>{{ m.date }}</td>
+                        <td>
+                            {% if m.operation == 'Buy' %}
+                            <span class="badge bg-success">В плюс</span>
+                            {% else %}
+                            <span class="badge bg-danger">В минус</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ m.product_name }}</td>
+                        <td>{{ m.quantity }}</td>
+                        <td>{{ m.source }}</td>
+                        <td class="text-muted small">{{ m.note|truncatechars:50 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет движений
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

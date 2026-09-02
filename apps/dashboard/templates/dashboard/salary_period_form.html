@@ -1,0 +1,43 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1 small">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:finance' %}">Финансы</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:salary_period_list' %}">Зарплаты</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ form_title|default:'Зарплатный период' }}</li>
+            </ol>
+        </nav>
+        <h5 class="mb-0"><i class="bi bi-cash-coin text-primary"></i> {{ form_title|default:'Зарплатный период' }}</h5>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white py-3">
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary rounded-circle p-2">
+                <i class="bi bi-person-badge"></i>
+            </span>
+            <span class="fw-semibold">Данные периода</span>
+        </div>
+    </div>
+    <div class="card-body p-4">
+        <form method="post">
+            {% csrf_token %}
+            {% include 'dashboard/_form_fields.html' %}
+            <hr class="my-4">
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="bi bi-check-lg"></i> {{ submit_label|default:'Сохранить' }}
+                </button>
+                <a href="{% url 'dashboard:salary_period_list' %}" class="btn btn-outline-secondary px-4">
+                    <i class="bi bi-x-lg"></i> Отмена
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

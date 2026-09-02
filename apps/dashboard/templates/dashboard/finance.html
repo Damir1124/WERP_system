@@ -1,0 +1,171 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Фильтр периода ──────────────────────────────────────────────────── -->
+{% include 'dashboard/_period_filter.html' %}
+
+<!-- ─── Таблица Finance по дням ─────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-cash-stack"></i> Финансы по дням
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Доход</th>
+                        <th>Расход</th>
+                        <th>Прибыль</th>
+                        <th>Безнал</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in finance_days %}
+                    <tr>
+                        <td>{{ row.date }}</td>
+                        <td class="text-success">{{ row.income }} сум</td>
+                        <td class="text-danger">{{ row.consumption }} сум</td>
+                        <td class="fw-bold {% if row.profit < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ row.profit }} сум
+                        </td>
+                        <td>{{ row.card_profit }} сум</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Нет данных за выбранный период
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr class="fw-bold">
+                        <td>Итого за период</td>
+                        <td class="text-success">{{ totals.income }} сум</td>
+                        <td class="text-danger">{{ totals.consumption }} сум</td>
+                        <td class="{% if totals.profit < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ totals.profit }} сум
+                        </td>
+                        <td>{{ totals.card_profit }} сум</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Детализация операций ────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list"></i> Детализация операций</span>
+        <span class="text-muted small">{{ transactions.paginator.count }} операций</span>
+    </div>
+    <div class="card-body p-0">
+        <form method="get" class="p-3 border-bottom bg-light">
+            <div class="row g-2 align-items-end">
+                {% if period.mode != 'custom' %}
+                <input type="hidden" name="period" value="{{ period.mode }}">
+                {% else %}
+                <input type="hidden" name="date_from" value="{{ period.date_from|date:'Y-m-d' }}">
+                <input type="hidden" name="date_to" value="{{ period.date_to|date:'Y-m-d' }}">
+                {% endif %}
+
+                <div class="col-auto">
+                    <label class="form-label small">Тип</label>
+                    <select name="type" class="form-select form-select-sm">
+                        <option value="">Все</option>
+                        <option value="PL" {% if filters.type == 'PL' %}selected{% endif %}>Доход</option>
+                        <option value="MI" {% if filters.type == 'MI' %}selected{% endif %}>Расход</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small">Оплата</label>
+                    <select name="payment" class="form-select form-select-sm">
+                        <option value="">Все</option>
+                        <option value="card" {% if filters.payment == 'card' %}selected{% endif %}>Карта</option>
+                        <option value="cash" {% if filters.payment == 'cash' %}selected{% endif %}>Наличные</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small">Источник</label>
+                    <input type="text" name="source" class="form-control form-control-sm"
+                           placeholder="Заказ / контракт..." value="{{ filters.source }}">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-search"></i> Найти
+                    </button>
+                </div>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Тип</th>
+                        <th>Сумма</th>
+                        <th>Карта</th>
+                        <th>Источник</th>
+                        <th>Примечание</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transactions %}
+                    <tr>
+                        <td>{{ t.date }}</td>
+                        <td>
+                            {% if t.txn_type == 'PL' %}
+                            <span class="badge bg-success">Доход</span>
+                            {% else %}
+                            <span class="badge bg-danger">Расход</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-semibold">{{ t.amount }} сум</td>
+                        <td>{{ t.card_amount }} сум</td>
+                        <td class="small">{{ t.source }}</td>
+                        <td class="text-muted small">{{ t.description }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Операции не найдены
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if transactions.has_other_pages %}
+    <div class="card-footer bg-white">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if transactions.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ transactions.previous_page_number }}&period={{ period.mode }}">&laquo;</a>
+                </li>
+                {% endif %}
+                {% for p in transactions.paginator.page_range %}
+                    {% if p >= transactions.number|add:'-3' and p <= transactions.number|add:'3' %}
+                    <li class="page-item {% if p == transactions.number %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p }}&period={{ period.mode }}">{{ p }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                {% if transactions.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ transactions.next_page_number }}&period={{ period.mode }}">&raquo;</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

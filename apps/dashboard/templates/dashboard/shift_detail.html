@@ -1,0 +1,182 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<div class="mb-3">
+    <a href="{% url 'dashboard:couriers' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Назад к курьерам
+    </a>
+</div>
+
+<!-- ─── Инфо по смене ───────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-calendar2-week"></i> Смена №{{ shift.id }}
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Курьер</div>
+                    <div class="fw-bold">{{ shift.courier_name }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Дата</div>
+                    <div class="fw-bold">{{ shift.date }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Статус</div>
+                    <span class="badge-status {% if shift.status == 'OP' %}badge-delivered{% else %}bg-secondary{% endif %}">
+                        {{ shift.status_display }}
+                    </span>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Открыта / Закрыта</div>
+                    <div class="fw-bold">{{ shift.opened_at|slice:':16' }}</div>
+                    <div class="small">{{ shift.closed_at|slice:':16'|default:'—' }}</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <div class="text-muted small">Наличные</div>
+                    <div class="fw-bold fs-5">{{ shift.cash_total }} сум</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <div class="text-muted small">Карта</div>
+                    <div class="fw-bold fs-5">{{ shift.card_total }} сум</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <div class="text-muted small">Итого</div>
+                    <div class="fw-bold fs-5 text-primary">{{ shift.total }} сум</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Рейсы смены ─────────────────────────────────────────────────────── -->
+{% for trip in shift.trips %}
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-truck"></i> Рейс №{{ trip.id }}</span>
+        <span class="badge-status {% if trip.status == 'AC' %}badge-pending{% else %}bg-secondary{% endif %}">
+            {{ trip.status }}
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 text-center">
+            <div class="col"><div class="fw-bold">{{ trip.full_loaded }}</div><div class="text-muted small">Загружено полных</div></div>
+            <div class="col"><div class="fw-bold text-success">{{ trip.delivered }}</div><div class="text-muted small">Доставлено</div></div>
+            <div class="col"><div class="fw-bold">{{ trip.full_returned }}</div><div class="text-muted small">Возвращено полных</div></div>
+            <div class="col"><div class="fw-bold">{{ trip.full_remain }}</div><div class="text-muted small">Осталось полных</div></div>
+            <div class="col"><div class="fw-bold">{{ trip.empty_received }}</div><div class="text-muted small">Пустых принято</div></div>
+            <div class="col"><div class="fw-bold text-danger">{{ trip.defective_received }}</div><div class="text-muted small">Брака принято</div></div>
+        </div>
+
+        <!-- Заказы рейса -->
+        {% if trip.id %}
+        <div class="mt-3">
+            <h6 class="text-muted mb-2">Заказы рейса</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>№</th>
+                            <th>Клиент</th>
+                            <th>Адрес</th>
+                            <th>Позиции</th>
+                            <th>Сумма</th>
+                            <th>Оплата</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in shift.orders %}
+                            {% if order.trip_id == trip.id %}
+                            <tr>
+                                <td>{{ order.human_number }}</td>
+                                <td>{{ order.client_name }}</td>
+                                <td>{{ order.address|truncatechars:35 }}</td>
+                                <td>
+                                    {% for item in order.items %}
+                                        <div class="small">{{ item.product_name }} × {{ item.quantity }}
+                                            {% if item.exchange_qty %} (обмен: {{ item.exchange_qty }}){% endif %}
+                                            {% if item.sell_with_qty %} (с тарой: {{ item.sell_with_qty }}){% endif %}
+                                            {% if item.defective_qty %} (брак: {{ item.defective_qty }}){% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </td>
+                                <td>{{ order.total_price }} сум</td>
+                                <td>{{ order.payment_type_display }}</td>
+                                <td>
+                                    <span class="badge-status {% if order.status == 'DL' %}badge-delivered{% elif order.status == 'PD' %}badge-pending{% elif order.status == 'CN' %}badge-cancelled{% endif %}">
+                                        {{ order.status_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        {% empty %}
+                            <tr><td colspan="7" class="text-center text-muted py-3">Заказов нет</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> В этой смене нет рейсов
+</div>
+{% endfor %}
+
+<!-- ─── Все заказы смены (без привязки к рейсу) ─────────────────────────── -->
+{% if shift.orders %}
+<div class="card">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-list-check"></i> Все заказы смены
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>№</th>
+                        <th>Рейс</th>
+                        <th>Клиент</th>
+                        <th>Сумма</th>
+                        <th>Оплата</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in shift.orders %}
+                    <tr>
+                        <td>{{ order.human_number }}</td>
+                        <td>{{ order.trip_id|default:'—' }}</td>
+                        <td>{{ order.client_name }}</td>
+                        <td>{{ order.total_price }} сум</td>
+                        <td>{{ order.payment_type_display }}</td>
+                        <td>{{ order.status_display }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

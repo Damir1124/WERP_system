@@ -1,0 +1,56 @@
+<div class="period-filter mb-4">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="?period=today{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.payment %}&payment={{ request.GET.payment }}{% endif %}{% if request.GET.courier %}&courier={{ request.GET.courier }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}"
+                   class="btn btn-outline-secondary btn-sm {% if period.mode == 'today' %}active{% endif %}">
+                   Сегодня
+                </a>
+                <a href="?period=yesterday{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.payment %}&payment={{ request.GET.payment }}{% endif %}{% if request.GET.courier %}&courier={{ request.GET.courier }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}"
+                   class="btn btn-outline-secondary btn-sm {% if period.mode == 'yesterday' %}active{% endif %}">
+                   Вчера
+                </a>
+                <a href="?period=week{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.payment %}&payment={{ request.GET.payment }}{% endif %}{% if request.GET.courier %}&courier={{ request.GET.courier }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}"
+                   class="btn btn-outline-secondary btn-sm {% if period.mode == 'week' %}active{% endif %}">
+                   Неделя
+                </a>
+                <a href="?period=month{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.payment %}&payment={{ request.GET.payment }}{% endif %}{% if request.GET.courier %}&courier={{ request.GET.courier }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}"
+                   class="btn btn-outline-secondary btn-sm {% if period.mode == 'month' %}active{% endif %}">
+                   Месяц
+                </a>
+                <a href="?period=all{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.payment %}&payment={{ request.GET.payment }}{% endif %}{% if request.GET.courier %}&courier={{ request.GET.courier }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}"
+                   class="btn btn-outline-secondary btn-sm {% if period.mode == 'all' %}active{% endif %}">
+                   Всё время
+                </a>
+            </div>
+        </div>
+        <div class="col-auto">
+            <input type="date" name="date_from" class="form-control form-control-sm"
+                   value="{{ period.date_from|date:'Y-m-d'|default:'' }}" placeholder="От">
+        </div>
+        <div class="col-auto">
+            <input type="date" name="date_to" class="form-control form-control-sm"
+                   value="{{ period.date_to|date:'Y-m-d'|default:'' }}" placeholder="До">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="bi bi-funnel"></i> Применить
+            </button>
+        </div>
+    </form>
+
+    {% if period.errors %}
+    <div class="alert alert-danger mt-2 mb-0 py-2 small">
+        {% for err in period.errors %}
+        <i class="bi bi-exclamation-triangle"></i> {{ err }}<br>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if period.date_from and period.date_to %}
+    <div class="text-muted small mt-1">
+        <i class="bi bi-calendar3"></i>
+        {{ period.date_from|date:'d.m.Y' }} — {{ period.date_to|date:'d.m.Y' }}
+    </div>
+    {% endif %}
+</div>

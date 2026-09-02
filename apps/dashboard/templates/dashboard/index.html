@@ -1,0 +1,474 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Фильтр периода ──────────────────────────────────────────────────── -->
+{% include 'dashboard/_period_filter.html' %}
+
+<!-- ─── Ошибка периода ──────────────────────────────────────────────────── -->
+{% if period.has_errors %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-circle"></i>
+    Исправьте ошибки в фильтре периода для отображения данных.
+</div>
+{% endif %}
+
+<!-- ─── Карточки KPI: Финансы ───────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="kpi-icon" style="background:#e8f8f5;color:#00b894;">
+                        <i class="bi bi-graph-up-arrow"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Доход</div>
+                        <div class="kpi-value">
+                            {% if kpi.income is not None %}
+                                {{ kpi.income|floatformat:0 }} сум
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="kpi-icon" style="background:#fde8e8;color:#d63031;">
+                        <i class="bi bi-graph-down-arrow"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Расход</div>
+                        <div class="kpi-value">
+                            {% if kpi.consumption is not None %}
+                                {{ kpi.consumption|floatformat:0 }} сум
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="kpi-icon" style="background:#eaf2ff;color:#0984e3;">
+                        <i class="bi bi-wallet2"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Прибыль</div>
+                        <div class="kpi-value {% if kpi.profit is not None and kpi.profit < 0 %}text-danger{% endif %}">
+                            {% if kpi.profit is not None %}
+                                {{ kpi.profit|floatformat:0 }} сум
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="kpi-icon" style="background:#f0e6ff;color:#6c5ce7;">
+                        <i class="bi bi-credit-card"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Безнал</div>
+                        <div class="kpi-value">
+                            {% if kpi.card_profit is not None %}
+                                {{ kpi.card_profit|floatformat:0 }} сум
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="kpi-icon" style="background:#fff4e6;color:#e17055;">
+                        <i class="bi bi-cash"></i>
+                    </div>
+                    <div>
+                        <div class="kpi-label">Наличные по доставкам</div>
+                        <div class="kpi-value">
+                            {% if kpi.cash_deliveries is not None %}
+                                {{ kpi.cash_deliveries|floatformat:0 }} сум
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Карточки KPI: Заказы ────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Создано заказов</div>
+                <div class="kpi-value">
+                    {% if kpi.orders_created is not None %}
+                        {{ kpi.orders_created }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Доставлено заказов</div>
+                <div class="kpi-value text-success">
+                    {% if kpi.orders_delivered is not None %}
+                        {{ kpi.orders_delivered }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">В ожидании</div>
+                <div class="kpi-value text-warning">
+                    {% if kpi.orders_pending is not None %}
+                        {{ kpi.orders_pending }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Отменено</div>
+                <div class="kpi-value text-danger">
+                    {% if kpi.orders_cancelled is not None %}
+                        {{ kpi.orders_cancelled }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Продано единиц</div>
+                <div class="kpi-value">
+                    {% if kpi.units_sold is not None %}
+                        {{ kpi.units_sold }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if kpi.historical_included %}
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="alert alert-info py-2 mb-0" role="alert" style="font-size:0.85rem;">
+            <i class="bi bi-info-circle"></i>
+            Включая данные до запуска WERP:
+            исторически создано <strong>{{ kpi.historical_orders_created_total }}</strong> заказов,
+            исторически продано <strong>{{ kpi.historical_water_sold_total }}</strong> ед. основной воды.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ─── Активная работа ─────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white fw-semibold">
+                <i class="bi bi-activity"></i> Сейчас в работе
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col">
+                        <div class="fw-bold fs-5">{{ active_shifts_count|default:'0' }}</div>
+                        <div class="text-muted small">Активных смен</div>
+                    </div>
+                    <div class="col">
+                        <div class="fw-bold fs-5">{{ active_trips_count|default:'0' }}</div>
+                        <div class="text-muted small">Активных рейсов</div>
+                    </div>
+                    <div class="col">
+                        <div class="fw-bold fs-5">{{ kpi.orders_pending|default:'0' }}</div>
+                        <div class="text-muted small">Заказов в ожидании</div>
+                    </div>
+                    <div class="col">
+                        <div class="fw-bold fs-5">{{ unassigned_orders_count|default:'0' }}</div>
+                        <div class="text-muted small">Неназначенных заказов</div>
+                    </div>
+                    <div class="col">
+                        <div class="fw-bold fs-5 {% if critical_stock_count > 0 %}text-danger{% endif %}">
+                            {{ critical_stock_count|default:'0' }}
+                        </div>
+                        <div class="text-muted small">Критических остатков</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Активные смены (таблица) ────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-people"></i> Активные смены
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Курьер</th>
+                        <th>Открыта</th>
+                        <th>Текущий рейс</th>
+                        <th>Доставлено сегодня</th>
+                        <th>Наличные</th>
+                        <th>Карта</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if active_shifts %}
+                        {% for shift in active_shifts %}
+                        <tr>
+                            <td>{{ shift.courier_name }}</td>
+                            <td>{{ shift.opened_at|date:'H:i' }}</td>
+                            <td>{{ shift.trip_info|default:'—' }}</td>
+                            <td>{{ shift.delivered_today|default:'0' }}</td>
+                            <td>{{ shift.cash_total|default:'0' }} сум</td>
+                            <td>{{ shift.card_total|default:'0' }} сум</td>
+                            <td>
+                                <a href="{% url 'admin:logistics_couriershift_change' shift.id %}"
+                                   class="btn btn-sm btn-outline-primary" target="_blank">
+                                   Открыть
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-3">
+                                <i class="bi bi-info-circle"></i> Нет активных смен
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Последние заказы ────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-list-check"></i> Последние заказы
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Номер</th>
+                        <th>Создан</th>
+                        <th>Клиент</th>
+                        <th>Адрес</th>
+                        <th>Курьер</th>
+                        <th>Рейс</th>
+                        <th>Сумма</th>
+                        <th>Оплата</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if recent_orders %}
+                        {% for order in recent_orders %}
+                        <tr>
+                            <td>{{ order.display_number|default:order.id }}</td>
+                            <td>{{ order.created_at|date:'d.m H:i' }}</td>
+                            <td>{{ order.client_name|default:'—' }}</td>
+                            <td>{{ order.address|default:'—'|truncatechars:30 }}</td>
+                            <td>{{ order.courier_name|default:'—' }}</td>
+                            <td>{{ order.trip_id|default:'—' }}</td>
+                            <td>{{ order.total_price|default:'0' }} сум</td>
+                            <td>{{ order.payment_type_display|default:'—' }}</td>
+                            <td>
+                                <span class="badge-status
+                                    {% if order.status == 'DL' %}badge-delivered
+                                    {% elif order.status == 'PD' %}badge-pending
+                                    {% elif order.status == 'CN' %}badge-cancelled
+                                    {% endif %}">
+                                    {{ order.status_display|default:order.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-3">
+                                <i class="bi bi-inbox"></i> Нет заказов за выбранный период
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Топ товаров и топ курьеров ──────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="bi bi-trophy"></i> Топ товаров
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Товар</th>
+                                <th>Продано, шт.</th>
+                                <th>Выручка</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if top_products %}
+                                {% for p in top_products %}
+                                <tr>
+                                    <td>{{ p.name }}</td>
+                                    <td>{{ p.sold }}</td>
+                                    <td>{{ p.revenue }} сум</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-3">
+                                        Нет данных
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="bi bi-trophy"></i> Топ курьеров
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Курьер</th>
+                                <th>Доставлено</th>
+                                <th>Выручка</th>
+                                <th>Рейсов</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if top_couriers %}
+                                {% for c in top_couriers %}
+                                <tr>
+                                    <td>{{ c.name }}</td>
+                                    <td>{{ c.delivered }}</td>
+                                    <td>{{ c.revenue }} сум</td>
+                                    <td>{{ c.trips }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-3">
+                                        Нет данных
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Критические остатки склада ──────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-exclamation-triangle text-danger"></i> Предупреждения склада
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Товар</th>
+                        <th>Остаток</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if stock_alerts %}
+                        {% for alert in stock_alerts %}
+                        <tr>
+                            <td>{{ alert.product_name }}</td>
+                            <td class="fw-bold text-danger">{{ alert.quantity }} шт.</td>
+                            <td><span class="badge bg-danger">Критический</span></td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-3">
+                                <i class="bi bi-check-circle text-success"></i> Критических остатков нет
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<!-- ─── Фильтр периода ──────────────────────────────────────────────────── -->
+{% include 'dashboard/_period_filter.html' %}
+
+<!-- ─── Карточки KPI ────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Создано</div>
+                <div class="kpi-value">{{ kpi.orders_created }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Доставлено</div>
+                <div class="kpi-value text-success">{{ kpi.orders_delivered }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Отменено</div>
+                <div class="kpi-value text-danger">{{ kpi.orders_cancelled }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">В ожидании</div>
+                <div class="kpi-value text-warning">{{ kpi.orders_pending }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Средний чек</div>
+                <div class="kpi-value">{{ kpi.avg_check }} сум</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card kpi-card">
+            <div class="card-body text-center">
+                <div class="kpi-label">Продано ед.</div>
+                <div class="kpi-value">{{ kpi.units_sold }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if kpi.historical_included %}
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="alert alert-info py-2 mb-0" role="alert" style="font-size:0.85rem;">
+            <i class="bi bi-info-circle"></i>
+            Включая данные до запуска WERP:
+            исторически создано <strong>{{ kpi.historical_orders_created_total }}</strong> заказов,
+            исторически продано <strong>{{ kpi.historical_water_sold_total }}</strong> ед. основной воды.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ─── Фильтры таблицы ─────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <!-- Сохраняем period при смене фильтров -->
+            {% if period.mode != 'custom' %}
+            <input type="hidden" name="period" value="{{ period.mode }}">
+            {% else %}
+            <input type="hidden" name="date_from" value="{{ period.date_from|date:'Y-m-d' }}">
+            <input type="hidden" name="date_to" value="{{ period.date_to|date:'Y-m-d' }}">
+            {% endif %}
+
+            <div class="col-auto">
+                <label class="form-label small">Статус</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Все</option>
+                    <option value="PD" {% if filters.status == 'PD' %}selected{% endif %}>В ожидании</option>
+                    <option value="DL" {% if filters.status == 'DL' %}selected{% endif %}>Доставлен</option>
+                    <option value="CN" {% if filters.status == 'CN' %}selected{% endif %}>Отменён</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small">Оплата</label>
+                <select name="payment" class="form-select form-select-sm">
+                    <option value="">Все</option>
+                    <option value="CH" {% if filters.payment == 'CH' %}selected{% endif %}>Наличные</option>
+                    <option value="CD" {% if filters.payment == 'CD' %}selected{% endif %}>Карта</option>
+                    <option value="BS" {% if filters.payment == 'BS' %}selected{% endif %}>Бонус</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small">Курьер</label>
+                <select name="courier" class="form-select form-select-sm">
+                    <option value="">Все</option>
+                    {% for c in courier_choices %}
+                    <option value="{{ c.id }}" {% if filters.courier|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
+                        {{ c.full_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small">Поиск</label>
+                <input type="text" name="search" class="form-control form-control-sm"
+                       placeholder="Клиент / телефон / №"
+                       value="{{ filters.search }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-search"></i> Найти
+                </button>
+                <a href="?period={{ period.mode }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle"></i> Сброс
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ─── Таблица заказов ─────────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-check"></i> Заказы ({{ total_count }})</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>№</th>
+                        <th>Создан</th>
+                        <th>Доставлен</th>
+                        <th>Клиент</th>
+                        <th>Курьер</th>
+                        <th>Рейс</th>
+                        <th>Позиций</th>
+                        <th>Сумма</th>
+                        <th>Оплата</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders_page %}
+                    <tr>
+                        <td>{{ order.human_number }}</td>
+                        <td>{{ order.created_at|date:'d.m H:i' }}</td>
+                        <td>{{ order.delivered_at|date:'d.m H:i'|default:'—' }}</td>
+                        <td>{{ order.client.name|default:'—' }}</td>
+                        <td>
+                            {% if order.trip and order.trip.shift %}
+                                {{ order.trip.shift.courier.full_name }}
+                            {% elif order.assigned_courier %}
+                                {{ order.assigned_courier.full_name }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>{{ order.trip.id|default:'—' }}</td>
+                        <td>{{ order.items.count }}</td>
+                        <td>{{ order.get_total_price }} сум</td>
+                        <td>{{ order.get_payment_type_display }}</td>
+                        <td>
+                            <span class="badge-status
+                                {% if order.status == 'DL' %}badge-delivered
+                                {% elif order.status == 'PD' %}badge-pending
+                                {% elif order.status == 'CN' %}badge-cancelled
+                                {% endif %}">
+                                {{ order.get_status_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox"></i> Заказы не найдены
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if orders_page.has_other_pages %}
+    <div class="card-footer bg-white">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if orders_page.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ orders_page.previous_page_number }}&period={{ period.mode }}">&laquo;</a>
+                </li>
+                {% endif %}
+                {% for p in orders_page.paginator.page_range %}
+                    {% if p >= orders_page.number|add:'-3' and p <= orders_page.number|add:'3' %}
+                    <li class="page-item {% if p == orders_page.number %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p }}&period={{ period.mode }}">{{ p }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                {% if orders_page.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ orders_page.next_page_number }}&period={{ period.mode }}">&raquo;</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

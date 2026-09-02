@@ -1,0 +1,30 @@
+{% if form.non_field_errors %}
+<div class="alert alert-danger d-flex align-items-center gap-2">
+    <i class="bi bi-exclamation-octagon"></i>
+    <div>
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    {% for field in form %}
+    <div class="col-md-6">
+        <div class="form-group">
+            <label class="form-label fw-semibold small text-muted" for="{{ field.id_for_label }}">
+                {{ field.label }}
+                {% if field.field.required %}<span class="text-danger">*</span>{% endif %}
+            </label>
+            {{ field }}
+            {% if field.help_text %}
+            <div class="form-text"><i class="bi bi-info-circle"></i> {{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+            <div class="invalid-feedback d-block">
+                <i class="bi bi-exclamation-circle"></i> {{ error }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
