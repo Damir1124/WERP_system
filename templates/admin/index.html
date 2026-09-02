@@ -1,0 +1,211 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+/* Быстрые ссылки в верхней части Admin */
+.quick-links {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.quick-links .ql-label {
+    font-weight: 600;
+    font-size: .85rem;
+    color: #636e72;
+    margin-right: 8px;
+}
+.quick-links a {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background .15s;
+}
+.quick-links a.ql-primary {
+    background: #1e2a3a;
+    color: #fff;
+}
+.quick-links a.ql-primary:hover {
+    background: #2c3e50;
+}
+.quick-links a.ql-secondary {
+    background: #f0f0f0;
+    color: #1e2a3a;
+}
+.quick-links a.ql-secondary:hover {
+    background: #e0e0e0;
+}
+
+/* Секции на главной */
+.admin-section {
+    margin-bottom: 28px;
+}
+.admin-section h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #2d3436;
+    margin: 0 0 12px;
+    padding: 0 0 8px;
+    border-bottom: 2px solid #e9ecef;
+}
+.admin-section .model-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.admin-section .model-list a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #2d3436;
+    font-size: .88rem;
+    font-weight: 500;
+    transition: all .15s;
+}
+.admin-section .model-list a:hover {
+    border-color: #1e2a3a;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    transform: translateY(-1px);
+}
+.admin-section .model-list a .count {
+    background: #f0f0f0;
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: .78rem;
+    color: #636e72;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+    <!-- Быстрые ссылки -->
+    <div class="quick-links">
+        <span class="ql-label">Быстрый доступ:</span>
+        <a href="{% url 'admin:logistics_order_changelist' %}" class="ql-primary">Заказы</a>
+        <a href="{% url 'admin:logistics_couriershift_changelist' %}" class="ql-secondary">Смены</a>
+        <a href="{% url 'admin:warehouse_warehouseproduct_changelist' %}" class="ql-secondary">Склад</a>
+        <a href="{% url 'admin:accounting_financialtransactions_changelist' %}" class="ql-secondary">Финансы</a>
+        <a href="{% url 'admin:clients_client_changelist' %}" class="ql-secondary">Клиенты</a>
+        <a href="{% url 'admin:accounting_salaryperiod_changelist' %}" class="ql-secondary">Зарплаты</a>
+        <a href="{% url 'admin:accounting_contract_changelist' %}" class="ql-secondary">Контракты</a>
+        <a href="{% url 'admin:accounting_installment_changelist' %}" class="ql-secondary">Рассрочки</a>
+        <a href="{% url 'dashboard:index' %}" target="_blank" class="ql-primary">Открыть Dashboard</a>
+    </div>
+
+    <!-- Операционная работа -->
+    <div class="admin-section">
+        <h2>Операционная работа</h2>
+        <div class="model-list">
+            <a href="{% url 'admin:logistics_order_changelist' %}">
+                Заказы <span class="count">{{ order_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:logistics_couriershift_changelist' %}">
+                Смены курьеров <span class="count">{{ shift_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:logistics_couriertrip_changelist' %}">
+                Рейсы
+            </a>
+            <a href="{% url 'admin:clients_client_changelist' %}">
+                Клиенты <span class="count">{{ client_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:clients_clientaddress_changelist' %}">
+                Адреса клиентов
+            </a>
+        </div>
+    </div>
+
+    <!-- Справочники -->
+    <div class="admin-section">
+        <h2>Справочники</h2>
+        <div class="model-list">
+            <a href="{% url 'admin:products_product_changelist' %}">
+                Товары <span class="count">{{ product_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:workers_worker_changelist' %}">
+                Сотрудники <span class="count">{{ worker_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:warehouse_garage_changelist' %}">
+                Автомобили <span class="count">{{ garage_count|default:'0' }}</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Финансы -->
+    <div class="admin-section">
+        <h2>Финансы</h2>
+        <div class="model-list">
+            <a href="{% url 'admin:accounting_financialtransactions_changelist' %}">
+                Финансовые операции
+            </a>
+            <a href="{% url 'admin:accounting_finance_changelist' %}">
+                Дневная сводка
+            </a>
+            <a href="{% url 'admin:accounting_salaryperiod_changelist' %}">
+                Зарплатные периоды <span class="count">{{ salaryperiod_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:accounting_salary_changelist' %}">
+                Зарплаты (баланс)
+            </a>
+            <a href="{% url 'admin:accounting_contract_changelist' %}">
+                Контракты <span class="count">{{ contract_count|default:'0' }}</span>
+            </a>
+            <a href="{% url 'admin:accounting_installment_changelist' %}">
+                Рассрочки <span class="count">{{ installment_count|default:'0' }}</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Склад -->
+    <div class="admin-section">
+        <h2>Склад</h2>
+        <div class="model-list">
+            <a href="{% url 'admin:warehouse_warehouseproduct_changelist' %}">
+                Складские продукты
+            </a>
+            <a href="{% url 'admin:warehouse_warehousestockbalance_changelist' %}">
+                Остатки
+            </a>
+            <a href="{% url 'admin:warehouse_warehousestockmovement_changelist' %}">
+                Движения склада
+            </a>
+            <a href="{% url 'admin:warehouse_warehouseinventoryadjustment_changelist' %}">
+                Корректировки склада
+            </a>
+        </div>
+    </div>
+
+    <!-- Системные настройки -->
+    <div class="admin-section">
+        <h2>Системные настройки</h2>
+        <div class="model-list">
+            <a href="{% url 'admin:auth_user_changelist' %}">
+                Пользователи
+            </a>
+            <a href="{% url 'admin:auth_group_changelist' %}">
+                Группы и права
+            </a>
+            <a href="{% url 'admin:logistics_ordernumbercounter_changelist' %}">
+                Счётчик номеров заказов
+            </a>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

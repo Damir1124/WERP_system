@@ -1,0 +1,176 @@
+/* ============================================================
+   Osnova 2.0 — Стили для Django Admin
+   Используются CSS-переменные Django, работают в обеих темах
+   ============================================================ */
+
+/* ── Badge-статусы ─────────────────────────────────────────── */
+.badge-op, .badge-cl, .badge-dl, .badge-pd, .badge-cn, .badge-ac {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: .78rem;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.badge-dl, .badge-op { /* DELIVERED / OPEN */
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-pd, .badge-ac { /* PENDING / ACTIVE */
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge-cn { /* CANCELLED */
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.badge-cl { /* CLOSED */
+    background: #e2e8f0;
+    color: #475569;
+}
+
+/* ── Быстрые ссылки на главной Admin ──────────────────────── */
+.quick-links {
+    background: var(--body-bg, #ffffff);
+    border: 1px solid var(--border-color, #e9ecef);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.quick-links .ql-label {
+    font-weight: 600;
+    font-size: .85rem;
+    color: var(--body-quiet-color, #636e72);
+    margin-right: 8px;
+}
+.quick-links a {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background .15s, color .15s;
+}
+.quick-links a.ql-primary {
+    background: var(--button-bg, #1e2a3a);
+    color: var(--button-fg, #ffffff);
+}
+.quick-links a.ql-primary:hover {
+    background: var(--button-hover-bg, #2c3e50);
+}
+.quick-links a.ql-secondary {
+    background: var(--darkened-bg, #f0f0f0);
+    color: var(--body-fg, #2d3436);
+}
+.quick-links a.ql-secondary:hover {
+    background: var(--selected-bg, #e0e0e0);
+}
+
+/* ── Секции на главной Admin ───────────────────────────────── */
+.admin-section {
+    margin-bottom: 28px;
+}
+.admin-section h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--body-fg, #2d3436);
+    margin: 0 0 12px;
+    padding: 0 0 8px;
+    border-bottom: 2px solid var(--border-color, #e9ecef);
+}
+.admin-section .model-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.admin-section .model-list a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--body-bg, #ffffff);
+    border: 1px solid var(--border-color, #e9ecef);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--body-fg, #2d3436);
+    font-size: .88rem;
+    font-weight: 500;
+    transition: all .15s;
+}
+.admin-section .model-list a:hover {
+    border-color: var(--primary, #1e2a3a);
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    transform: translateY(-1px);
+}
+.admin-section .model-list a .count {
+    background: var(--darkened-bg, #f0f0f0);
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: .78rem;
+    color: var(--body-quiet-color, #636e72);
+}
+
+/* ── Быстрые ссылки в хедере Admin ─────────────────────────── */
+.header-quick-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 24px;
+}
+.header-quick-links a {
+    color: var(--header-link-color, #c8d6e5);
+    text-decoration: none;
+    font-size: .82rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    transition: background .15s, color .15s;
+}
+.header-quick-links a:hover {
+    background: rgba(255,255,255,.1);
+    color: #ffffff;
+}
+@media (max-width: 1024px) {
+    .header-quick-links { display: none; }
+}
+
+/* ── Таблицы списков: подсветка строк и аккуратные действия ── */
+#changelist table tbody tr:hover {
+    background: var(--selected-bg, #f5f6fa);
+}
+#changelist .actions {
+    background: var(--darkened-bg, #f8f9fa);
+    border-bottom: 1px solid var(--border-color, #e9ecef);
+}
+
+/* Автокомплит-поля в inline-формах — чтобы не раздувались */
+.inline-group .inline-related .select2-container {
+    min-width: 180px;
+}
+
+/* Кнопки админ-действий в list_editable */
+#changelist .submit-row input[type="submit"] {
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 500;
+}
+
+/* Аккуратные иконки действий в списках */
+td.original p {
+    font-weight: 600;
+    color: var(--body-quiet-color, #6c757d);
+}
+
+/* Badge-бейджи: скруглённые, компактные */
+.badge-dl, .badge-pd, .badge-cn, .badge-cl, .badge-ac, .badge-op {
+    letter-spacing: .2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}

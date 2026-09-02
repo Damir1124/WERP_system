@@ -1,0 +1,54 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Eco Life {% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        Eco Life
+    </a>
+</h1>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/admin_overrides.css' %}">
+<style>
+/* Быстрые ссылки в хедере Admin */
+.header-quick-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 24px;
+}
+.header-quick-links a {
+    color: #c8d6e5;
+    text-decoration: none;
+    font-size: .82rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    transition: background .15s, color .15s;
+}
+.header-quick-links a:hover {
+    background: rgba(255,255,255,.1);
+    color: #fff;
+}
+@media (max-width: 1024px) {
+    .header-quick-links { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block nav-global %}
+<div class="header-quick-links">
+    <a href="{% url 'dashboard:index' %}" target="_blank" title="Открыть Dashboard">Dashboard</a>
+    <a href="{% url 'admin:logistics_order_changelist' %}">Заказы</a>
+    <a href="{% url 'admin:logistics_couriershift_changelist' %}">Смены</a>
+    <a href="{% url 'admin:warehouse_warehouseproduct_changelist' %}">Склад</a>
+    <a href="{% url 'admin:accounting_financialtransactions_changelist' %}">Финансы</a>
+    <a href="{% url 'admin:accounting_salaryperiod_changelist' %}">Зарплаты</a>
+    <a href="{% url 'admin:accounting_contract_changelist' %}">онтракты</a>
+    <a href="{% url 'admin:accounting_installment_changelist' %}">Рассрочки</a>
+</div>
+{% endblock %}
