@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Telegram Mini App — убираем отступы браузера */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--tg-theme-bg-color, #f9fafb);
+  color: var(--tg-theme-text-color, #111827);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Safe area для iPhone с чёлкой */
+nav.fixed.bottom-0 {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pb-16 {
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Кнопки — минимальный размер для touch */
+button {
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* Инпуты — нормальный размер на мобильных (предотвращает zoom на iOS) */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* ВАЖНО: фиксируем цвет текста и фон инпутов независимо от темы Telegram.
+   В тёмной теме WebView --tg-theme-text-color становится белым, и введённый
+   текст на белом фоне становится невидимым. Поэтому всегда тёмный текст. */
+input, select, textarea {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
+input::placeholder, textarea::placeholder, select::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Скролл без полосы прокрутки */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  scrollbar-width: none;
+}
+
+/* ─── Дизайн: синяя гамма, мягкие тени, градиенты, анимации ────────────────── */
+
+/* Мягкая тень для «приподнятых» карточек */
+.shadow-soft {
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.08), 0 2px 6px rgba(31, 41, 55, 0.04);
+}
+
+/* Свечение для основных голубых кнопок/элементов */
+.glow-blue {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.28);
+}
+
+/* Плавное появление карточек товара / позиций */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card-enter {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Общий плавный переход для кнопок и интерактивных элементов */
+button {
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+/* Обрезка многострочного текста в названиях */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp,
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
