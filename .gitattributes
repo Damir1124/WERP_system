@@ -1,0 +1,48 @@
+# Политика разделителей строк для всех текстовых файлов в репозитории.
+# В git хранится LF; на Windows при checkout git автоматически подставит нужные
+# окончания (CF/LF) без искажения истории. Это устраняет предупреждение PyCharm
+# о CRLF и сохраняет консистентность между разработчиками (Windows/Linux/macOS).
+
+* text=auto
+
+# Python/Django — всегда LF
+*.py   text eol=lf
+*.pyi  text eol=lf
+
+# Конфиги/разметка — LF
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+*.ini  text eol=lf
+*.cfg  text eol=lf
+*.toml text eol=lf
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Фронтенд — LF
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+
+# Docker
+Dockerfile* text eol=lf
+.dockerignore text eol=lf
+
+# Windows-скрипты — намеренно CRLF (cmd требует CRLF для корректной работы)
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Бинарные/изображения — не трогать
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.docx binary

@@ -28,8 +28,16 @@ docs/.smart-env/
 .DS_Store
 Thumbs.db
 
+# IDE (PyCharm)
+.idea/
+*.iml
+
 # Django collected static
 staticfiles/
+
+# User-uploaded media (runtime data — lives on the server, not in git)
+media/
+media/**
 
 # Obsidian local/plugin data
 docs/.obsidian/workspace.json
