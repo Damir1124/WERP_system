@@ -4703,7 +4703,7 @@ File: static/miniapp/courier/index.html
  9 |     <link rel="stylesheet" crossorigin href="/static/miniapp/courier/assets/index-CPvBQEb5.css">
 10 |   </head>
 11 |   <body>
-12 |     <div id="root"></div>
+12 |     <div id="root"></div>
 13 |   </body>
 14 | </html>
 [Tool]
@@ -4719,7 +4719,7 @@ File: static/miniapp/client/index.html
  9 |     <link rel="stylesheet" crossorigin href="/static/miniapp/client/assets/index-CLMYHz4L.css">
 10 |   </head>
 11 |   <body>
-12 |     <div id="root"></div>
+12 |     <div id="root"></div>
 13 |   </body>
 14 | </html>
 15 | 
