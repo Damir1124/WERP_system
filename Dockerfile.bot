@@ -8,9 +8,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Системные зависимости (psycopg2 требует libpq, aiohttp — компилятор не нужен)
+# Системные зависимости:
+# - libpq-dev — для psycopg2/psycopg (Django ORM)
+# - build-essential, python3-dev, gcc, libffi-dev — компилятор для сборки
+#   C-пакетов из исходников на slim-образе
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    build-essential \
+    python3-dev \
+    gcc \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Django-зависимости (проект) + зависимости бота

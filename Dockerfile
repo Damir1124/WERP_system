@@ -7,9 +7,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости (psycopg2 требует libpq)
+# Устанавливаем системные зависимости:
+# - libpq-dev — для psycopg2/psycopg (библиотека PostgreSQL)
+# - build-essential, python3-dev, gcc — компилятор, т.к. psycopg2==2.9.10 и
+#   ряд C-пакетов собираются из исходников на slim-образах
+# - libffi-dev — для некоторых пакетов на slim-образах
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    build-essential \
+    python3-dev \
+    gcc \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем зависимости и устанавливаем их
