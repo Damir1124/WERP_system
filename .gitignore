@@ -16,6 +16,8 @@ env/
 # Env
 .env
 .env.*
+# Но .env.example — это шаблон, его коммитим:
+!.env.example
 
 # Logs
 *.log

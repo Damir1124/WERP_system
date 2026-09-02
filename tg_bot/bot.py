@@ -3,6 +3,7 @@
 Подключает middleware, routers и настраивает логику обработки сообщений.
 """
 import logging
+import os
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
@@ -28,8 +29,21 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 
-# Хранилище состояний (пока используем MemoryStorage, для продакшена нужно RedisStorage)
-storage = MemoryStorage()
+# Хранилище состояний FSM.
+# В продакшене (USE_WEBHOOK=true или BOT_FSM_REDIS_URL задан) — RedisStorage:
+# состояния не теряются при перезапуске и общие между воркерами.
+# В разработке без Redis — MemoryStorage как fallback.
+fsm_redis_url = os.getenv('BOT_FSM_REDIS_URL', '').strip()
+if fsm_redis_url:
+    from aiogram.fsm.storage.redis import RedisStorage
+    storage = RedisStorage.from_url(fsm_redis_url)
+    logger.info("FSM storage: RedisStorage (%s)", fsm_redis_url)
+else:
+    storage = MemoryStorage()
+    logger.warning(
+        "FSM storage: MemoryStorage (задайте BOT_FSM_REDIS_URL в продакшене, "
+        "чтобы состояния не терялись при перезапуске бота)"
+    )
 dp = Dispatcher(storage=storage)
 
 # Подключаем middleware

@@ -50,6 +50,26 @@ services:
       redis:
         condition: service_healthy
 
+  web-asgi:
+    # ASGI-сервер (Uvicorn) для Django Channels / WebSockets (живой Dashboard).
+    # Gunicorn (web) НЕ умеет WebSocket-апгрейды, поэтому отдельный процесс.
+    build: .
+    container_name: werp_web_asgi
+    restart: always
+    command: uvicorn WERP_system.asgi:application --host 0.0.0.0 --port 8001 --workers 2
+    env_file:
+      - .env
+    volumes:
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
+    expose:
+      - "8001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   celery-worker:
     build: .
     container_name: werp_celery_worker
@@ -78,6 +98,26 @@ services:
       redis:
         condition: service_healthy
 
+  bot:
+    # Telegram-бот (aiogram). В продакшене webhook-режим; принимает апдейты
+    # от Nginx на /webhook (порт 8001 внутри сети).
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: werp_bot
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "8001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
   nginx:
     image: nginx:alpine
     container_name: werp_nginx
@@ -91,6 +131,7 @@ services:
       - ./media:/media:ro
     depends_on:
       - web
+      - web-asgi
 
 volumes:
   pgdata:
