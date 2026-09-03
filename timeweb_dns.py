@@ -66,29 +66,24 @@ def list_records(domain, token):
 
 
 def add_txt(domain, host, value, token, ttl=300):
-    # Тело по схеме Timeweb Cloud: record { type, host, value, ttl }
-    body = {
-        "record": {
-            "type": "TXT",
-            "host": host,
-            "value": value,
-            "ttl": ttl,
-        }
-    }
-    code, raw = _req("POST", f"/domains/{domain}/dns-records", token, body)
-    if code in (200, 201):
-        print(f"[OK] TXT добавлен: {host} = {value}")
-        return True
-    else:
-        print(f"[ERROR] POST DNS-record: HTTP {code}\n{raw}", file=sys.stderr)
-        # Fallback: попробуем плоскую схему без вложенного record
-        body2 = {"type": "TXT", "host": host, "value": value, "ttl": ttl}
-        code, raw = _req("POST", f"/domains/{domain}/dns-records", token, body2)
+    # Для acme-challenge нужен префикс в имени (subdomain).
+    # У нас host = "_acme-challenge" или "_acme-challenge.www".
+    sub = host if host.startswith("_acme-challenge") else f"_acme-challenge.{host}"
+    # Timeweb Cloud ожидает в теле поле data.subdomain (или data.subdomain_name),
+    # а не host. Пробуем обе формы.
+    body_schemas = [
+        {"data": {"subdomain": sub, "value": value}, "type": "TXT", "ttl": ttl},
+        {"data": {"subdomain_name": sub, "value": value}, "type": "TXT", "ttl": ttl},
+        {"record": {"type": "TXT", "host": sub, "value": value, "ttl": ttl}},
+        {"type": "TXT", "host": sub, "value": value, "ttl": ttl},
+    ]
+    for body in body_schemas:
+        code, raw = _req("POST", f"/domains/{domain}/dns-records", token, body)
         if code in (200, 201):
-            print(f"[OK] TXT добавлен (плоская схема): {host} = {value}")
+            print(f"[OK] TXT добавлен: {sub} = {value}")
             return True
-        print(f"[ERROR] Fallback тоже не сработал: HTTP {code}\n{raw}", file=sys.stderr)
-        return False
+    print(f"[ERROR] Не удалось добавить TXT {sub}. Последний HTTP {code}\n{raw}", file=sys.stderr)
+    return False
 
 
 def del_by_host(domain, host, token):
