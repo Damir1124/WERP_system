@@ -11,6 +11,7 @@ from django.shortcuts import redirect
 from django.db import connection
 from apps.workers.models import Worker
 from apps.bot_bridge.utils import verify_telegram_init_data, extract_user_id_from_init_data
+from apps.dashboard import views as dashboard_views
 import os
 import logging
 
@@ -164,8 +165,8 @@ urlpatterns = [
     # Health-check для мониторинга (без авторизации)
     path('health/', health_check, name='health_check'),
 
-    # Корневой URL — редирект на Launcher
-    path('', RedirectView.as_view(url='/static/miniapp/launcher/index.html', permanent=False), name='root'),
+    # Корневой URL — меню (стартовая страница)
+    path('', dashboard_views.home, name='root'),
 ]
 
 # Статика и медиа в режиме DEBUG

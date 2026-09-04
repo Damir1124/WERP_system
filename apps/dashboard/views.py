@@ -20,6 +20,23 @@ from apps.products.models import Product
 logger = logging.getLogger(__name__)
 
 
+def home(request):
+    """Корневая страница-меню.
+
+    Анониму показывает приветствие и кнопку «Войти» (редирект на admin login).
+    Авторизованному сотруднику (is_staff) — меню: Dashboard, Админка, Mini Apps.
+    """
+    # Ссылки на Mini Apps по ролям
+    miniapps = [
+        ("Курьер", "courier"),
+        ("Клиент", "client"),
+        ("Владелец", "owner"),
+        ("Оператор", "operator"),
+    ]
+    ctx = {"miniapps": miniapps}
+    return render(request, "home.html", ctx)
+
+
 def _is_staff(user):
     """Проверка доступа: is_staff или суперпользователь."""
     return user.is_authenticated and (user.is_staff or user.is_superuser)
