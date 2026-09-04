@@ -23,10 +23,22 @@ from tg_bot.routers import owner as owner_router
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
+# Прокси для доступа к api.telegram.org (если задан BOT_PROXY_URL).
+# Нужен, когда сеть сервера блокирует прямые соединения с Telegram
+# (например, у некоторых VPS-провайдеров API Telegram недоступен).
+# Формат: socks5://user:pass@host:port  или  http://host:port
+_bot_session = None
+_proxy_url = os.getenv('BOT_PROXY_URL', '').strip()
+if _proxy_url:
+    from aiogram.client.session.aiohttp import AiohttpSession
+    _bot_session = AiohttpSession(proxy=_proxy_url)
+    logger.info("Бот настроен через прокси: %s", _proxy_url)
+
 # Инициализация бота с default properties
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    session=_bot_session,
 )
 
 # Хранилище состояний FSM.
