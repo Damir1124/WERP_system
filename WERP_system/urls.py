@@ -53,8 +53,8 @@ def health_check(request):
     return JsonResponse(status, status=http_status)
 
 # Кастомизация заголовка Django Admin
-admin.site.site_header = "Osnova 2.0 — ERP"
-admin.site.site_title = "WERP Admin"
+admin.site.site_header = "Eco Life — ERP"
+admin.site.site_title = "Eco Life Admin"
 admin.site.index_title = "Панель управления"
 
 
