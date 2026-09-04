@@ -42,8 +42,10 @@ async def main() -> None:
     if USE_WEBHOOK:
         logger.info("Запуск бота в режиме webhook...")
         # Устанавливаем webhook
+        # ВАЖНО: WEBHOOK_URL уже содержит WEBHOOK_PATH (см. config.py),
+        # поэтому НЕ складываем его ещё раз — иначе получится /webhook/webhook.
         await bot.set_webhook(
-            url=WEBHOOK_URL + WEBHOOK_PATH,
+            url=WEBHOOK_URL,
             drop_pending_updates=True
         )
         # Запускаем aiohttp сервер для обработки вебхуков
