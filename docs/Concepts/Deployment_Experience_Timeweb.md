@@ -98,5 +98,43 @@ docker run --rm -v "$PWD/certbot_conf:/etc/letsencrypt" certbot/certbot certific
 
 ---
 
-## Вывод одной строкой
-Сайт/деплой/SSL/автопродление — настроены и работают. Осталось нерешённым: **Telegram-бот**, т.к. с этого Timeweb-VPS недоступен `api.telegram.org` (нужен прокси / другой регион / локальный запуск).
+## Вывод одной строкой (по итогу)
+Сайт/деплой/SSL/автопродление — настроены и работают. **Бот заработал после переезда на VPS в Амстердаме** (где открыт `api.telegram.org`). Итоговый вариант см. ниже.
+
+---
+
+## ФИНАЛ: переезд на Амстердам (что решило проблему бота)
+
+### Предыстория
+На Timeweb (РФ/близкая сеть) `api.telegram.org` был **заблокирован** (TCP 443 FAIL), поэтому бот не мог подключиться. Бесплатные прокси нестабильны. Решение — сменить регион сервера.
+
+### Как переехали (быстро, из снимка)
+1. **Нидерланды (Амстердам)** — VPS с доступом к api.telegram.org (проверка: `timeout 10 bash -c 'cat</dev/null >/dev/tcp/api.telegram.org/443'` → `TG OK`).
+2. **Создали новый VPS из снимка** старого Timeweb — приехали: Docker, .env, nginx, certbot (SSL), код.
+3. Перевел **DNS** домена `24ecolife.ru` (A-записи @ и www) на новый IPv4 `201.51.10.172`.
+
+### Грабли при переезде (важно!)
+- **nginx не поднимался** (`YOUR_DOMAIN` в nginx.conf). Причина: в репо nginx.conf хранит плейсхолдер `YOUR_DOMAIN`, а `sed`-подстановка была только на старом сервере. Фикс: `sed -i 's|YOUR_DOMAIN|24ecolife.ru|g' nginx.conf` → `docker compose restart nginx`.
+- **Webhook бота был двойным `/webhook/webhook`** — исправили в коде (`tg_bot/__main__.py`: `url=WEBHOOK_URL`, а не `+ WEBHOOK_PATH`). Отметка: лог-строка 68 ещё печатает `/webhook/webhook`, но реальный webhook правильный.
+- После перевода DNS: `getWebhookInfo` показал `ip_address: 201.51.10.172` → Telegram шлёт апдейты на новый сервер.
+
+### Ключевые проверки после переезда
+- `timeout 10 bash -c 'cat</dev/null >/dev/tcp/api.telegram.org/443'` → `TG OK` (регион подходит).
+- `curl -s https://api.telegram.org/bot<TOK>/getWebhookInfo` → `"url": "https://24ecolife.ru/webhook"`, `"ip_address": "201.51.10.172"`, без `last_error_message`.
+- `docker compose ps` — все контейнеры Up (web, nginx, db, redis, celery, bot).
+
+### Итоговый статус (работает)
+| Компонент | Статус |
+|---|---|
+| Сайт / админка / API | ✅ (настоящий SSL) |
+| Корневая страница Eco Life | ✅ |
+| SSL + автопродление (cron) | ✅ |
+| WebSocket / Dashboard | ✅ |
+| Telegram-бот | ✅ (прямой доступ, Амстердам) |
+| Celery | ✅ |
+
+### Чего не делать / запомнить
+- **Не** использовать VPS в РФ/близких сетях для бота (TocketteTG заблокирован).
+- **Не** хранить `YOUR_DOMAIN` в nginx.conf без подстановки на сервере.
+- **Не** светить BOT_TOKEN в чатах/логах — отзывай у @BotFather при утечке.
+- Регион выбирать с открытым api.telegram.org (Нидерланды/Германия/Финляндия) — проверка `timeout ... tcp api.telegram.org/443`.
