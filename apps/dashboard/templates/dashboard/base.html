@@ -331,19 +331,19 @@
     try {
         var proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
         var ws = new WebSocket(proto + location.host + '/ws/dashboard/');
+        // Не перезагружаем страницу чаще, чем раз в 20 сек (антимигание).
+        var lastReload = 0;
         ws.onmessage = function (ev) {
             try {
                 var msg = JSON.parse(ev.data);
                 if (msg.type === 'finance_update') {
-                    // При изменении финансов перезагружаем страницу,
-                    // чтобы показатели Dashboard обновились.
-                    location.reload();
+                    var now = Date.now();
+                    if (now - lastReload > 20000) {
+                        lastReload = now;
+                        location.reload();
+                    }
                 }
             } catch (e) { /* ignore */ }
-        };
-        ws.onclose = function () {
-            // При обрыве —— тихо переподключаться не будем; просто лог.
-            console.warn && console.warn('WS closed');
         };
     } catch (err) {
         console.error('WS init error', err);
