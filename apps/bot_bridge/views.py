@@ -591,8 +591,22 @@ class OrderConfirmationView(APIView):
                 # Создаём отдельную позицию для тары при sell_with_qty > 0
                 if sell_with_qty > 0:
                     try:
-                        # Используем продукт с ID=9 (основная тара)
-                        bottle_product = Product.objects.get(id=9, type_product=Product.TypeProduct.BOTTLE)
+                        from apps.products.models import Product as _Product
+                        # Находим продукт-тару по типу BOTTLE (предпочтительно "Тара 19"),
+                        # НЕ полагаемся на жёсткий id (раньше было id=9, которого нет в БД).
+                        bottle_product = (
+                            _Product.objects
+                            .filter(type_product=_Product.TypeProduct.BOTTLE, name__icontains='19')
+                            .first()
+                            or _Product.objects
+                            .filter(type_product=_Product.TypeProduct.BOTTLE)
+                            .first()
+                            or _Product.objects
+                            .filter(name__icontains='Тара')
+                            .first()
+                        )
+                        if bottle_product is None:
+                            raise _Product.DoesNotExist
                         bottle_item = OrderItem.objects.create(
                             order=order,
                             product=bottle_product,
@@ -605,10 +619,10 @@ class OrderConfirmationView(APIView):
                             'quantity': sell_with_qty,
                             'price': bottle_item.price
                         })
-                    except Product.DoesNotExist:
-                        logger.error(f"Продукт BOTTLE с ID=9 не найден")
+                    except _Product.DoesNotExist:
+                        logger.error(f"Продукт BOTTLE (тара) не найден")
                         return Response(
-                            {'error': 'Продукт тары (ID=9) не найден в системе'},
+                            {'error': 'Продукт тары (тип BOTTLE) не найден в системе'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR
                         )
             
