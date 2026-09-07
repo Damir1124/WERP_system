@@ -331,16 +331,26 @@
     try {
         var proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
         var ws = new WebSocket(proto + location.host + '/ws/dashboard/');
-        // Не перезагружаем страницу чаще, чем раз в 20 сек (антимигание).
-        var lastReload = 0;
+        var fmt = function (n) {
+            // Формат "1 250 000 сум"
+            try { return n.toLocaleString('ru-RU') + ' сум'; }
+            catch (e) { return n + ' сум'; }
+        };
         ws.onmessage = function (ev) {
             try {
                 var msg = JSON.parse(ev.data);
-                if (msg.type === 'finance_update') {
-                    var now = Date.now();
-                    if (now - lastReload > 20000) {
-                        lastReload = now;
-                        location.reload();
+                if (msg.type !== 'finance_update') return;
+                var d = (msg.data && msg.data.data) ? msg.data.data : msg.data;
+                var map = {
+                    'kpi-income': d.income,
+                    'kpi-consumption': d.consumption,
+                    'kpi-profit': d.profit,
+                    'kpi-card_profit': d.card_profit
+                };
+                for (var id in map) {
+                    var el = document.getElementById(id);
+                    if (el && map[id] !== undefined && map[id] !== null) {
+                        el.textContent = fmt(map[id]);
                     }
                 }
             } catch (e) { /* ignore */ }

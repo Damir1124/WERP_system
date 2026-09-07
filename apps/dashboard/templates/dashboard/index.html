@@ -25,7 +25,7 @@
                     </div>
                     <div>
                         <div class="kpi-label">Доход</div>
-                        <div class="kpi-value">
+                        <div class="kpi-value" id="kpi-income">
                             {% if kpi.income is not None %}
                                 {{ kpi.income|floatformat:0 }} сум
                             {% else %}
@@ -46,7 +46,7 @@
                     </div>
                     <div>
                         <div class="kpi-label">Расход</div>
-                        <div class="kpi-value">
+                        <div class="kpi-value" id="kpi-consumption">
                             {% if kpi.consumption is not None %}
                                 {{ kpi.consumption|floatformat:0 }} сум
                             {% else %}
@@ -67,7 +67,7 @@
                     </div>
                     <div>
                         <div class="kpi-label">Прибыль</div>
-                        <div class="kpi-value {% if kpi.profit is not None and kpi.profit < 0 %}text-danger{% endif %}">
+                        <div class="kpi-value {% if kpi.profit is not None and kpi.profit < 0 %}text-danger{% endif %}" id="kpi-profit">
                             {% if kpi.profit is not None %}
                                 {{ kpi.profit|floatformat:0 }} сум
                             {% else %}
@@ -88,7 +88,7 @@
                     </div>
                     <div>
                         <div class="kpi-label">Безнал</div>
-                        <div class="kpi-value">
+                        <div class="kpi-value" id="kpi-card_profit">
                             {% if kpi.card_profit is not None %}
                                 {{ kpi.card_profit|floatformat:0 }} сум
                             {% else %}
