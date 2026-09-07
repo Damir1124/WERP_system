@@ -325,5 +325,30 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Live-обновление Dashboard через WebSocket (Django Channels)
+(function () {
+    try {
+        var proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+        var ws = new WebSocket(proto + location.host + '/ws/dashboard/');
+        ws.onmessage = function (ev) {
+            try {
+                var msg = JSON.parse(ev.data);
+                if (msg.type === 'finance_update') {
+                    // При изменении финансов перезагружаем страницу,
+                    // чтобы показатели Dashboard обновились.
+                    location.reload();
+                }
+            } catch (e) { /* ignore */ }
+        };
+        ws.onclose = function () {
+            // При обрыве —— тихо переподключаться не будем; просто лог.
+            console.warn && console.warn('WS closed');
+        };
+    } catch (err) {
+        console.error('WS init error', err);
+    }
+})();
+</script>
 </body>
 </html>
