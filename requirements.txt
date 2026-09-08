@@ -37,3 +37,6 @@ uvicorn[standard]>=0.30.0
 
 # --- Генерация путевых листов .docx ---
 python-docx>=1.1.0
+
+# --- HTTP-клиент для Telegram-уведомлений (notify.py, отправка отчётов владельцам) ---
+requests>=2.32.0
