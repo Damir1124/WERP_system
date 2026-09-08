@@ -32,7 +32,7 @@ from tg_bot.keyboards.courier import (
 )
 from tg_bot.api_client import api_client
 from tg_bot.messages import MSG_POOL_LEGEND
-from tg_bot.states.courier import CourierTripStart, CourierDeliverOrder, CourierCreateOrder
+from tg_bot.states.courier import CourierTripStart, CourierDeliverOrder, CourierCreateOrder, CourierShiftClose
 logger = logging.getLogger(__name__)
 router = Router(name="courier")
 
@@ -1253,8 +1253,8 @@ async def back_to_shift(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 @router.callback_query(F.data == "close_shift")
-async def close_shift(callback: CallbackQuery):
-    """Показать подтверждение закрытия смены со статистикой (как ShiftClose.jsx)."""
+async def close_shift(callback: CallbackQuery, state: FSMContext):
+    """Показать подтверждение закрытия смены со статистикой и вводом расходов (как ShiftClose.jsx)."""
     tg_id = callback.from_user.id
     current = await get_trip_state(tg_id)
     if not current.get('active_shift'):
@@ -1264,6 +1264,8 @@ async def close_shift(callback: CallbackQuery):
         await callback.answer("❌ Сначала закройте активный рейс", show_alert=True)
         return
     shift_id = current.get('shift_id')
+    # Сбрасываем накопленные расходы FSM при новом показе экрана (обновляем только наш ключ)
+    await state.update_data(close_expenses=[])
     # Загружаем статистику смены
     shift_data = await api_client.get('/shifts/current/', headers=auth_headers(tg_id))
     shift_info = shift_data.get('shift', {}) if isinstance(shift_data, dict) else {}
@@ -1272,11 +1274,23 @@ async def close_shift(callback: CallbackQuery):
     cash_total = shift_info.get('cash_total', 0)
     card_total = shift_info.get('card_total', 0)
     total_amount = cash_total + card_total
+
+    expenses = []
+    expenses_total = 0
+    cash_to_hand = cash_total
+
     water_delivered = shift_stats.get('water_delivered', 0)
     orders_count = shift_stats.get('orders_count', 0)
     date = shift_info.get('date', 'N/A')
 
-    reminder = "\n💵 Не забудьте сдать наличные!\n" if cash_total > 0 else "\n"
+    reminder = f"\n💵 Сдать наличными: <b>{fmt_money(cash_to_hand)} сум</b>{' (за вычетом расходов)' if expenses else ''}!\n"
+
+    expenses_block = ""
+    if expenses:
+        expenses_block = "\n💸 <b>Расходы:</b>\n" + "\n".join(
+            f"   • {e.get('reason')}: {fmt_money(e.get('amount'))} сум" for e in expenses
+        ) + f"\n   <b>Всего: {fmt_money(expenses_total)} сум</b>\n"
+
     text = (
         f"📋 <b>Закрытие смены #{shift_id}</b>\n"
         f"{'=' * 28}\n"
@@ -1289,11 +1303,13 @@ async def close_shift(callback: CallbackQuery):
         f"   💳 Карта: {fmt_money(card_total)} сум\n"
         f"   {'=' * 20}\n"
         f"   <b>Итого: {fmt_money(total_amount)} сум</b>\n"
+        f"{expenses_block}"
         f"{reminder}"
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"Подтвердите закрытие:"
     )
     buttons = [
+        [InlineKeyboardButton(text="💸 Добавить расход", callback_data="close_shift_add_expense")],
         [InlineKeyboardButton(text="✅ Закрыть смену", callback_data="confirm_close_shift")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_close_shift")],
     ]
@@ -1301,19 +1317,97 @@ async def close_shift(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == "close_shift_add_expense")
+async def close_shift_add_expense(callback: CallbackQuery, state: FSMContext):
+    """Начать ввод расхода: ожидаем строку 'причина;сумма'."""
+    tg_id = callback.from_user.id
+    await state.set_state(CourierShiftClose.waiting_for_expense)
+    await callback.message.edit_text(
+        "💸 <b>Добавить расход</b>\n\n"
+        "Введите строку в формате: <b>причина ; сумма</b>\n"
+        "Например: <code>Топливо;50000</code>\n\n"
+        "Можно добавить несколько расходов — каждый раз вводите по одной строке.\n"
+        "Когда закончите — нажмите кнопку внизу.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Закрыть смену", callback_data="confirm_close_shift")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_close_shift")],
+        ]),
+    )
+    await callback.answer()
+
+
+@router.message(CourierShiftClose.waiting_for_expense)
+async def close_shift_capture_expense(message: Message, state: FSMContext):
+    """Обработка введённой строки расхода: 'причина;сумма'."""
+    tg_id = message.from_user.id
+    text = (message.text or '').strip()
+    if not text or text.lower() in ('отмена', 'cancel', 'нет'):
+        await state.clear()
+        await message.answer("❌ Ввод расходов отменён.")
+        return
+
+    parts = [p.strip() for p in text.split(';')]
+    if len(parts) < 2:
+        await message.answer(
+            "⚠️ Неверный формат. Введите: <code>причина ; сумма</code>\n"
+            "Например: <code>Топливо;50000</code>"
+        )
+        return
+    reason, amount_raw = parts[0], parts[-1]
+    try:
+        amount = int(amount_raw.replace(' ', '').replace('\u00a0', ''))
+    except (ValueError, TypeError):
+        await message.answer(
+            f"⚠️ Некорректная сумма «{amount_raw}». Введите число, например: <code>Топливо;50000</code>"
+        )
+        return
+    if amount <= 0:
+        await message.answer("⚠️ Сумма должна быть больше нуля.")
+        return
+    if not reason:
+        await message.answer("⚠️ Укажите причину, например: <code>Топливо;50000</code>")
+        return
+
+    data = await state.get_data()
+    expenses = data.get('close_expenses') or []
+    expenses.append({'reason': reason, 'amount': amount})
+    await state.update_data(close_expenses=expenses)
+    expenses_total = sum(e['amount'] for e in expenses)
+
+    # Показываем обновлённый список и снова ждём следующую строку
+    expenses_block = "\n".join(f"   • {e['reason']}: {fmt_money(e['amount'])} сум" for e in expenses)
+    await message.answer(
+        f"💸 <b>Расходы добавлены:</b>\n{expenses_block}\n"
+        f"<b>Всего: {fmt_money(expenses_total)} сум</b>\n\n"
+        "Введите следующий расход в формате <code>причина;сумма</code>\n"
+        "или нажмите кнопку закрыть смену.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Закрыть смену", callback_data="confirm_close_shift")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_close_shift")],
+        ]),
+    )
+
+
 @router.callback_query(F.data == "confirm_close_shift")
-async def confirm_close_shift(callback: CallbackQuery):
-    """Подтвердить и выполнить закрытие смены."""
+async def confirm_close_shift(callback: CallbackQuery, state: FSMContext):
+    """Подтвердить и выполнить закрытие смены (с учётом расходов из FSM)."""
     tg_id = callback.from_user.id
     current = await get_trip_state(tg_id)
     if not current.get('active_shift'):
         await callback.answer("Смена уже закрыта", show_alert=True)
         return
     shift_id = current.get('shift_id')
+
+    data = await state.get_data()
+    expenses = data.get('close_expenses') or []
+
+    payload = {'expenses': expenses} if expenses else {}
     result = await api_client.post(
         f'/courier/shifts/{shift_id}/close/',
+        data=payload,
         headers=auth_headers(tg_id)
     )
+    await state.clear()
     if 'error' in result:
         await callback.answer(f"❌ {result.get('error')}", show_alert=True)
         return
@@ -1323,8 +1417,9 @@ async def confirm_close_shift(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "cancel_close_shift")
-async def cancel_close_shift(callback: CallbackQuery):
+async def cancel_close_shift(callback: CallbackQuery, state: FSMContext):
     """Отмена закрытия смены."""
+    await state.clear()
     await show_main_menu(callback.message, callback.from_user.id)
     await callback.answer()
 

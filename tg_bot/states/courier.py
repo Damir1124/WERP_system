@@ -30,3 +30,12 @@ class CourierTripStart(StatesGroup):
 class CourierDeliverOrder(StatesGroup):
     """Редактирование/подтверждение доставки заказа (экран как в OrderConfirm.jsx)."""
     waiting_for_edit = State()
+
+
+class CourierShiftClose(StatesGroup):
+    """Закрытие смены: ввод нескольких строк расходов (причина + сумма).
+
+    - waiting_for_expense — ожидание строки "причина;сумма" или команд меню.
+    Расходы копятся в state.data['expenses'] до подтверждения закрытия.
+    """
+    waiting_for_expense = State()

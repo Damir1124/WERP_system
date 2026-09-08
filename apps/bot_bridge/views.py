@@ -136,7 +136,16 @@ class CourierShiftListView(APIView):
 
 
 class CourierShiftCloseView(APIView):
-    """POST /api/bot/courier/shifts/<shift_id>/close/"""
+    """POST /api/bot/courier/shifts/<shift_id>/close/
+
+    Тело (опционально):
+        {
+            "expenses": [{"reason": "Топливо", "amount": 50000}, ...]
+        }
+    Расходы сохраняются в ShiftExpense (несколько строк), затем смена закрывается,
+    расходы автоматически фиксируются в финансовых транзакциях как РАСХОД (MINUS)
+    и всем владельцам (owner) отправляется отчёт со сдачей наличных (наличные − расходы).
+    """
     permission_classes = [IsCourier]
 
     def post(self, request, shift_id):
@@ -144,8 +153,48 @@ class CourierShiftCloseView(APIView):
         shift = get_object_or_404(CourierShift, id=shift_id, courier=courier)
         if shift.status == CourierShift.Status.CLOSED:
             return Response({'error': 'Смена уже закрыта'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Сохраняем расходы смены (несколько строк: причина + стоимость)
+        expenses = request.data.get('expenses') or []
+        from apps.logistics.models import ShiftExpense
+        if expenses:
+            if not isinstance(expenses, list):
+                return Response({'error': 'expenses должен быть списком'}, status=status.HTTP_400_BAD_REQUEST)
+            for item in expenses:
+                reason = str((item.get('reason') or '').strip())
+                amount = item.get('amount')
+                if not reason:
+                    continue
+                try:
+                    amount = int(amount)
+                except (TypeError, ValueError):
+                    return Response(
+                        {'error': f'Некорректная стоимость расхода «{reason}»'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if amount < 0:
+                    return Response(
+                        {'error': f'Стоимость расхода «{reason}» не может быть отрицательной'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                ShiftExpense.objects.create(shift=shift, reason=reason, amount=amount)
+
+        # 2. Закрываем смену
         shift.close()
-        # Автоматически отправляем отчёт о закрытии смены в админ-чат (в фоне через Celery)
+
+        # 3. Пишем расходы в финансы (MINUS) — идемпотентно
+        from apps.bot_bridge.services import register_shift_expenses
+        try:
+            register_shift_expenses(shift)
+        except Exception as exc:  # noqa: BLE001
+            # Не роняем закрытие смены из-за ошибки учёта финансов —
+            # отчёт и так уйдёт, а расходы можно дофиксировать позже.
+            import logging
+            logging.getLogger(__name__).warning(
+                "Ошибка записи расходов в финансы для смены %s: %s", shift.id, exc
+            )
+
+        # 4. Автоматически отправляем отчёт о закрытии смены в админ-чат (в фоне через Celery)
         from apps.bot_bridge.tasks import notify_shift_closed_task
         notify_shift_closed_task.delay(shift.id)
         return Response({'message': f'Смена #{shift.id} закрыта', 'shift_id': shift.id})
@@ -202,6 +251,9 @@ class ShiftCurrentView(APIView):
                 'status': shift.status,
                 'cash_total': shift.cash_total,
                 'card_total': shift.card_total,
+                'expenses': shift.expenses_list(),
+                'expenses_total': shift.expenses_total,
+                'cash_to_hand': shift.cash_to_hand,
             },
             'shift_stats': {
                 'orders_count': orders_count,
@@ -283,6 +335,9 @@ class ShiftHistoryView(APIView):
                 'status': shift.status,
                 'cash_total': shift.cash_total,
                 'card_total': shift.card_total,
+                'expenses': shift.expenses_list(),
+                'expenses_total': shift.expenses_total,
+                'cash_to_hand': shift.cash_to_hand,
                 'stats': {
                     'orders_count': orders_count,
                     'water_delivered': water_delivered,

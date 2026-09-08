@@ -35,6 +35,49 @@ class CourierShift(models.Model):
         self.closed_at = timezone.now()
         self.save(update_fields=['status', 'closed_at'])
 
+    @property
+    def expenses_total(self) -> int:
+        """Сумма всех расходов смены."""
+        return self.expenses.aggregate(total=models.Sum('amount'))['total'] or 0
+
+    def expenses_list(self):
+        """Плоский список расходов: [{'reason': str, 'amount': int}, ...]."""
+        return [
+            {'reason': e.reason, 'amount': e.amount}
+            for e in self.expenses.all().order_by('created_at')
+        ]
+
+    @property
+    def cash_to_hand(self) -> int:
+        """Сумма наличных к сдаче в кассу: наличные − Σ расходов."""
+        return (self.cash_total or 0) - self.expenses_total
+
+
+class ShiftExpense(models.Model):
+    """Расход курьера по смене (несколько строк: причина + стоимость).
+
+    Вводится курьером при закрытии смены (web-mini-app или tg-бот) и
+    высчитывается из итоговой суммы наличных: «сдать в кассу = наличные − Σ расходов».
+
+    При закрытии смены автоматически пишется в финансы как расход (MINUS)
+    с причиной в description (см. apps/bot_bridge/services.py).
+
+    Хранится отдельно, чтобы расходы были видны в админке, отчётах Dashboard
+    и не терялись при пересчёте кэшированных полей смены.
+    """
+    shift   = models.ForeignKey(CourierShift, on_delete=models.CASCADE, related_name='expenses', verbose_name='Смена')
+    reason  = models.CharField(max_length=255, verbose_name='Причина расхода')
+    amount  = models.IntegerField(verbose_name='Стоимость')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+
+    class Meta:
+        verbose_name = "Расход смены"
+        verbose_name_plural = "Расходы смен"
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.reason}: {self.amount} сум (смена #{self.shift_id})'
+
 
 class CourierTrip(models.Model):
     """Рейс внутри смены"""

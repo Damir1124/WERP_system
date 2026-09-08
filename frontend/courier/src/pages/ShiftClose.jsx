@@ -7,6 +7,7 @@ export default function ShiftClose() {
   const location = useLocation()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [expenses, setExpenses] = useState([{ reason: '', amount: '' }])
 
   // Получаем данные из state
   const { shiftStats = {}, shift = {}, shiftId } = location.state || {}
@@ -19,11 +20,33 @@ export default function ShiftClose() {
 
   const fmt = (n) => (n || 0).toLocaleString('ru-RU')
 
+  // ── Расходы ──────────────────────────────────────────────────────────
+  const patchExpense = (idx, field, value) => {
+    setExpenses(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e))
+  }
+
+  const addExpenseRow = () => setExpenses(prev => [...prev, { reason: '', amount: '' }])
+
+  const removeExpenseRow = (idx) => setExpenses(prev => prev.filter((_, i) => i !== idx))
+
+  // Эталонные расходы: непустые строки с корректной стоимостью
+  const validExpenses = expenses
+    .map(e => ({ reason: (e.reason || '').trim(), amount: parseInt(e.amount, 10) || 0 }))
+    .filter(e => e.reason.length > 0 && e.amount > 0)
+
+  const expensesTotal = validExpenses.reduce((s, e) => s + e.amount, 0)
+
+  // Вычисляем итоговую сумму
+  const cashTotal = shift.cash_total || 0
+  const cardTotal = shift.card_total || 0
+  const totalAmount = cashTotal + cardTotal
+  const cashToHand = cashTotal - expensesTotal
+
   const handleCloseShift = async () => {
     setLoading(true)
     setError(null)
     try {
-      await api.closeShift(shiftId)
+      await api.closeShift(shiftId, validExpenses)
       // Успешно закрыли смену — переходим на страницу смены
       navigate('/shift', { replace: true })
     } catch (e) {
@@ -36,11 +59,6 @@ export default function ShiftClose() {
   const handleBack = () => {
     navigate('/shift')
   }
-
-  // Вычисляем итоговую сумму
-  const cashTotal = shift.cash_total || 0
-  const cardTotal = shift.card_total || 0
-  const totalAmount = cashTotal + cardTotal
 
   return (
     <div className="page-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -94,10 +112,78 @@ export default function ShiftClose() {
               {fmt(totalAmount)} сум
             </span>
           </div>
+          {expensesTotal > 0 && (
+            <div className="mrow">
+              <span className="mr-lbl" style={{ fontWeight: 600 }}>Расходы</span>
+              <span className="mr-val" style={{ color: '#e53935', fontWeight: 600 }}>
+                − {fmt(expensesTotal)} сум
+              </span>
+            </div>
+          )}
+          <div className="mrow">
+            <span className="mr-lbl" style={{ fontWeight: 600 }}>Сдать наличными</span>
+            <span className="mr-val" style={{ fontWeight: 700, fontSize: '20px', color: '#22c55e' }}>
+              {fmt(cashToHand)} сум
+            </span>
+          </div>
+        </div>
+
+        {/* Секция: Расходы смены (несколько строк: причина + стоимость) */}
+        <div className="section" style={{ border: '1px solid rgba(229,57,53,0.3)' }}>
+          <div className="sec-lbl">💸 Расходы</div>
+          <div className="text-muted" style={{ fontSize: '12px', marginBottom: '8px' }}>
+            Укажите расходы (например, топливо, покупка тары). Они вычтутся из наличных к сдаче.
+          </div>
+          {expenses.map((exp, i) => (
+            <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <input
+                type="text"
+                placeholder="Причина"
+                value={exp.reason}
+                onChange={(e) => patchExpense(i, 'reason', e.target.value)}
+                style={{ flex: 1, minWidth: 0, fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0' }}
+              />
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="Сумма"
+                min="0"
+                value={exp.amount}
+                onChange={(e) => patchExpense(i, 'amount', e.target.value)}
+                style={{ width: '110px', fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0', textAlign: 'right' }}
+              />
+              {expenses.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeExpenseRow(i)}
+                  style={{ background: 'transparent', border: 'none', color: '#e53935', fontSize: '20px', lineHeight: 1, cursor: 'pointer' }}
+                  title="Удалить расход"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          {expensesTotal > 0 && (
+            <div className="mrow" style={{ justifyContent: 'space-between' }}>
+              <span className="mr-lbl">Всего расходов</span>
+              <span className="mr-val" style={{ color: '#e53935', fontWeight: 700 }}>{fmt(expensesTotal)} сум</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={addExpenseRow}
+            style={{
+              width: '100%', background: 'rgba(229,57,53,0.06)', border: '1px dashed rgba(229,57,53,0.4)',
+              borderRadius: '10px', padding: '10px', color: '#e53935', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            + Добавить расход
+          </button>
         </div>
 
         {/* Блок напоминания о сдаче денег */}
-        {cashTotal > 0 && (
+        {cashToHand > 0 && (
           <div
             style={{
               background: 'rgba(34, 197, 94, 0.1)',
@@ -109,7 +195,8 @@ export default function ShiftClose() {
               lineHeight: '1.4',
             }}
           >
-            💵 Не забудьте сдать {fmt(cashTotal)} сум наличными в кассу
+            💵 Не забудьте сдать {fmt(cashToHand)} сум наличными в кассу
+            {expensesTotal > 0 ? ` (из {fmt(cashTotal)} сум за вычетом расходов)` : ''}
           </div>
         )}
 

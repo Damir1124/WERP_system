@@ -386,11 +386,24 @@ class CourierShiftSerializer(serializers.ModelSerializer):
     courier_name = serializers.CharField(source='courier.full_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     trips = CourierTripSerializer(many=True, read_only=True)
-    
+    expenses = serializers.SerializerMethodField()
+    expenses_total = serializers.SerializerMethodField()
+    cash_to_hand = serializers.SerializerMethodField()
+
+    def get_expenses(self, obj):
+        return obj.expenses_list()
+
+    def get_expenses_total(self, obj):
+        return obj.expenses_total
+
+    def get_cash_to_hand(self, obj):
+        return obj.cash_to_hand
+
     class Meta:
         model = CourierShift
         fields = ['id', 'courier', 'courier_name', 'date', 'status', 'status_display',
-                  'cash_total', 'card_total', 'opened_at', 'closed_at', 'trips']
+                  'cash_total', 'card_total', 'opened_at', 'closed_at', 'trips',
+                  'expenses', 'expenses_total', 'cash_to_hand']
         read_only_fields = ['opened_at', 'closed_at']
 
 

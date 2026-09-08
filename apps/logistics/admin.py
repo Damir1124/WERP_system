@@ -3,11 +3,35 @@ from django.urls import reverse
 from django.utils.html import format_html
 from .models import (
     CourierShift, CourierTrip, Order, OrderItem,
-    OrderNumberCounter,
+    OrderNumberCounter, ShiftExpense,
 )
 from .forms import OrderForm
 from apps.products.models import Product
 from apps.dashboard.services.export_placeholder import ExportPlaceholderMixin
+
+
+# =============================================================================
+# Расходы смены (несколько строк: причина + стоимость)
+# =============================================================================
+
+
+class ShiftExpenseInline(admin.TabularInline):
+    """Расходы смены: причина + стоимость."""
+    model = ShiftExpense
+    extra = 0
+    fields = ('reason', 'amount')
+    verbose_name = "Расход"
+    verbose_name_plural = "Расходы смены"
+    # Для закрытых смен расходы защищаем от редактирования
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status == CourierShift.Status.CLOSED:
+            return ['reason', 'amount']
+        return []
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.status == CourierShift.Status.CLOSED:
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 # =============================================================================
@@ -68,7 +92,7 @@ class CourierShiftAdmin(ExportPlaceholderMixin, admin.ModelAdmin):
     autocomplete_fields = ('courier',)
     readonly_fields = ('cash_total', 'card_total', 'opened_at', 'closed_at', 'date')
     date_hierarchy = 'date'
-    inlines = [CourierTripInline]
+    inlines = [CourierTripInline, ShiftExpenseInline]
     ordering = ('-date', '-opened_at')
     save_on_top = True
     list_per_page = 25
@@ -405,3 +429,15 @@ class OrderNumberCounterAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ShiftExpense)
+class ShiftExpenseAdmin(admin.ModelAdmin):
+    """Расходы смены."""
+    list_display = ('id', 'shift', 'reason', 'amount', 'created_at')
+    list_filter = ('shift__date', 'shift__courier')
+    search_fields = ('reason', 'shift__courier__full_name')
+    autocomplete_fields = ('shift',)
+    list_select_related = ('shift__courier',)
+    list_per_page = 25
+    ordering = ('-created_at',)

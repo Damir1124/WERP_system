@@ -15,7 +15,7 @@ from django.utils import timezone
 from unittest.mock import patch
 
 from apps.clients.models import Client
-from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem
+from apps.logistics.models import CourierShift, CourierTrip, Order, OrderItem, ShiftExpense
 from apps.products.models import Product
 from apps.workers.models import Worker
 from apps.warehouse.models import Garage
@@ -144,6 +144,34 @@ class ShiftReportTests(ReportBase):
         self.assertIn('Взято: 15 бак', text)
         self.assertIn('Возвращено пустых: 3 шт', text)
         self.assertIn('Осталось в машине: 12 бак', text)
+
+    def test_shift_report_shows_expenses_and_cash_to_hand(self):
+        """Расходы смены (причина + сумма) и 'сдать наличными' попадают в отчёт."""
+        self._delivered_order(self.trip, Order.PaymentType.CASH, 2)  # 40 000 наличными
+        ShiftExpense.objects.create(shift=self.shift, reason='Топливо', amount=5000)
+        ShiftExpense.objects.create(shift=self.shift, reason='Тара', amount=3000)
+        self.shift.closed_at = timezone.now()
+        self.shift.save(update_fields=['closed_at'])
+
+        text = build_shift_report_text(self.shift)
+
+        self.assertIn('Расходы', text)
+        self.assertIn('Топливо: 5 000 сум', text)
+        self.assertIn('Тара: 3 000 сум', text)
+        self.assertIn('Всего расходов: 8 000 сум', text)
+        # Сдать наличными: 40 000 − 8 000 = 32 000
+        self.assertIn('Сдать наличными: 32 000 сум', text)
+
+    def test_shift_report_without_expenses_shows_cash_to_hand(self):
+        """Без расходов 'сдать наличными' = наличные."""
+        self._delivered_order(self.trip, Order.PaymentType.CASH, 2)
+        self.shift.closed_at = timezone.now()
+        self.shift.save(update_fields=['closed_at'])
+
+        text = build_shift_report_text(self.shift)
+
+        self.assertNotIn('Всего расходов:', text)
+        self.assertIn('Сдать наличными: 40 000 сум', text)
 
 
 class NotifyTests(ReportBase):

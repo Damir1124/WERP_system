@@ -67,7 +67,13 @@ export const api = {
   getShiftHistory: (dateFrom, dateTo) => apiFetch(`/shifts/history/?date_from=${dateFrom}&date_to=${dateTo}`),
   getShifts:  () => apiFetch('/courier/shifts/'),
   openShift:  () => apiFetch('/shifts/', { method: 'POST' }),
-  closeShift: (shiftId) => apiFetch(`/courier/shifts/${shiftId}/close/`, { method: 'POST' }),
+  closeShift: (shiftId, expenses = null) =>
+    apiFetch(`/courier/shifts/${shiftId}/close/`, {
+      method: 'POST',
+      ...(expenses && expenses.length > 0
+        ? { body: JSON.stringify({ expenses }) }
+        : {}),
+    }),
 
   // ── Рейсы ─────────────────────────────────────────────────────────────────
   getTrips:   () => apiFetch('/courier/trips/'),

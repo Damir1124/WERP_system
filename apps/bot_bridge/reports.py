@@ -157,6 +157,33 @@ def build_shift_report_text(shift: CourierShift) -> str:
         total_empty += s['empty_received']
         total_remain += s['full_remain']
 
+    # Расходы смены (причина + стоимость) и сдача наличных
+    expenses = shift.expenses_list()
+    expenses_total = shift.expenses_total
+    cash_to_hand = (report.total_cash or 0) - expenses_total
+
+    finance_lines = [
+        "",
+        "💰 <b>Финансы</b>",
+        f"• Наличные: {_fmt_num(report.total_cash)} сум",
+        f"• Карта: {_fmt_num(report.total_card)} сум",
+        f"• Итого: {_fmt_num(report.total_amount)} сум",
+        f"• Продано воды: {report.total_water_sold} бак",
+        f"• Заказов выполнено: {orders_count}",
+        f"• Рейсов: {report.total_trips}",
+    ]
+    if expenses:
+        finance_lines += [
+            "",
+            "💸 <b>Расходы</b>",
+        ]
+        for exp in expenses:
+            finance_lines.append(f"• {exp['reason']}: {_fmt_num(exp['amount'])} сум")
+        finance_lines.append(f"• <b>Всего расходов: {_fmt_num(expenses_total)} сум</b>")
+        finance_lines.append(f"• 💵 <b>Сдать наличными: {_fmt_num(cash_to_hand)} сум</b>")
+    else:
+        finance_lines.append(f"• 💵 Сдать наличными: {_fmt_num(cash_to_hand)} сум")
+
     lines = [
         "✅ <b>Смена закрыта</b>",
         "",
@@ -166,15 +193,7 @@ def build_shift_report_text(shift: CourierShift) -> str:
     ]
     if vehicle:
         lines.append(f"🚗 Авто: {vehicle}")
-    lines += [
-        "",
-        "💰 <b>Финансы</b>",
-        f"• Наличные: {_fmt_num(report.total_cash)} сум",
-        f"• Карта: {_fmt_num(report.total_card)} сум",
-        f"• Итого: {_fmt_num(report.total_amount)} сум",
-        f"• Продано воды: {report.total_water_sold} бак",
-        f"• Заказов выполнено: {orders_count}",
-        f"• Рейсов: {report.total_trips}",
+    lines += finance_lines + [
         "",
         "📦 <b>Тара (по всем рейсам)</b>",
         f"• Взято: {total_loaded} бак",

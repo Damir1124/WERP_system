@@ -76,11 +76,23 @@ class ShiftReport:
     total_cash: int = 0
     total_card: int = 0
     trips: list = field(default_factory=list)
+    expenses: list = field(default_factory=list)   # [{'reason': str, 'amount': int}]
+    # Расходы подтягиваются из ShiftExpense; сумма кэшируется для шаблона.
 
     @property
     def total_amount(self) -> int:
         """Итоговая выручка смены (наличные + карта)."""
         return self.total_cash + self.total_card
+
+    @property
+    def expenses_total(self) -> int:
+        """Сумма всех расходов смены."""
+        return sum(e['amount'] for e in self.expenses)
+
+    @property
+    def cash_to_hand(self) -> int:
+        """Сумма наличных к сдаче в кассу: наличные − Σ расходов."""
+        return (self.total_cash or 0) - self.expenses_total
 
 
 def _sum_delivered_price(trip, payment_type) -> int:
@@ -173,6 +185,7 @@ def get_shift_report(shift: CourierShift) -> ShiftReport:
         total_trips=shift.trips.count(),
         total_cash=_sum_delivered_price_for_shift(shift, Order.PaymentType.CASH),
         total_card=_sum_delivered_price_for_shift(shift, Order.PaymentType.CARD),
+        expenses=shift.expenses_list(),
     )
 
     trips = shift.trips.all().order_by('started_at')
