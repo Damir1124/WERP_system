@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 
@@ -47,6 +47,7 @@ export default function ShiftClose() {
     setError(null)
     try {
       await api.closeShift(shiftId, validExpenses)
+      // Успешно закрыли смену — переходим на страницу смены
       navigate('/shift', { replace: true })
     } catch (e) {
       setError(e.message)
@@ -61,6 +62,7 @@ export default function ShiftClose() {
 
   return (
     <div className="page-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      {/* Заголовок с градиентом на весь экран */}
       <div style={{
         background: 'linear-gradient(135deg, #1450A3 0%, #0d3a70 100%)',
         padding: '20px 16px',
@@ -74,6 +76,7 @@ export default function ShiftClose() {
       </div>
 
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflowY: 'auto' }}>
+        {/* Ошибка */}
         {error && <div className="error-box">{error}</div>}
 
         {/* Секция: Статистика доставки */}
@@ -110,28 +113,26 @@ export default function ShiftClose() {
             </span>
           </div>
           {expensesTotal > 0 && (
-            <div className="mrow" style={{ marginTop: '8px' }}>
-              <span className="mr-lbl" style={{ fontWeight: 600, color: '#e53935' }}>Расходы</span>
+            <div className="mrow">
+              <span className="mr-lbl" style={{ fontWeight: 600 }}>Расходы</span>
               <span className="mr-val" style={{ color: '#e53935', fontWeight: 600 }}>
                 − {fmt(expensesTotal)} сум
               </span>
             </div>
           )}
-          <div className="mrow" style={{ marginTop: '8px' }}>
-            <span className="mr-lbl" style={{ fontWeight: 600, color: '#22c55e' }}>Сдать наличными</span>
+          <div className="mrow">
+            <span className="mr-lbl" style={{ fontWeight: 600 }}>Сдать наличными</span>
             <span className="mr-val" style={{ fontWeight: 700, fontSize: '20px', color: '#22c55e' }}>
               {fmt(cashToHand)} сум
             </span>
           </div>
         </div>
 
-        {/* Секция: Расходы смены (УПРОЩЁННАЯ) */}
-        <div className="section" style={{ border: '2px solid red', padding: '16px', background: '#fff5f5' }}>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: 'red', marginBottom: '8px' }}>
-            💸 РАСХОДЫ ТУТ. ОНИ РАБОТАЮТ!
-          </div>
-          <div style={{ fontSize: '12px', marginBottom: '8px' }}>
-            Укажите расходы. Они вычтутся из наличных к сдаче.
+        {/* Секция: Расходы смены (несколько строк: причина + стоимость) */}
+        <div className="section" style={{ border: '1px solid rgba(229,57,53,0.3)' }}>
+          <div className="sec-lbl">💸 Расходы</div>
+          <div className="text-muted" style={{ fontSize: '12px', marginBottom: '8px' }}>
+            Укажите расходы (например, топливо, покупка тары). Они вычтутся из наличных к сдаче.
           </div>
           {expenses.map((exp, i) => (
             <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -156,17 +157,24 @@ export default function ShiftClose() {
                   type="button"
                   onClick={() => removeExpenseRow(i)}
                   style={{ background: 'transparent', border: 'none', color: '#e53935', fontSize: '20px', lineHeight: 1, cursor: 'pointer' }}
+                  title="Удалить расход"
                 >
                   ✕
                 </button>
               )}
             </div>
           ))}
+          {expensesTotal > 0 && (
+            <div className="mrow" style={{ justifyContent: 'space-between' }}>
+              <span className="mr-lbl">Всего расходов</span>
+              <span className="mr-val" style={{ color: '#e53935', fontWeight: 700 }}>{fmt(expensesTotal)} сум</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={addExpenseRow}
             style={{
-              width: '100%', background: '#fce4e4', border: '1px dashed #e53935',
+              width: '100%', background: 'rgba(229,57,53,0.06)', border: '1px dashed rgba(229,57,53,0.4)',
               borderRadius: '10px', padding: '10px', color: '#e53935', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
             }}
           >
@@ -176,16 +184,19 @@ export default function ShiftClose() {
 
         {/* Блок напоминания о сдаче денег */}
         {cashToHand > 0 && (
-          <div style={{
-            background: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            borderRadius: '10px',
-            color: '#22c55e',
-            padding: '12px',
-            fontSize: '14px',
-            lineHeight: '1.4',
-          }}>
+          <div
+            style={{
+              background: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '10px',
+              color: '#22c55e',
+              padding: '12px',
+              fontSize: '14px',
+              lineHeight: '1.4',
+            }}
+          >
             💵 Не забудьте сдать {fmt(cashToHand)} сум наличными в кассу
+            {expensesTotal > 0 ? ` (из {fmt(cashTotal)} сум за вычетом расходов)` : ''}
           </div>
         )}
 
