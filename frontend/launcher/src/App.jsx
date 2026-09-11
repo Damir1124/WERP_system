@@ -13,12 +13,17 @@ if (tgId) {
   sessionStorage.setItem('tg_id', String(tgId))
 }
 
-// Карта target_app → URL Mini App
+// Версия сборки (уникальна для каждого npm run build, вшивается Vite).
+const V = typeof __BUILD_VER__ !== 'undefined' ? __BUILD_VER__ : '1'
+
+// Карта target_app → URL Mini App.
+// Версия (?v=) в URL принудительно сбрасывает кэш WebView в Telegram
+// при каждом деплое: телефон открывает актуальный build мини-аппа.
 const APP_URLS = {
-  courier: '/static/miniapp/courier/index.html',
-  admin: '/static/miniapp/owner/index.html',
-  operator: '/static/miniapp/operator/index.html',
-  client: '/static/miniapp/client/index.html',
+  courier: `/static/miniapp/courier/index.html?v=${V}`,
+  admin: `/static/miniapp/owner/index.html?v=${V}`,
+  operator: `/static/miniapp/operator/index.html?v=${V}`,
+  client: `/static/miniapp/client/index.html?v=${V}`,
 }
 
 // ─── Экран загрузки ──────────────────────────────────────────────────────────
