@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { HashRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { initTelegram } from './tg.js'
 import Pool from './pages/Pool.jsx'
 import RefreshContext, { useRefresh } from './refreshContext.js'
