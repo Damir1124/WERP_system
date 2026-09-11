@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 
@@ -120,7 +120,7 @@ export default function ShiftClose() {
               </span>
             </div>
           )}
-          <div className="mrow">
+          <div className="mrow" style={{ marginTop: '12px' }}>
             <span className="mr-lbl" style={{ fontWeight: 600 }}>Сдать наличными</span>
             <span className="mr-val" style={{ fontWeight: 700, fontSize: '20px', color: '#22c55e' }}>
               {fmt(cashToHand)} сум
@@ -129,20 +129,10 @@ export default function ShiftClose() {
         </div>
 
         {/* Секция: Расходы смены (несколько строк: причина + стоимость) */}
-        <div className="section" style={{ border: '1px solid rgba(229,57,53,0.3)' }}>
+        <div className="section">
           <div className="sec-lbl">💸 Расходы</div>
-          <div className="text-muted" style={{ fontSize: '12px', marginBottom: '8px' }}>
-            Укажите расходы (например, топливо, покупка тары). Они вычтутся из наличных к сдаче.
-          </div>
           {expenses.map((exp, i) => (
             <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <input
-                type="text"
-                placeholder="Причина"
-                value={exp.reason}
-                onChange={(e) => patchExpense(i, 'reason', e.target.value)}
-                style={{ flex: 1, minWidth: 0, fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0' }}
-              />
               <input
                 type="number"
                 inputMode="numeric"
@@ -150,7 +140,14 @@ export default function ShiftClose() {
                 min="0"
                 value={exp.amount}
                 onChange={(e) => patchExpense(i, 'amount', e.target.value)}
-                style={{ width: '110px', fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0', textAlign: 'right' }}
+                style={{ width: '110px', fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0', textAlign: 'left' }}
+              />
+              <input
+                type="text"
+                placeholder="Причина"
+                value={exp.reason}
+                onChange={(e) => patchExpense(i, 'reason', e.target.value)}
+                style={{ flex: 1, minWidth: 0, fontSize: '14px', padding: '8px', borderRadius: '8px', border: '1px solid #d0d0d0' }}
               />
               {expenses.length > 1 && (
                 <button
